@@ -6,11 +6,13 @@ class ProfileParticipantListItemView extends StatelessWidget {
     required this.title,
     this.subtitle,
     this.thumbnailUrl,
+    this.fallbackUrl,
   });
 
   final String title;
   final String? subtitle;
   final String? thumbnailUrl;
+  final String? fallbackUrl;
 
   @override
   Widget build(BuildContext context) {
@@ -19,7 +21,10 @@ class ProfileParticipantListItemView extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         children: [
-          _Thumbnail(url: thumbnailUrl),
+          _Thumbnail(
+            primaryUrl: thumbnailUrl,
+            fallbackUrl: fallbackUrl,
+          ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -60,30 +65,58 @@ class ProfileParticipantListItemView extends StatelessWidget {
   }
 }
 
-class _Thumbnail extends StatelessWidget {
-  const _Thumbnail({this.url});
+class _Thumbnail extends StatefulWidget {
+  const _Thumbnail({this.primaryUrl, this.fallbackUrl});
 
-  final String? url;
+  final String? primaryUrl;
+  final String? fallbackUrl;
+
+  @override
+  State<_Thumbnail> createState() => _ThumbnailState();
+}
+
+class _ThumbnailState extends State<_Thumbnail> {
+  bool _useFallback = false;
 
   @override
   Widget build(BuildContext context) {
-    final hasUrl = url != null && url!.trim().isNotEmpty;
+    final primary = widget.primaryUrl?.trim() ?? '';
+    final fallback = widget.fallbackUrl?.trim() ?? '';
+    final activeUrl = _useFallback ? fallback : primary;
+    final hasUrl = activeUrl.isNotEmpty;
+
     return ClipRRect(
       borderRadius: BorderRadius.circular(8),
       child: SizedBox(
         width: 48,
         height: 48,
         child: hasUrl
-            ? Image.network(url!, fit: BoxFit.cover)
-            : Container(
-                color: const Color(0xFFF2F2F2),
-                alignment: Alignment.center,
-                child: const Icon(
-                  Icons.image_outlined,
-                  size: 20,
-                  color: Color(0xFF9E9E9E),
-                ),
-              ),
+            ? Image.network(
+                activeUrl,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) {
+                  if (!_useFallback && fallback.isNotEmpty) {
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (mounted) setState(() => _useFallback = true);
+                    });
+                    return const SizedBox.shrink();
+                  }
+                  return _placeholder();
+                },
+              )
+            : _placeholder(),
+      ),
+    );
+  }
+
+  Widget _placeholder() {
+    return Container(
+      color: const Color(0xFFF2F2F2),
+      alignment: Alignment.center,
+      child: const Icon(
+        Icons.image_outlined,
+        size: 20,
+        color: Color(0xFF9E9E9E),
       ),
     );
   }

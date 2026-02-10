@@ -5,6 +5,8 @@ import '../common/widgets/common_tab_view.dart';
 import '../feed_list/feed_list_view.dart';
 import '../map/map_view.dart';
 import '../profile/profile_view.dart';
+import '../notification/notification_view.dart';
+import '../feed_create_photo/feed_create_photo_view.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -36,8 +38,8 @@ class _HomeScreenState extends State<HomeScreen> {
         children: const [
           MapView(),
           FeedListView(),
-          SafeArea(bottom: true, child: SizedBox.shrink()),
-          SafeArea(bottom: true, child: SizedBox.shrink()),
+          SafeArea(top: true, bottom: true, child: SizedBox.shrink()),
+          SafeArea(top: true, bottom: true, child: NotificationView()),
           SafeArea(bottom: true, child: ProfileView()),
         ],
       ),
@@ -48,6 +50,25 @@ class _HomeScreenState extends State<HomeScreen> {
           child: CommonTabView(
             currentIndex: _currentIndex,
             onTap: (index) {
+              if (index == 2) {
+                showModalBottomSheet<void>(
+                  context: context,
+                  isScrollControlled: true,
+                  useSafeArea: false,
+                  backgroundColor: Colors.black,
+                  shape: const RoundedRectangleBorder(
+                    borderRadius: BorderRadius.zero,
+                  ),
+                  builder: (_) {
+                    final height = MediaQuery.of(context).size.height;
+                    return SizedBox(
+                      height: height,
+                      child: const FeedCreatePhotoView(),
+                    );
+                  },
+                );
+                return;
+              }
               setState(() => _currentIndex = index);
               _applyStatusBarStyle(index);
             },

@@ -32,10 +32,13 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final baseTheme = ThemeData();
     return MaterialApp(
       title: 'Empty App',
-      theme: ThemeData(
-        fontFamily: 'Pretendard',
+      theme: baseTheme.copyWith(
+        textTheme: baseTheme.textTheme.apply(fontFamily: 'Pretendard'),
+        primaryTextTheme:
+            baseTheme.primaryTextTheme.apply(fontFamily: 'Pretendard'),
       ),
       home: const SplashView(),
     );

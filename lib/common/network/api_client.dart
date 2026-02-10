@@ -282,6 +282,47 @@ class ApiClient {
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
+  static Future<Map<String, dynamic>> fetchMyNotifications({
+    int limit = 20,
+    String dir = 'next',
+    String? cursor,
+  }) async {
+    final query = <String, String>{
+      'dir': dir,
+      'limit': '$limit',
+    };
+    if (cursor != null && cursor.isNotEmpty) {
+      query['cursor'] = cursor;
+    }
+    final uri = Uri.parse('$baseUrl/api/v1/notifications/mine')
+        .replace(queryParameters: query);
+    _logRequest('GET', uri);
+    final response = await _sendWithAuthRetry(
+      () => http.get(uri, headers: _headers()),
+      retryRequest: () => http.get(uri, headers: _headers()),
+    );
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('My notifications request failed: ${response.statusCode}');
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  static Future<void> markAllNotificationsRead() async {
+    final uri = Uri.parse('$baseUrl/api/v1/notifications/read-all');
+    _logRequest('PATCH', uri);
+    final response = await _sendWithAuthRetry(
+      () => http.patch(uri, headers: _headers()),
+      retryRequest: () => http.patch(uri, headers: _headers()),
+    );
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        'Mark all notifications read failed: ${response.statusCode}',
+      );
+    }
+  }
+
   static Future<Map<String, dynamic>> socialAppLogin({
     required String provider,
     required String accessToken,

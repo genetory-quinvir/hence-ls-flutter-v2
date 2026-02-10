@@ -25,7 +25,7 @@ class CommonEmptyView extends StatelessWidget {
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w400,
-              color: Colors.grey[600],
+              color: Colors.grey[400],
             ),
           ),
           const SizedBox(height: 12),

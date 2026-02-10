@@ -38,8 +38,8 @@ class CommonTabView extends StatelessWidget {
       ),
       _TabItem(
         label: '만들기',
-        icon: PhosphorIconsRegular.plusCircle,
-        activeIcon: PhosphorIconsFill.plusCircle,
+        icon: PhosphorIconsRegular.plus,
+        activeIcon: PhosphorIconsFill.plus,
       ),
       _TabItem(
         label: '알림',

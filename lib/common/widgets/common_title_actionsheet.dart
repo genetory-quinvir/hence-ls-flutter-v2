@@ -78,33 +78,38 @@ class CommonTitleActionSheet extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
-          ListView.separated(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: items.length,
-            separatorBuilder: (_, __) => const SizedBox.shrink(),
-            itemBuilder: (context, index) {
-              final item = items[index];
-              return CommonInkWell(
-                onTap: () => onSelected?.call(item),
-                child: SizedBox(
-                  height: 50,
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      item.label,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w400,
-                        color: item.isDestructive
-                            ? const Color(0xFFE53935)
-                            : Colors.black,
+          SizedBox(
+            height: (items.length <= 5 ? items.length : 5) * 50.0,
+            child: ListView.separated(
+              padding: EdgeInsets.zero,
+              physics: items.length <= 5
+                  ? const NeverScrollableScrollPhysics()
+                  : const BouncingScrollPhysics(),
+              itemCount: items.length,
+              separatorBuilder: (_, __) => const SizedBox.shrink(),
+              itemBuilder: (context, index) {
+                final item = items[index];
+                return CommonInkWell(
+                  onTap: () => onSelected?.call(item),
+                  child: SizedBox(
+                    height: 50,
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        item.label,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w400,
+                          color: item.isDestructive
+                              ? const Color(0xFFE53935)
+                              : Colors.black,
+                        ),
                       ),
                     ),
                   ),
-                ),
-              );
-            },
+                );
+              },
+            ),
           ),
         ],
       ),

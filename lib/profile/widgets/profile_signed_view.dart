@@ -540,12 +540,16 @@ class _ProfileParticipantListState extends State<_ProfileParticipantList> {
                     (item['thumbnailUrl'] as String?) ??
                     (item['imageUrl'] as String?) ??
                     '';
+                final fallbackUrl = (item['fileUrl'] as String?) ??
+                    (item['image'] as String?) ??
+                    '';
                 return Column(
                   children: [
                     ProfileParticipantListItemView(
                       title: title,
                       subtitle: subtitle,
                       thumbnailUrl: thumbnail,
+                      fallbackUrl: fallbackUrl,
                     ),
                     if (index != _items.length - 1)
                       const Divider(
