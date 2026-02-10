@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import '../common/widgets/common_inkwell.dart';
 import '../common/widgets/common_title_actionsheet.dart';
+import '../feed_create_info/feed_create_info_view.dart';
 
 class FeedCreatePhotoView extends StatefulWidget {
   const FeedCreatePhotoView({super.key});
@@ -32,6 +33,12 @@ class _FeedCreatePhotoViewState extends State<FeedCreatePhotoView> {
   void initState() {
     super.initState();
     _loadAlbum();
+    SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.light);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
     SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.light);
   }
 
@@ -174,14 +181,27 @@ class _FeedCreatePhotoViewState extends State<FeedCreatePhotoView> {
                     ),
                   ),
                   const Spacer(),
-                  Text(
-                    '다음',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: _selected.isNotEmpty
-                          ? Colors.white
-                          : const Color(0xFF9E9E9E),
+                  CommonInkWell(
+                    onTap: _selected.isNotEmpty
+                        ? () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => FeedCreateInfoView(
+                                  selectedAssets: List.of(_selected),
+                                ),
+                              ),
+                            );
+                          }
+                        : null,
+                    child: Text(
+                      '다음',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: _selected.isNotEmpty
+                            ? Colors.white
+                            : const Color(0xFF9E9E9E),
+                      ),
                     ),
                   ),
                 ],
