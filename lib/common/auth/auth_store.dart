@@ -101,6 +101,7 @@ class AuthStore {
       'user=${currentUser.value != null} '
       'provider=${lastProvider.value}',
     );
+    _logUserSnapshot('SESSION');
   }
 
   AuthUser _withProvider(AuthUser user, String provider) {
@@ -111,6 +112,9 @@ class AuthStore {
       email: user.email,
       provider: provider,
       profileImageUrl: user.profileImageUrl,
+      gender: user.gender,
+      dateOfBirth: user.dateOfBirth,
+      activityLevel: user.activityLevel,
     );
   }
 
@@ -131,6 +135,7 @@ class AuthStore {
       '[AUTH][USER] saved user=${currentUser.value != null} '
       'provider=${lastProvider.value}',
     );
+    _logUserSnapshot('USER');
   }
 
   Future<void> refreshSession({
@@ -188,5 +193,24 @@ class AuthStore {
     await prefs.remove(_kUserKey);
     await prefs.remove(_kProviderKey);
     debugPrint('[AUTH][CLEAR] signedIn=false');
+    _logUserSnapshot('CLEAR');
+  }
+
+  void _logUserSnapshot(String source) {
+    final user = currentUser.value;
+    if (user == null) {
+      debugPrint('[AUTH][USER][$source] user=null');
+      return;
+    }
+    debugPrint(
+      '[AUTH][USER][$source] '
+      'id=${user.id} '
+      'nickname=${user.nickname} '
+      'email=${user.email ?? ''} '
+      'provider=${user.provider ?? ''} '
+      'gender=${user.gender ?? ''} '
+      'dateOfBirth=${user.dateOfBirth ?? ''} '
+      'profileImageUrl=${user.profileImageUrl ?? ''}',
+    );
   }
 }

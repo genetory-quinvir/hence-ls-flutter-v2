@@ -17,7 +17,7 @@ class ProfileView extends StatelessWidget {
       body: Column(
         children: [
           SafeArea(
-            bottom: false,
+            bottom: true,
             child: CommonNavigationView(
               right: GestureDetector(
                 onTap: () {

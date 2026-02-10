@@ -1,3 +1,5 @@
+import 'dart:ffi';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -37,10 +39,21 @@ class SettingsSectionDivider extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const SizedBox(
-      height: 12,
-      child: ColoredBox(
-        color: Color(0xFFF5F5F5),
+    return SizedBox(
+      height: 20,
+      child: Column(
+        children: [
+          Container(
+            width: double.infinity,
+            height: 8,
+            color: Colors.white,
+          ),
+          Container(
+            width: double.infinity,
+            height: 12,
+            color: Color(0xFFF5F5F5),
+          ),
+        ],
       ),
     );
   }
@@ -153,7 +166,7 @@ class _RowBase extends StatelessWidget {
                 ),
               ),
             ),
-            if (trailing != null) trailing!,
+            ?trailing,
           ],
         ),
       ),

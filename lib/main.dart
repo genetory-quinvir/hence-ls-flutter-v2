@@ -34,6 +34,9 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Empty App',
+      theme: ThemeData(
+        fontFamily: 'Pretendard',
+      ),
       home: const SplashView(),
     );
   }

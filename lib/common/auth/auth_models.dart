@@ -6,6 +6,9 @@ class AuthUser {
     this.email,
     this.provider,
     this.profileImageUrl,
+    this.gender,
+    this.dateOfBirth,
+    this.activityLevel,
   });
 
   final String id;
@@ -14,6 +17,9 @@ class AuthUser {
   final String? email;
   final String? provider;
   final String? profileImageUrl;
+  final String? gender;
+  final String? dateOfBirth;
+  final int? activityLevel;
 
   factory AuthUser.fromJson(Map<String, dynamic> json) {
     final profileImage = json['profileImage'];
@@ -29,6 +35,9 @@ class AuthUser {
       email: (json['email'] as String?) ?? (json['contact'] as String?),
       provider: (json['provider'] as String?)?.toLowerCase(),
       profileImageUrl: profileImageUrl,
+      gender: (json['gender'] as String?)?.toLowerCase(),
+      dateOfBirth: json['dateOfBirth'] as String?,
+      activityLevel: (json['activityLevel'] as num?)?.toInt(),
     );
   }
 
@@ -40,6 +49,9 @@ class AuthUser {
       'email': email,
       'provider': provider,
       'profileImageUrl': profileImageUrl,
+      'gender': gender,
+      'dateOfBirth': dateOfBirth,
+      'activityLevel': activityLevel,
     };
   }
 
@@ -51,6 +63,9 @@ class AuthUser {
       email: json['email'] as String?,
       provider: (json['provider'] as String?)?.toLowerCase(),
       profileImageUrl: json['profileImageUrl'] as String?,
+      gender: (json['gender'] as String?)?.toLowerCase(),
+      dateOfBirth: json['dateOfBirth'] as String?,
+      activityLevel: (json['activityLevel'] as num?)?.toInt(),
     );
   }
 }

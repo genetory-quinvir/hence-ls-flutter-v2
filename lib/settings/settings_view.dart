@@ -76,7 +76,7 @@ class SettingsView extends StatelessWidget {
                         trailing: CupertinoSwitch(
                           value: true,
                           onChanged: null,
-                          activeColor: Colors.black,
+                          activeTrackColor: Colors.black,
                         ),
                       ),
                     ],

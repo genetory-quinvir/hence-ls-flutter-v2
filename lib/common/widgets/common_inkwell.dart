@@ -3,12 +3,14 @@ import 'package:flutter/material.dart';
 class CommonInkWell extends StatelessWidget {
   const CommonInkWell({
     super.key,
+    this.backgroundColor,
     required this.child,
     this.onTap,
     this.borderRadius,
     this.padding,
   });
 
+  final Color? backgroundColor;
   final Widget child;
   final VoidCallback? onTap;
   final BorderRadius? borderRadius;
@@ -24,9 +26,12 @@ class CommonInkWell extends StatelessWidget {
       highlightColor: Colors.transparent,
       hoverColor: Colors.transparent,
       focusColor: Colors.transparent,
-      child: Padding(
+      child: Container(
+        color: backgroundColor,
+        child: Padding(
         padding: padding ?? EdgeInsets.zero,
-        child: child,
+          child: child,
+        ),
       ),
     );
   }
