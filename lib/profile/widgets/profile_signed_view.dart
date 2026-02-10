@@ -75,14 +75,14 @@ class _ProfileUserSection extends StatelessWidget {
                         ),
                         Row(
                           children: [
-                            if (providerIcon != null) ...[
-                              SvgPicture.asset(
-                                providerIcon,
-                                width: 16,
-                                height: 16,
-                              ),
-                              const SizedBox(width: 4),
-                            ],
+                            // if (providerIcon != null) ...[
+                            //   SvgPicture.asset(
+                            //     providerIcon,
+                            //     width: 16,
+                            //     height: 16,
+                            //   ),
+                            //   const SizedBox(width: 4),
+                            // ],
                             Expanded(
                               child: Text(
                                 email,
@@ -103,7 +103,7 @@ class _ProfileUserSection extends StatelessWidget {
                   ),
                   const SizedBox(width: 12),
                   SizedBox(
-                    width: 56,
+                    width: 50,
                     child: CommonRoundedButton(
                       title: '편집',
                       onTap: () {
@@ -111,13 +111,13 @@ class _ProfileUserSection extends StatelessWidget {
                           MaterialPageRoute(builder: (_) => const ProfileEditView()),
                         );
                       },
-                      height: 40,
-                      radius: 20,
+                      height: 32,
+                      radius: 8,
                       backgroundColor: const Color(0xFFF5F5F5),
                       textColor: Colors.black,
                       textStyle: const TextStyle(
                         fontFamily: 'Pretendard',
-                        fontSize: 14,
+                        fontSize: 12,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
