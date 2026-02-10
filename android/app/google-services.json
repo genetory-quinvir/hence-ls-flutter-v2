@@ -1,0 +1,78 @@
+{
+  "project_info": {
+    "project_number": "468574374791",
+    "project_id": "hence-livespace",
+    "storage_bucket": "hence-livespace.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:468574374791:android:dea1b2f579965a41d22122",
+        "android_client_info": {
+          "package_name": "com.hence.ls"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "468574374791-51p9no3k9t7bg7vmqr1dbg8vv9jnl14q.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.hence.ls",
+            "certificate_hash": "27eb0c5767f215c8e26b38db6c1aededd66ebce7"
+          }
+        },
+        {
+          "client_id": "468574374791-ianhet1kmhhnm2hil5djsscvfaq7lpug.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.hence.ls",
+            "certificate_hash": "5c7057e5309e7ceefb45de0d42992ed517ce383b"
+          }
+        },
+        {
+          "client_id": "468574374791-jv445l34sh74fabgnfgl95nntfrv1ba3.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.hence.ls",
+            "certificate_hash": "b28974fa0f675d6073b80687390668787db0873a"
+          }
+        },
+        {
+          "client_id": "468574374791-qv04bs24qu9f0k0nrsg2jqd4ask7b0e2.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.hence.ls",
+            "certificate_hash": "72073e8f143cd5d7c1d636de678f0be860d74f29"
+          }
+        },
+        {
+          "client_id": "468574374791-b6hdars6tdngeib1b87af6chjfu1f7dv.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDIgGWm5lJ2zGnybtixEfTHpUgIqOkkB8A"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "468574374791-b6hdars6tdngeib1b87af6chjfu1f7dv.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "468574374791-3d8f4oh5pu50ip7jdl0ovrete66tc6a1.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.hence.livespace"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
