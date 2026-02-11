@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../common/location/naver_location_service.dart';
+import '../common/permissions/location_permission_service.dart';
 import '../common/widgets/common_inkwell.dart';
 import '../common/widgets/common_map_view.dart';
 import '../common/widgets/common_navigation_view.dart';
@@ -54,6 +55,12 @@ class _PlaceSelectViewState extends State<PlaceSelectView> {
     _placeController = TextEditingController(text: widget.initialPlaceName ?? '');
     _latitude = widget.initialLatitude ?? 0;
     _longitude = widget.initialLongitude ?? 0;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final granted = await LocationPermissionService.isGranted();
+      if (!granted) {
+        await LocationPermissionService.requestWhenInUse();
+      }
+    });
   }
 
   @override

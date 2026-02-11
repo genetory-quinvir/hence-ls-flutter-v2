@@ -12,4 +12,8 @@ class LocationPermissionService {
     final status = await Permission.locationWhenInUse.status;
     return status.isGranted;
   }
+
+  static Future<PermissionStatus> getStatus() async {
+    return Permission.locationWhenInUse.status;
+  }
 }

@@ -9,6 +9,7 @@ import 'package:photo_manager/photo_manager.dart';
 import 'package:geolocator/geolocator.dart';
 
 import '../common/location/naver_location_service.dart';
+import '../common/permissions/location_permission_service.dart';
 import '../common/media/media_conversion_service.dart';
 import '../common/auth/auth_store.dart';
 import '../common/network/api_client.dart';
@@ -113,13 +114,10 @@ class _FeedCreateInfoViewState extends State<FeedCreateInfoView> {
     try {
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) return null;
-      var permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
-        return null;
+      final granted = await LocationPermissionService.isGranted();
+      if (!granted) {
+        final requested = await LocationPermissionService.requestWhenInUse();
+        if (!requested) return null;
       }
       return Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,

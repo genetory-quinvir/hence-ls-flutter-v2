@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:permission_handler/permission_handler.dart';
+
 import '../common/permissions/location_permission_service.dart';
 import '../common/state/home_tab_controller.dart';
 import '../common/widgets/common_map_view.dart';
@@ -34,11 +36,15 @@ class _MapViewState extends State<MapView> {
 
   Future<void> _requestPermissionIfNeeded() async {
     debugPrint('[MapView] check location permission');
-    final granted = await LocationPermissionService.isGranted();
+    final status = await LocationPermissionService.getStatus();
+    debugPrint('[MapView] location permission status: $status');
+    final granted = status == PermissionStatus.granted ||
+        status == PermissionStatus.limited;
     debugPrint('[MapView] location permission granted: $granted');
     if (!granted) {
       debugPrint('[MapView] requesting location permission');
-      await LocationPermissionService.requestWhenInUse();
+      final result = await LocationPermissionService.requestWhenInUse();
+      debugPrint('[MapView] request result: $result');
     }
   }
 
