@@ -1,14 +1,29 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'package:kakao_flutter_sdk_common/kakao_flutter_sdk_common.dart';
 import 'package:naver_login_sdk/naver_login_sdk.dart';
 
 import 'common/auth/auth_store.dart';
+import 'common/notifications/fcm_service.dart';
+import 'common/notifications/local_notification_service.dart';
+import 'common/navigation/root_navigator.dart';
+import 'firebase_options.dart';
 import 'splash/splash_view.dart';
+
+@pragma('vm:entry-point')
+Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+}
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+  await FcmService.init();
+  await LocalNotificationService.instance.init();
   await FlutterNaverMap().init(clientId: 'e2m4s9kqcr');
   await NaverLoginSDK.initialize(
     urlScheme: 'naverlogin',
@@ -40,6 +55,16 @@ class MyApp extends StatelessWidget {
         primaryTextTheme:
             baseTheme.primaryTextTheme.apply(fontFamily: 'Pretendard'),
       ),
+      builder: (context, child) {
+        final mediaQuery = MediaQuery.of(context);
+        return MediaQuery(
+          data: mediaQuery.copyWith(
+            textScaler: const TextScaler.linear(1.0),
+          ),
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
+      navigatorKey: rootNavigatorKey,
       home: const SplashView(),
     );
   }

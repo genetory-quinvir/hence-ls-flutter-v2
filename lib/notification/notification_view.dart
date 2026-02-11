@@ -5,6 +5,7 @@ import '../common/network/api_client.dart';
 import '../common/widgets/common_activity.dart';
 import '../common/widgets/common_empty_view.dart';
 import '../common/widgets/common_inkwell.dart';
+import '../common/state/home_tab_controller.dart';
 import 'widgets/notification_list_item_view.dart';
 
 class NotificationView extends StatelessWidget {
@@ -31,11 +32,25 @@ class _NotificationBodyState extends State<_NotificationBody> {
   bool _isLoading = false;
   bool _hasNext = true;
   String? _nextCursor;
+  late final VoidCallback _tabListener;
 
   @override
   void initState() {
     super.initState();
     _loadInitial();
+    _tabListener = () {
+      if (!mounted) return;
+      if (HomeTabController.currentIndex.value == 3) {
+        _reloadAll();
+      }
+    };
+    HomeTabController.currentIndex.addListener(_tabListener);
+  }
+
+  @override
+  void dispose() {
+    HomeTabController.currentIndex.removeListener(_tabListener);
+    super.dispose();
   }
 
   Future<void> _loadInitial() async {

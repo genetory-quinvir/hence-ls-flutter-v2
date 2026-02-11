@@ -7,6 +7,8 @@ import 'package:http_parser/http_parser.dart';
 
 import '../auth/auth_models.dart';
 import '../auth/auth_store.dart';
+import '../../feed_comment/models/feed_comment_model.dart';
+import '../../feed_comment/models/mention_user.dart';
 
 class ApiClient {
   ApiClient._();
@@ -178,6 +180,135 @@ class ApiClient {
     }
   }
 
+  static Future<void> registerPushToken({
+    required String fcmToken,
+    required String platform,
+    required String deviceModel,
+  }) async {
+    final uri = Uri.parse('$baseUrl/api/v1/push/register-token');
+    final body = <String, dynamic>{
+      'fcmToken': fcmToken,
+      'platform': platform,
+      'deviceModel': deviceModel,
+    };
+
+    _logJsonRequest('POST', uri, body);
+    final response = await _sendWithAuthRetry(
+      () => http.post(uri, headers: _headers(json: true), body: jsonEncode(body)),
+      retryRequest: () => http.post(uri, headers: _headers(json: true), body: jsonEncode(body)),
+    );
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Push token register failed: ${response.statusCode}');
+    }
+  }
+
+  static Future<void> expirePushToken({
+    required String fcmToken,
+    required String platform,
+    required String deviceModel,
+  }) async {
+    final uri = Uri.parse('$baseUrl/api/v1/push/expire-token');
+    final body = <String, dynamic>{
+      'fcmToken': fcmToken,
+      'platform': platform,
+      'deviceModel': deviceModel,
+    };
+
+    _logJsonRequest('POST', uri, body);
+    final response = await _sendWithAuthRetry(
+      () => http.post(uri, headers: _headers(json: true), body: jsonEncode(body)),
+      retryRequest: () => http.post(uri, headers: _headers(json: true), body: jsonEncode(body)),
+    );
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Push token expire failed: ${response.statusCode}');
+    }
+  }
+
+  static Future<void> toggleFeedLike(String feedId) async {
+    final uri = Uri.parse('$baseUrl/api/v1/feed-likes/toggle/$feedId');
+    _logRequest('POST', uri);
+    final response = await _sendWithAuthRetry(
+      () => http.post(uri, headers: _headers()),
+      retryRequest: () => http.post(uri, headers: _headers()),
+    );
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Feed like toggle failed: ${response.statusCode}');
+    }
+  }
+
+  static Future<List<String>> uploadFeedImages(List<File> files) async {
+    if (files.isEmpty) return [];
+    final uri = Uri.parse('$baseUrl/api/v1/feeds/images');
+    final uploaded = <String>[];
+
+    for (var i = 0; i < files.length; i += 1) {
+      final file = files[i];
+      Future<http.Response> send() async {
+        final request = http.MultipartRequest('POST', uri);
+        request.headers.addAll(_headers());
+        request.fields['description'] = '';
+        request.fields['displayOrder'] = '$i';
+        request.files.add(
+          await http.MultipartFile.fromPath(
+            'files',
+            file.path,
+            contentType: MediaType('image', 'webp'),
+            filename: 'feed_$i.webp',
+          ),
+        );
+        final streamed = await request.send();
+        return http.Response.fromStream(streamed);
+      }
+
+      _logRequest('POST', uri);
+      final response = await _sendWithAuthRetry(send, retryRequest: send);
+      _logResponse(response);
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception('Feed image upload failed: ${response.statusCode}');
+      }
+      if (response.body.isEmpty) {
+        throw Exception('Feed image upload failed: empty response');
+      }
+      final json = jsonDecode(response.body);
+      final ids = _extractFileIds(json);
+      if (ids.isEmpty) {
+        throw Exception('Feed image upload failed: no fileIds returned');
+      }
+      uploaded.add(ids.first);
+    }
+    return uploaded;
+  }
+
+  static Future<void> createPersonalFeed({
+    required String content,
+    required List<String> fileIds,
+    required String placeName,
+    required double longitude,
+    required double latitude,
+  }) async {
+    final uri = Uri.parse('$baseUrl/api/v1/personal-feed');
+    final body = <String, dynamic>{
+      'content': content,
+      'fileIds': fileIds,
+      'placeName': placeName,
+      'longitude': longitude,
+      'latitude': latitude,
+    };
+
+    _logJsonRequest('POST', uri, body);
+    final response = await _sendWithAuthRetry(
+      () => http.post(uri, headers: _headers(json: true), body: jsonEncode(body)),
+      retryRequest: () => http.post(uri, headers: _headers(json: true), body: jsonEncode(body)),
+    );
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Personal feed create failed: ${response.statusCode}');
+    }
+  }
+
   static String? _extractS3Key(dynamic json) {
     if (json is! Map<String, dynamic>) return null;
     final data = json['data'];
@@ -201,6 +332,37 @@ class ApiClient {
     final s3Key = json['s3key'] ?? json['s3Key'] ?? json['key'];
     if (s3Key is String) return s3Key;
     return null;
+  }
+
+  static List<String> _extractFileIds(dynamic json) {
+    if (json is! Map<String, dynamic>) return [];
+    final ids = <String>[];
+    void addList(dynamic list) {
+      if (list is List) {
+        for (final item in list) {
+          if (item is String && item.isNotEmpty) ids.add(item);
+        }
+      }
+    }
+
+    addList(json['fileIds']);
+    final data = json['data'];
+    if (data is Map<String, dynamic>) {
+      addList(data['fileIds']);
+      final uploadedFiles = data['uploadedFiles'];
+      if (uploadedFiles is List) {
+        for (final entry in uploadedFiles) {
+          if (entry is Map<String, dynamic>) {
+            final candidate =
+                entry['fileId'] ?? entry['id'] ?? entry['fileID'] ?? entry['file_id'];
+            if (candidate is String && candidate.isNotEmpty) {
+              ids.add(candidate);
+            }
+          }
+        }
+      }
+    }
+    return ids;
   }
 
   static Future<Map<String, dynamic>> fetchFeeds({
@@ -280,6 +442,181 @@ class ApiClient {
       throw Exception('My space participants request failed: ${response.statusCode}');
     }
     return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  static Future<FeedCommentPage> fetchFeedComments({
+    required String feedId,
+    int limit = 20,
+    String? cursor,
+    String dir = 'next',
+  }) async {
+    final query = <String, String>{
+      'feedId': feedId,
+      'limit': '$limit',
+      'dir': dir,
+    };
+    if (cursor != null && cursor.isNotEmpty) {
+      query['cursor'] = cursor;
+    }
+    final uri = Uri.parse('$baseUrl/api/v1/feed-comments')
+        .replace(queryParameters: query);
+    _logRequest('GET', uri);
+    final response = await _sendWithAuthRetry(
+      () => http.get(uri, headers: _headers()),
+      retryRequest: () => http.get(uri, headers: _headers()),
+    );
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Feed comments request failed: ${response.statusCode}');
+    }
+    final json = jsonDecode(response.body);
+    final data = json is Map<String, dynamic> ? json['data'] : null;
+    final root = data is Map<String, dynamic> ? data : json;
+    final meta = root is Map<String, dynamic> ? root['meta'] : null;
+    final metaMap = meta is Map<String, dynamic> ? meta : const <String, dynamic>{};
+    final hasNext = (metaMap['hasNext'] as bool?) ?? false;
+    final nextCursor =
+        metaMap['nextCursor'] as String? ?? metaMap['cursor'] as String?;
+    if (root is Map<String, dynamic>) {
+      final comments = root['comments'] ?? root['items'] ?? root['list'];
+      if (comments is List) {
+        final items = comments
+            .whereType<Map<String, dynamic>>()
+            .map(FeedCommentItem.fromJson)
+            .toList();
+        return FeedCommentPage(
+          comments: items,
+          hasNext: hasNext,
+          nextCursor: nextCursor,
+        );
+      }
+    }
+    return FeedCommentPage(comments: const [], hasNext: false, nextCursor: null);
+  }
+
+  static Future<List<MentionUser>> fetchSpaceParticipants({
+    required String spaceId,
+    int limit = 50,
+    String? cursor,
+  }) async {
+    final query = <String, String>{
+      'spaceId': spaceId,
+      'limit': '$limit',
+    };
+    if (cursor != null && cursor.isNotEmpty) {
+      query['cursor'] = cursor;
+    }
+    final uri = Uri.parse('$baseUrl/api/v1/space-participants')
+        .replace(queryParameters: query);
+    _logRequest('GET', uri);
+    final response = await _sendWithAuthRetry(
+      () => http.get(uri, headers: _headers()),
+      retryRequest: () => http.get(uri, headers: _headers()),
+    );
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Space participants request failed: ${response.statusCode}');
+    }
+    final json = jsonDecode(response.body);
+    final data = json is Map<String, dynamic> ? json['data'] : null;
+    final root = data is Map<String, dynamic> ? data : json;
+    if (root is Map<String, dynamic>) {
+      final participants = root['participants'] ?? root['users'] ?? root['items'];
+      if (participants is List) {
+        return participants
+            .whereType<Map<String, dynamic>>()
+            .map(MentionUser.fromJson)
+            .where((user) => user.displayName.isNotEmpty)
+            .toList();
+      }
+    }
+    return [];
+  }
+
+  static Future<void> createCommentReply({
+    required String commentId,
+    required String content,
+    String? fileId,
+  }) async {
+    final uri = Uri.parse('$baseUrl/api/v1/feed-comments/$commentId/replies');
+    final body = <String, dynamic>{
+      'content': content,
+      'fileId': fileId,
+    };
+    _logJsonRequest('POST', uri, body);
+    final response = await _sendWithAuthRetry(
+      () => http.post(uri, headers: _headers(json: true), body: jsonEncode(body)),
+      retryRequest: () => http.post(uri, headers: _headers(json: true), body: jsonEncode(body)),
+    );
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Reply create failed: ${response.statusCode}');
+    }
+  }
+
+  static Future<void> createFeedComment({
+    required String feedId,
+    required String content,
+    String? fileId,
+  }) async {
+    final uri = Uri.parse('$baseUrl/api/v1/feed-comments');
+    final body = <String, dynamic>{
+      'feedId': feedId,
+      'content': content,
+      'fileId': fileId,
+    };
+    _logJsonRequest('POST', uri, body);
+    final response = await _sendWithAuthRetry(
+      () => http.post(uri, headers: _headers(json: true), body: jsonEncode(body)),
+      retryRequest: () => http.post(uri, headers: _headers(json: true), body: jsonEncode(body)),
+    );
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Comment create failed: ${response.statusCode}');
+    }
+  }
+
+  static Future<void> toggleFeedCommentLike(String feedCommentId) async {
+    final uri =
+        Uri.parse('$baseUrl/api/v1/feed-comment-likes/toggle/$feedCommentId');
+    _logRequest('POST', uri);
+    final response = await _sendWithAuthRetry(
+      () => http.post(uri, headers: _headers()),
+      retryRequest: () => http.post(uri, headers: _headers()),
+    );
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Feed comment like toggle failed: ${response.statusCode}');
+    }
+  }
+
+  static Future<List<FeedCommentItem>> fetchCommentReplies({
+    required String commentId,
+  }) async {
+    final uri =
+        Uri.parse('$baseUrl/api/v1/feed-comments/$commentId/replies');
+    _logRequest('GET', uri);
+    final response = await _sendWithAuthRetry(
+      () => http.get(uri, headers: _headers()),
+      retryRequest: () => http.get(uri, headers: _headers()),
+    );
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Comment replies request failed: ${response.statusCode}');
+    }
+    final json = jsonDecode(response.body);
+    final data = json is Map<String, dynamic> ? json['data'] : null;
+    final root = data is Map<String, dynamic> ? data : json;
+    if (root is Map<String, dynamic>) {
+      final replies = root['replies'] ?? root['comments'] ?? root['items'];
+      if (replies is List) {
+        return replies
+            .whereType<Map<String, dynamic>>()
+            .map(FeedCommentItem.fromJson)
+            .toList();
+      }
+    }
+    return [];
   }
 
   static Future<Map<String, dynamic>> fetchMyNotifications({

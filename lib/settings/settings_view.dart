@@ -4,13 +4,52 @@ import 'package:naver_login_sdk/naver_login_sdk.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../common/auth/auth_store.dart';
+import '../common/notifications/fcm_service.dart';
 import '../common/widgets/common_alert_view.dart';
 import '../common/widgets/common_navigation_view.dart';
 import '../web/web_view.dart';
 import 'widgets/settings_menu_view.dart';
 
-class SettingsView extends StatelessWidget {
+class SettingsView extends StatefulWidget {
   const SettingsView({super.key});
+
+  @override
+  State<SettingsView> createState() => _SettingsViewState();
+}
+
+class _SettingsViewState extends State<SettingsView> {
+  bool? _pushEnabled;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPushStatus();
+  }
+
+  Future<void> _loadPushStatus() async {
+    final enabled = await FcmService.getAppPushEnabled();
+    if (!mounted) return;
+    setState(() => _pushEnabled = enabled);
+  }
+
+  Future<void> _handlePushToggle(bool next) async {
+    setState(() => _pushEnabled = next);
+    if (next) {
+      final granted = await FcmService.requestPermission();
+      if (!granted) {
+        await FcmService.setAppPushEnabled(false);
+        if (mounted) setState(() => _pushEnabled = false);
+        return;
+      }
+      await FcmService.refreshTokenAndRegister();
+      await FcmService.setAppPushEnabled(true);
+      if (mounted) setState(() => _pushEnabled = true);
+      return;
+    }
+    await FcmService.deleteTokenAndExpire();
+    await FcmService.setAppPushEnabled(false);
+    if (mounted) setState(() => _pushEnabled = false);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -70,15 +109,29 @@ class SettingsView extends StatelessWidget {
                 final sections = <({String title, List<Widget> rows})>[
                   (
                     title: '알림 설정',
-                    rows: const [
+                    rows: [
                       SettingsMenuRow(
                         title: '앱 푸시 알림',
                         trailing: CupertinoSwitch(
-                          value: true,
-                          onChanged: null,
+                          value: _pushEnabled ?? false,
+                          onChanged: _pushEnabled == null ? null : _handlePushToggle,
                           activeTrackColor: Colors.black,
                         ),
                       ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Text(
+                          _pushEnabled == true
+                              ? '앱 설정에서 권한을 관리할 수 있습니다.'
+                              : '알림이 꺼져 있습니다. 설정에서 허용해주세요.',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w400,
+                            color: Color(0xFF9E9E9E),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
                     ],
                   ),
                   if (isSignedIn)

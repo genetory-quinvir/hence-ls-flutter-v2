@@ -61,6 +61,8 @@ class Feed {
     required this.commentCount,
     required this.author,
     required this.images,
+    this.space,
+    required this.isLiked,
   });
 
   final String id;
@@ -70,6 +72,8 @@ class Feed {
   final int commentCount;
   final FeedAuthor author;
   final List<FeedImage> images;
+  final FeedSpace? space;
+  final bool isLiked;
 
   factory Feed.fromJson(Map<String, dynamic> json) {
     final images = (json['images'] as List<dynamic>? ?? [])
@@ -84,6 +88,30 @@ class Feed {
       commentCount: (json['commentCount'] as num?)?.toInt() ?? 0,
       author: FeedAuthor.fromJson((json['author'] as Map<String, dynamic>?) ?? const {}),
       images: images,
+      space: json['space'] is Map<String, dynamic>
+          ? FeedSpace.fromJson(json['space'] as Map<String, dynamic>)
+          : null,
+      isLiked: (json['isLiked'] as bool?) ?? false,
+    );
+  }
+}
+
+class FeedSpace {
+  const FeedSpace({
+    required this.spaceId,
+    required this.title,
+    required this.placeName,
+  });
+
+  final String spaceId;
+  final String title;
+  final String placeName;
+
+  factory FeedSpace.fromJson(Map<String, dynamic> json) {
+    return FeedSpace(
+      spaceId: json['spaceId'] as String? ?? '',
+      title: json['title'] as String? ?? '',
+      placeName: json['placeName'] as String? ?? '',
     );
   }
 }

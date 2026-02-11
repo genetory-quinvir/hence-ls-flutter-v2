@@ -5,6 +5,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:flutter/services.dart';
 
 import '../common/widgets/common_inkwell.dart';
+import '../common/widgets/common_image_view.dart';
 import '../common/widgets/common_title_actionsheet.dart';
 import '../feed_create_info/feed_create_info_view.dart';
 
@@ -33,13 +34,13 @@ class _FeedCreatePhotoViewState extends State<FeedCreatePhotoView> {
   void initState() {
     super.initState();
     _loadAlbum();
-    SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.light);
+    SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.dark);
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.light);
+    SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.dark);
   }
 
   @override
@@ -159,7 +160,7 @@ class _FeedCreatePhotoViewState extends State<FeedCreatePhotoView> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: Colors.white,
       body: Column(
         children: [
           Padding(
@@ -176,31 +177,32 @@ class _FeedCreatePhotoViewState extends State<FeedCreatePhotoView> {
                     onTap: () => Navigator.of(context).maybePop(),
                     child: const Icon(
                       Icons.close,
-                      color: Colors.white,
+                      color: Colors.black,
                       size: 24,
                     ),
                   ),
                   const Spacer(),
-                  CommonInkWell(
-                    onTap: _selected.isNotEmpty
-                        ? () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => FeedCreateInfoView(
-                                  selectedAssets: List.of(_selected),
-                                ),
-                              ),
-                            );
-                          }
-                        : null,
-                    child: Text(
-                      '다음',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: _selected.isNotEmpty
-                            ? Colors.white
-                            : const Color(0xFF9E9E9E),
+                  IgnorePointer(
+                    ignoring: _selected.isEmpty,
+                    child: CommonInkWell(
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => FeedCreateInfoView(
+                              selectedAssets: List.of(_selected),
+                            ),
+                          ),
+                        );
+                      },
+                      child: Text(
+                        '다음',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: _selected.isNotEmpty
+                              ? Colors.black
+                              : const Color(0xFF9E9E9E),
+                        ),
                       ),
                     ),
                   ),
@@ -221,13 +223,13 @@ class _FeedCreatePhotoViewState extends State<FeedCreatePhotoView> {
                         style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w600,
-                          color: Colors.white,
+                          color: Colors.black,
                         ),
                       ),
                       const SizedBox(width: 6),
                       const Icon(
                         Icons.keyboard_arrow_down,
-                        color: Colors.white,
+                        color: Colors.black,
                         size: 20,
                       ),
                     ],
@@ -257,17 +259,17 @@ class _FeedCreatePhotoViewState extends State<FeedCreatePhotoView> {
                         crossAxisCount: 3,
                         crossAxisSpacing: 1,
                         mainAxisSpacing: 1,
-                        childAspectRatio: 1,
+                        childAspectRatio: 4 / 5,
                       ),
                       itemCount: _assets.length + 1,
                       itemBuilder: (context, index) {
                         if (index == 0) {
                           return Container(
-                            color: const Color(0xFF2F2F2F),
+                            color: const Color(0xFFFAFAFA),
                             child: Center(
                               child: Icon(
-                                PhosphorIconsRegular.camera,
-                                color: Colors.white,
+                                PhosphorIconsFill.camera,
+                                color: const Color(0xFF757575),
                                 size: 28,
                               ),
                             ),
@@ -285,7 +287,7 @@ class _FeedCreatePhotoViewState extends State<FeedCreatePhotoView> {
                               _AssetThumbnail(asset: asset),
                               if (isSelected)
                                 Container(
-                                  color: Colors.black.withOpacity(0.25),
+                                  color: Colors.black.withOpacity(0.15),
                                 ),
                               Positioned(
                                 top: 6,
@@ -327,7 +329,7 @@ class _PermissionDeniedView extends StatelessWidget {
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w500,
-              color: Colors.white,
+              color: Colors.black,
             ),
           ),
           const SizedBox(height: 12),
@@ -337,7 +339,7 @@ class _PermissionDeniedView extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: Colors.black,
                 borderRadius: BorderRadius.circular(8),
               ),
               child: const Text(
@@ -345,7 +347,7 @@ class _PermissionDeniedView extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
-                  color: Colors.black,
+                  color: Colors.white,
                 ),
               ),
             ),
@@ -358,7 +360,7 @@ class _PermissionDeniedView extends StatelessWidget {
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
-                color: Color(0xFF9E9E9E),
+                color: Color(0xFF757575),
               ),
             ),
           ),
@@ -379,13 +381,18 @@ class _AssetThumbnail extends StatelessWidget {
       future: asset.thumbnailDataWithSize(const ThumbnailSize(400, 400)),
       builder: (context, snapshot) {
         final bytes = snapshot.data;
-        if (bytes == null) {
-          return Container(color: const Color(0xFF1F1F1F));
-        }
-        return Image.memory(
-          bytes,
-          fit: BoxFit.cover,
-          gaplessPlayback: true,
+        final Widget child = bytes == null
+            ? Container(color: const Color(0xFFFAFAFA))
+            : CommonImageView(
+                memoryBytes: bytes,
+                cacheKey: '${asset.id}_thumb',
+                fit: BoxFit.cover,
+              );
+        return AnimatedSwitcher(
+          duration: const Duration(milliseconds: 200),
+          switchInCurve: Curves.easeOut,
+          switchOutCurve: Curves.easeIn,
+          child: child,
         );
       },
     );
@@ -404,9 +411,9 @@ class _SelectionBadge extends StatelessWidget {
       width: 22,
       height: 22,
       decoration: BoxDecoration(
-        color: isSelected ? Colors.white : Colors.transparent,
+        color: isSelected ? Colors.black : Colors.transparent,
         border: Border.all(
-          color: isSelected ? Colors.white : const Color(0xFF9E9E9E),
+          color: isSelected ? Colors.black : const Color(0xFF9E9E9E),
           width: 1.5,
         ),
         shape: BoxShape.circle,
@@ -418,7 +425,7 @@ class _SelectionBadge extends StatelessWidget {
               style: const TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
-                color: Colors.black,
+                color: Colors.white,
               ),
             )
           : null,

@@ -104,6 +104,7 @@ class _CommonTextFieldViewState extends State<CommonTextFieldView> {
     final currentLength = _controller.text.length;
 
     const double containerHeight = 76;
+    const double containerHeightNoTitle = 50;
     const double headerHeight = 20;
     const double inputHeight = 44;
     const double headerGap = 4;
@@ -115,16 +116,16 @@ class _CommonTextFieldViewState extends State<CommonTextFieldView> {
       ),
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: SizedBox(
-        height: containerHeight,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            SizedBox(height: 8),
-            SizedBox(
-              height: headerHeight,
-              child: showHeader
-                  ? Row(
+        height: showHeader ? containerHeight : containerHeightNoTitle,
+        child: showHeader
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    height: headerHeight,
+                    child: Row(
                       children: [
                         Expanded(
                           child: Text(
@@ -146,54 +147,97 @@ class _CommonTextFieldViewState extends State<CommonTextFieldView> {
                             ),
                           ),
                       ],
-                    )
-                  : const SizedBox.shrink(),
-            ),
-            if (showHeader) const SizedBox(height: headerGap),
-            SizedBox(
-              height: inputHeight,
-              child: TextField(
-                controller: _controller,
-                focusNode: _focusNode,
-                maxLines: widget.maxLines,
-                maxLength: widget.maxLength,
-                keyboardType: widget.keyboardType,
-                textInputAction: widget.textInputAction,
-                textAlignVertical: TextAlignVertical.center,
-                onChanged: widget.onChanged,
-                enabled: widget.enabled,
-                decoration: InputDecoration(
-                  hintText: widget.hintText,
-                  hintStyle: TextStyle(color: Colors.black.withOpacity(0.35)),
-                  filled: false,
-                  isDense: true,
-                  contentPadding: EdgeInsets.zero,
-                  border: InputBorder.none,
-                  counterText: '',
-                  suffixIconConstraints: const BoxConstraints(
-                    minWidth: 16,
-                    minHeight: 36,
+                    ),
                   ),
-                  suffixIcon: Visibility(
-                    visible: showClear,
-                    maintainSize: true,
-                    maintainAnimation: true,
-                    maintainState: true,
-                    child: InkWell(
-                      onTap: showClear ? _clearText : null,
-                      customBorder: const CircleBorder(),
-                      child: const Icon(
-                        PhosphorIconsFill.xCircle,
-                        size: 20,
-                        color: Color(0xFF9E9E9E),
+                  const SizedBox(height: headerGap),
+                  SizedBox(
+                    height: inputHeight,
+                    child: TextField(
+                      controller: _controller,
+                      focusNode: _focusNode,
+                      maxLines: widget.maxLines,
+                      maxLength: widget.maxLength,
+                      keyboardType: widget.keyboardType,
+                      textInputAction: widget.textInputAction,
+                      textAlignVertical: TextAlignVertical.center,
+                      onChanged: widget.onChanged,
+                      enabled: widget.enabled,
+                      decoration: InputDecoration(
+                        hintText: widget.hintText,
+                        hintStyle: TextStyle(color: Colors.black.withOpacity(0.35)),
+                        filled: false,
+                        isDense: true,
+                        contentPadding: EdgeInsets.zero,
+                        border: InputBorder.none,
+                        counterText: '',
+                        suffixIconConstraints: const BoxConstraints(
+                          minWidth: 16,
+                          minHeight: 36,
+                        ),
+                        suffixIcon: Visibility(
+                          visible: showClear,
+                          maintainSize: true,
+                          maintainAnimation: true,
+                          maintainState: true,
+                          child: InkWell(
+                            onTap: showClear ? _clearText : null,
+                            customBorder: const CircleBorder(),
+                            child: const Icon(
+                              PhosphorIconsFill.xCircle,
+                              size: 20,
+                              color: Color(0xFF9E9E9E),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              )
+            : Center(
+                child: SizedBox(
+                  height: inputHeight,
+                  child: TextField(
+                    controller: _controller,
+                    focusNode: _focusNode,
+                    maxLines: widget.maxLines,
+                    maxLength: widget.maxLength,
+                    keyboardType: widget.keyboardType,
+                    textInputAction: widget.textInputAction,
+                    textAlignVertical: TextAlignVertical.center,
+                    onChanged: widget.onChanged,
+                    enabled: widget.enabled,
+                    decoration: InputDecoration(
+                      hintText: widget.hintText,
+                      hintStyle: TextStyle(color: Colors.black.withOpacity(0.35)),
+                      filled: false,
+                      isDense: true,
+                      contentPadding: EdgeInsets.zero,
+                      border: InputBorder.none,
+                      counterText: '',
+                      suffixIconConstraints: const BoxConstraints(
+                        minWidth: 16,
+                        minHeight: 36,
+                      ),
+                      suffixIcon: Visibility(
+                        visible: showClear,
+                        maintainSize: true,
+                        maintainAnimation: true,
+                        maintainState: true,
+                        child: InkWell(
+                          onTap: showClear ? _clearText : null,
+                          customBorder: const CircleBorder(),
+                          child: const Icon(
+                            PhosphorIconsFill.xCircle,
+                            size: 20,
+                            color: Color(0xFF9E9E9E),
+                          ),
+                        ),
                       ),
                     ),
                   ),
                 ),
               ),
-            ),
-          ],
-        ),
       ),
     );
   }

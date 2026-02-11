@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../common/network/api_client.dart';
+import '../common/state/home_tab_controller.dart';
 import '../common/widgets/common_feed_item_view.dart';
 import 'models/feed_models.dart';
 import 'widgets/feed_list_navigation_view.dart';
@@ -18,6 +19,7 @@ class _FeedListViewState extends State<FeedListView> {
   bool _hasNext = true;
   String? _nextCursor;
   int _selectedIndex = 0;
+  late final VoidCallback _reloadListener;
 
   String get _orderBy => _selectedIndex == 0 ? 'all' : 'popular';
 
@@ -25,6 +27,17 @@ class _FeedListViewState extends State<FeedListView> {
   void initState() {
     super.initState();
     _loadInitial();
+    _reloadListener = () {
+      if (!mounted) return;
+      _loadInitial();
+    };
+    HomeTabController.feedReloadSignal.addListener(_reloadListener);
+  }
+
+  @override
+  void dispose() {
+    HomeTabController.feedReloadSignal.removeListener(_reloadListener);
+    super.dispose();
   }
 
   Future<void> _loadInitial() async {
@@ -74,83 +87,49 @@ class _FeedListViewState extends State<FeedListView> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      body: Stack(
-        children: [
-          PageView.builder(
-            scrollDirection: Axis.vertical,
-            itemCount: _feeds.length,
-            itemBuilder: (context, index) {
-              if (index >= _feeds.length - 2) {
-                _loadMore();
-              }
-              return CommonFeedItemView(
-                feed: _feeds[index],
-                padding: EdgeInsets.zero,
-              );
-            },
-          ),
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: IgnorePointer(
-              child: Container(
-                height: 120,
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Color(0xCC000000),
-                      Color(0x00000000),
-                    ],
+      resizeToAvoidBottomInset: false,
+      body: MediaQuery.removeViewInsets(
+        context: context,
+        removeBottom: true,
+        child: Stack(
+          children: [
+            PageView.builder(
+              scrollDirection: Axis.vertical,
+              itemCount: _feeds.length,
+              itemBuilder: (context, index) {
+                if (index >= _feeds.length - 2) {
+                  _loadMore();
+                }
+                return CommonFeedItemView(
+                  key: ValueKey(_feeds[index].id),
+                  feed: _feeds[index],
+                  padding: EdgeInsets.zero,
+                );
+              },
+            ),
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: FeedListNavigationView(
+                selectedIndex: _selectedIndex,
+                onLatestTap: () => _onTabSelected(0),
+                onPopularTap: () => _onTabSelected(1),
+              ),
+            ),
+            if (_feeds.isEmpty && _isLoading)
+              const Center(
+                child: SizedBox(
+                  width: 50,
+                  height: 50,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
                   ),
                 ),
               ),
-            ),
-          ),
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: IgnorePointer(
-              child: Container(
-                height: 120,
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.bottomCenter,
-                    end: Alignment.topCenter,
-                    colors: [
-                      Color(0xCC000000),
-                      Color(0x00000000),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: FeedListNavigationView(
-              selectedIndex: _selectedIndex,
-              onLatestTap: () => _onTabSelected(0),
-              onPopularTap: () => _onTabSelected(1),
-            ),
-          ),
-          if (_feeds.isEmpty && _isLoading)
-            const Center(
-              child: SizedBox(
-                width: 50,
-                height: 50,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }

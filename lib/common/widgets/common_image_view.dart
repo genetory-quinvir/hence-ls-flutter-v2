@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'dart:typed_data';
+import 'dart:collection';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
@@ -7,16 +9,22 @@ class CommonImageView extends StatelessWidget {
     super.key,
     this.networkUrl,
     this.assetPath,
+    this.memoryBytes,
+    this.cacheKey,
     this.fit = BoxFit.contain,
     this.blurSigma = 8,
-    this.backgroundColor = const Color(0xFFF2F2F2),
+    this.backgroundColor = Colors.transparent,
   });
 
   final String? networkUrl;
   final String? assetPath;
+  final Uint8List? memoryBytes;
+  final String? cacheKey;
   final BoxFit fit;
   final double blurSigma;
   final Color backgroundColor;
+
+  static final _MemoryCache _cache = _MemoryCache(maxEntries: 200);
 
   @override
   Widget build(BuildContext context) {
@@ -35,6 +43,30 @@ class CommonImageView extends StatelessWidget {
   }
 
   Widget? _buildImage() {
+    final cachedBytes = cacheKey == null ? null : _cache.get(cacheKey!);
+    if (memoryBytes != null && memoryBytes!.isNotEmpty) {
+      if (cacheKey != null) {
+        _cache.put(cacheKey!, memoryBytes!);
+      }
+      return Image.memory(
+        memoryBytes!,
+        fit: fit,
+        width: double.infinity,
+        height: double.infinity,
+        gaplessPlayback: true,
+        errorBuilder: (_, __, ___) => _placeholder(),
+      );
+    }
+    if (cachedBytes != null && cachedBytes.isNotEmpty) {
+      return Image.memory(
+        cachedBytes,
+        fit: fit,
+        width: double.infinity,
+        height: double.infinity,
+        gaplessPlayback: true,
+        errorBuilder: (_, __, ___) => _placeholder(),
+      );
+    }
     if (networkUrl != null && networkUrl!.trim().isNotEmpty) {
       return CachedNetworkImage(
         imageUrl: networkUrl!,
@@ -76,5 +108,29 @@ class CommonImageView extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class _MemoryCache {
+  _MemoryCache({required this.maxEntries});
+
+  final int maxEntries;
+  final LinkedHashMap<String, Uint8List> _map = LinkedHashMap();
+
+  Uint8List? get(String key) {
+    final value = _map.remove(key);
+    if (value == null) return null;
+    _map[key] = value;
+    return value;
+  }
+
+  void put(String key, Uint8List value) {
+    if (_map.containsKey(key)) {
+      _map.remove(key);
+    }
+    _map[key] = value;
+    if (_map.length > maxEntries) {
+      _map.remove(_map.keys.first);
+    }
   }
 }
