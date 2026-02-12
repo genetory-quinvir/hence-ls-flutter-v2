@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../feed_list/models/feed_models.dart';
@@ -6,7 +7,9 @@ import '../network/api_client.dart';
 import '../utils/time_format.dart';
 import 'common_inkwell.dart';
 import 'common_image_view.dart';
+import '../../profile/models/profile_display_user.dart';
 import '../../feed_comment/feed_comment_view.dart';
+import '../../profile_info/profile_info_view.dart';
 
 class CommonFeedItemView extends StatefulWidget {
   const CommonFeedItemView({
@@ -234,17 +237,34 @@ class _CommonFeedItemViewState extends State<CommonFeedItemView> {
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      Container(
-                        width: 36,
-                        height: 36,
-                        decoration: const BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Color(0xFF212121),
-                        ),
-                        clipBehavior: Clip.antiAlias,
-                        child: CommonImageView(
-                          networkUrl: author.profileImageUrl,
-                          fit: BoxFit.cover,
+                      CommonInkWell(
+                        onTap: () {
+                          final displayUser = ProfileDisplayUser(
+                            id: author.userId,
+                            nickname: author.nickname.isNotEmpty
+                                ? author.nickname
+                                : author.name,
+                            profileImageUrl: author.profileImageUrl,
+                          );
+                          showCupertinoModalPopup(
+                            context: context,
+                            builder: (_) => SizedBox.expand(
+                              child: ProfileInfoView(user: displayUser),
+                            ),
+                          );
+                        },
+                        child: Container(
+                          width: 36,
+                          height: 36,
+                          decoration: const BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Color(0xFF212121),
+                          ),
+                          clipBehavior: Clip.antiAlias,
+                          child: CommonImageView(
+                            networkUrl: author.profileImageUrl,
+                            fit: BoxFit.cover,
+                          ),
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -394,20 +414,24 @@ class _ActionIcon extends StatelessWidget {
       children: [
         CommonInkWell(
           onTap: onTap,
-          child: Icon(
-            icon,
-            color: color,
-            size: 24,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          '$count',
-          style: const TextStyle(
-            fontFamily: 'Pretendard',
-            fontSize: 12,
-            fontWeight: FontWeight.w500,
-            color: Colors.white,
+          child: Column(
+            children: [
+              Icon(
+                icon,
+                color: color,
+                size: 24,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '$count',
+                style: const TextStyle(
+                  fontFamily: 'Pretendard',
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.white,
+                ),
+              ),
+            ],
           ),
         ),
       ],

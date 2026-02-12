@@ -78,6 +78,9 @@ class _FeedCreateInfoViewState extends State<FeedCreateInfoView> {
           initialPlaceName: _placeController.text.trim(),
           initialLatitude: _selectedLatitude,
           initialLongitude: _selectedLongitude,
+          markerImageFuture: widget.selectedAssets.isNotEmpty
+              ? _imageFuture(widget.selectedAssets.first)
+              : null,
         ),
       ),
     );

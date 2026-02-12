@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
 import '../common/location/naver_location_service.dart';
 import '../common/permissions/location_permission_service.dart';
+import '../common/widgets/common_feed_marker.dart';
 import '../common/widgets/common_inkwell.dart';
 import '../common/widgets/common_map_view.dart';
 import '../common/widgets/common_navigation_view.dart';
@@ -30,6 +32,7 @@ class PlaceSelectView extends StatefulWidget {
     this.initialPlaceName,
     this.initialLatitude,
     this.initialLongitude,
+    this.markerImageFuture,
   });
 
   final List<String> places;
@@ -37,6 +40,7 @@ class PlaceSelectView extends StatefulWidget {
   final String? initialPlaceName;
   final double? initialLatitude;
   final double? initialLongitude;
+  final Future<Uint8List?>? markerImageFuture;
 
   @override
   State<PlaceSelectView> createState() => _PlaceSelectViewState();
@@ -107,6 +111,21 @@ class _PlaceSelectViewState extends State<PlaceSelectView> {
 
   @override
   Widget build(BuildContext context) {
+    final marker = widget.markerImageFuture == null
+        ? null
+        : FutureBuilder<Uint8List?>(
+            future: widget.markerImageFuture,
+            builder: (context, snapshot) {
+              final bytes = snapshot.data;
+              if (bytes == null) {
+                return const SizedBox.shrink();
+              }
+              return CommonFeedMarker(
+                imageBytes: bytes,
+                width: 44,
+              );
+            },
+          );
     return Material(
       color: Colors.white,
       child: Column(
@@ -133,6 +152,7 @@ class _PlaceSelectViewState extends State<PlaceSelectView> {
                 child: CommonMapView(
                   initialLatitude: _latitude == 0 ? null : _latitude,
                   initialLongitude: _longitude == 0 ? null : _longitude,
+                  centerMarker: marker,
                   onCenterChanged: (center) {
                     _onCenterChanged(center.latitude, center.longitude);
                   },

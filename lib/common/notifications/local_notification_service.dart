@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
+import '../state/home_tab_controller.dart';
 import 'notification_router.dart';
 
 class LocalNotificationService {
@@ -46,6 +47,7 @@ class LocalNotificationService {
     await androidPlugin?.createNotificationChannel(_channel);
 
     FirebaseMessaging.onMessage.listen((RemoteMessage msg) async {
+      HomeTabController.setUnreadNotifications(true);
       await _showLocalNotification(msg);
     });
 

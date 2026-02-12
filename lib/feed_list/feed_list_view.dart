@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../common/network/api_client.dart';
 import '../common/state/home_tab_controller.dart';
 import '../common/widgets/common_feed_item_view.dart';
+import '../common/widgets/common_activity.dart';
 import 'models/feed_models.dart';
 import 'widgets/feed_list_navigation_view.dart';
 
@@ -15,10 +17,13 @@ class FeedListView extends StatefulWidget {
 
 class _FeedListViewState extends State<FeedListView> {
   final List<Feed> _feeds = [];
+  final PageController _pageController = PageController();
   bool _isLoading = false;
+  bool _isRefreshing = false;
   bool _hasNext = true;
   String? _nextCursor;
   int _selectedIndex = 0;
+  int _currentPage = 0;
   late final VoidCallback _reloadListener;
 
   String get _orderBy => _selectedIndex == 0 ? 'all' : 'popular';
@@ -36,6 +41,7 @@ class _FeedListViewState extends State<FeedListView> {
 
   @override
   void dispose() {
+    _pageController.dispose();
     HomeTabController.feedReloadSignal.removeListener(_reloadListener);
     super.dispose();
   }
@@ -47,6 +53,18 @@ class _FeedListViewState extends State<FeedListView> {
       _nextCursor = null;
     });
     await _loadMore();
+  }
+
+  Future<void> _handleRefresh() async {
+    setState(() => _isRefreshing = true);
+    final keepPage = _currentPage;
+    await _loadInitial();
+    if (!mounted) return;
+    if (_pageController.hasClients && _feeds.isNotEmpty) {
+      final target = keepPage.clamp(0, _feeds.length - 1);
+      _pageController.jumpToPage(target);
+    }
+    if (mounted) setState(() => _isRefreshing = false);
   }
 
   Future<void> _loadMore() async {
@@ -85,50 +103,74 @@ class _FeedListViewState extends State<FeedListView> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      resizeToAvoidBottomInset: false,
-      body: MediaQuery.removeViewInsets(
-        context: context,
-        removeBottom: true,
-        child: Stack(
-          children: [
-            PageView.builder(
-              scrollDirection: Axis.vertical,
-              itemCount: _feeds.length,
-              itemBuilder: (context, index) {
-                if (index >= _feeds.length - 2) {
-                  _loadMore();
-                }
-                return CommonFeedItemView(
-                  key: ValueKey(_feeds[index].id),
-                  feed: _feeds[index],
-                  padding: EdgeInsets.zero,
-                );
-              },
-            ),
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: FeedListNavigationView(
-                selectedIndex: _selectedIndex,
-                onLatestTap: () => _onTabSelected(0),
-                onPopularTap: () => _onTabSelected(1),
-              ),
-            ),
-            if (_feeds.isEmpty && _isLoading)
-              const Center(
-                child: SizedBox(
-                  width: 50,
-                  height: 50,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Colors.white,
-                  ),
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.light,
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        resizeToAvoidBottomInset: false,
+        body: MediaQuery.removeViewInsets(
+          context: context,
+          removeBottom: true,
+          child: Stack(
+            children: [
+              RefreshIndicator(
+                onRefresh: _handleRefresh,
+                child: PageView.builder(
+                  scrollDirection: Axis.vertical,
+                  controller: _pageController,
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  itemCount: _feeds.length,
+                  onPageChanged: (index) {
+                    _currentPage = index;
+                    if (index >= _feeds.length - 2) {
+                      _loadMore();
+                    }
+                  },
+                  itemBuilder: (context, index) {
+                    return CommonFeedItemView(
+                      key: ValueKey(_feeds[index].id),
+                      feed: _feeds[index],
+                      padding: EdgeInsets.zero,
+                    );
+                  },
                 ),
               ),
-          ],
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: FeedListNavigationView(
+                  selectedIndex: _selectedIndex,
+                  onLatestTap: () => _onTabSelected(0),
+                  onPopularTap: () => _onTabSelected(1),
+                ),
+              ),
+              if (_feeds.isEmpty && _isLoading)
+                const Center(
+                  child: SizedBox(
+                    width: 50,
+                    height: 50,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              if (_isRefreshing && _feeds.isNotEmpty)
+                Positioned(
+                  top: MediaQuery.of(context).padding.top + 12,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: CommonActivityIndicator(
+                      size: 40,
+                      color: Colors.white,
+                      strokeWidth: 4,
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );

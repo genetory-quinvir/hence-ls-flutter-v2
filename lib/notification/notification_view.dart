@@ -41,6 +41,7 @@ class _NotificationBodyState extends State<_NotificationBody> {
     _tabListener = () {
       if (!mounted) return;
       if (HomeTabController.currentIndex.value == 3) {
+        HomeTabController.setUnreadNotifications(false);
         _reloadAll();
       }
     };
@@ -96,6 +97,7 @@ class _NotificationBodyState extends State<_NotificationBody> {
     setState(() => _isLoading = true);
     try {
       await ApiClient.markAllNotificationsRead();
+      HomeTabController.setUnreadNotifications(false);
       await _reloadAll();
     } finally {
       if (mounted) setState(() => _isLoading = false);

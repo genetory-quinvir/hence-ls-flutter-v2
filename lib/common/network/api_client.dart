@@ -9,6 +9,8 @@ import '../auth/auth_models.dart';
 import '../auth/auth_store.dart';
 import '../../feed_comment/models/feed_comment_model.dart';
 import '../../feed_comment/models/mention_user.dart';
+import '../../profile/models/profile_display_user.dart';
+import '../../profile/models/follow_user.dart';
 
 class ApiClient {
   ApiClient._();
@@ -99,6 +101,25 @@ class ApiClient {
     }
     final json = jsonDecode(response.body);
     return _parseUser(json);
+  }
+
+  static Future<ProfileDisplayUser> fetchUserDetail(String userId) async {
+    final uri = Uri.parse('$baseUrl/api/v1/users/detail/$userId');
+    _logRequest('GET', uri);
+    final response = await _sendWithAuthRetry(
+      () => http.get(uri, headers: _headers()),
+      retryRequest: () => http.get(uri, headers: _headers()),
+    );
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('User detail request failed: ${response.statusCode}');
+    }
+    final json = jsonDecode(response.body) as Map<String, dynamic>;
+    final data = json['data'];
+    if (data is Map<String, dynamic>) {
+      return ProfileDisplayUser.fromJson(data);
+    }
+    return ProfileDisplayUser.fromJson(json);
   }
 
   static Future<AuthUser> updateProfile({
@@ -414,6 +435,113 @@ class ApiClient {
     _logResponse(response);
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception('My feeds request failed: ${response.statusCode}');
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  static Future<Map<String, dynamic>> fetchUserFeeds({
+    required String userId,
+    int limit = 20,
+    String dir = 'next',
+    String? cursor,
+  }) async {
+    final query = <String, String>{
+      'dir': dir,
+      'limit': '$limit',
+      'userId': userId,
+    };
+    if (cursor != null && cursor.isNotEmpty) {
+      query['cursor'] = cursor;
+    }
+    final uri = Uri.parse('$baseUrl/api/v1/feeds').replace(queryParameters: query);
+    _logRequest('GET', uri);
+    final response = await _sendWithAuthRetry(
+      () => http.get(uri, headers: _headers()),
+      retryRequest: () => http.get(uri, headers: _headers()),
+    );
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('User feeds request failed: ${response.statusCode}');
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  static Future<void> followUser(String userId) async {
+    final uri = Uri.parse('$baseUrl/api/v1/user-follow/$userId');
+    _logRequest('POST', uri);
+    final response = await _sendWithAuthRetry(
+      () => http.post(uri, headers: _headers()),
+      retryRequest: () => http.post(uri, headers: _headers()),
+    );
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Follow request failed: ${response.statusCode}');
+    }
+  }
+
+  static Future<void> unfollowUser(String userId) async {
+    final uri = Uri.parse('$baseUrl/api/v1/user-follow/$userId');
+    _logRequest('DELETE', uri);
+    final response = await _sendWithAuthRetry(
+      () => http.delete(uri, headers: _headers()),
+      retryRequest: () => http.delete(uri, headers: _headers()),
+    );
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Unfollow request failed: ${response.statusCode}');
+    }
+  }
+
+  static Future<Map<String, dynamic>> fetchFollowers({
+    required String userId,
+    int limit = 20,
+    String dir = 'next',
+    String? cursor,
+  }) async {
+    final query = <String, String>{
+      'dir': dir,
+      'limit': '$limit',
+    };
+    if (cursor != null && cursor.isNotEmpty) {
+      query['cursor'] = cursor;
+    }
+    final uri = Uri.parse('$baseUrl/api/v1/user-follow/followers/$userId')
+        .replace(queryParameters: query);
+    _logRequest('GET', uri);
+    final response = await _sendWithAuthRetry(
+      () => http.get(uri, headers: _headers()),
+      retryRequest: () => http.get(uri, headers: _headers()),
+    );
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Followers request failed: ${response.statusCode}');
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  static Future<Map<String, dynamic>> fetchFollowing({
+    required String userId,
+    int limit = 20,
+    String dir = 'next',
+    String? cursor,
+  }) async {
+    final query = <String, String>{
+      'dir': dir,
+      'limit': '$limit',
+    };
+    if (cursor != null && cursor.isNotEmpty) {
+      query['cursor'] = cursor;
+    }
+    final uri = Uri.parse('$baseUrl/api/v1/user-follow/following/$userId')
+        .replace(queryParameters: query);
+    _logRequest('GET', uri);
+    final response = await _sendWithAuthRetry(
+      () => http.get(uri, headers: _headers()),
+      retryRequest: () => http.get(uri, headers: _headers()),
+    );
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Following request failed: ${response.statusCode}');
     }
     return jsonDecode(response.body) as Map<String, dynamic>;
   }

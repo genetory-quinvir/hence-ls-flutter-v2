@@ -1,19 +1,23 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../common/auth/auth_store.dart';
-import '../../common/widgets/common_profile_view.dart';
 import '../../common/widgets/common_inkwell.dart';
 import '../../common/widgets/common_rounded_button.dart';
-import '../../profile_edit/profile_edit_view.dart';
 import 'profile_activity_info_view.dart';
 import 'profile_feed_list_item_view.dart';
+import 'profile_user_section.dart';
 import '../../common/network/api_client.dart';
 import '../../feed_list/models/feed_models.dart';
 import '../../common/widgets/common_activity.dart';
 import 'profile_participant_list_item_view.dart';
 import '../../common/widgets/common_empty_view.dart';
+import '../profile_feed_detail_view.dart';
+import '../models/profile_display_user.dart';
+import '../../following_list/following_list_view.dart';
+import '../../follow_list/follow_list_view.dart';
 
 class ProfileSignedView extends StatelessWidget {
   const ProfileSignedView({super.key});
@@ -26,7 +30,9 @@ class ProfileSignedView extends StatelessWidget {
         headerSliverBuilder: (context, innerBoxIsScrolled) {
           return [
             const SliverToBoxAdapter(child: SizedBox(height: 16)),
-            const SliverToBoxAdapter(child: _ProfileUserSection()),
+            const SliverToBoxAdapter(
+              child: _ProfileHeaderUserSection(),
+            ),
             const SliverToBoxAdapter(child: SizedBox(height: 24)),
             const SliverToBoxAdapter(child: _ProfileActivitySection()),
             const SliverToBoxAdapter(child: SizedBox(height: 24)),
@@ -52,12 +58,12 @@ class ProfileSignedView extends StatelessWidget {
                     splashFactory: NoSplash.splashFactory,
                     labelStyle: TextStyle(
                       fontFamily: 'Pretendard',
-                      fontSize: 16,
+                      fontSize: 14,
                       fontWeight: FontWeight.w600,
                     ),
                     unselectedLabelStyle: TextStyle(
                       fontFamily: 'Pretendard',
-                      fontSize: 16,
+                      fontSize: 14,
                       fontWeight: FontWeight.w400,
                     ),
                     tabs: [
@@ -89,204 +95,64 @@ class ProfileSignedView extends StatelessWidget {
   }
 }
 
-class _ProfileUserSection extends StatefulWidget {
-  const _ProfileUserSection();
+class _ProfileHeaderUserSection extends StatefulWidget {
+  const _ProfileHeaderUserSection();
 
   @override
-  State<_ProfileUserSection> createState() => _ProfileUserSectionState();
+  State<_ProfileHeaderUserSection> createState() =>
+      _ProfileHeaderUserSectionState();
 }
 
-class _ProfileUserSectionState extends State<_ProfileUserSection> {
-  bool _expanded = false;
-  bool _showToggle = false;
-
-  String? _providerIconAsset(String? provider) {
-    switch (provider?.toLowerCase()) {
-      case 'naver':
-        return 'lib/assets/images/icon_naver.svg';
-      case 'kakao':
-        return 'lib/assets/images/icon_kakao.svg';
-      case 'google':
-        return 'lib/assets/images/icon_google.svg';
-      case 'apple':
-        return 'lib/assets/images/icon_apple.svg';
-    }
-    return null;
-  }
+class _ProfileHeaderUserSectionState extends State<_ProfileHeaderUserSection> {
+  String? _userId;
+  Future<ProfileDisplayUser>? _detailFuture;
 
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder(
       valueListenable: AuthStore.instance.currentUser,
       builder: (context, user, _) {
-        final introduction =
-            (user?.introduction?.trim().isNotEmpty ?? false)
-                ? user!.introduction!.trim()
-                : '';
-        return ValueListenableBuilder<String?>(
-          valueListenable: AuthStore.instance.lastProvider,
-          builder: (context, provider, _) {
-            final nickname = (user?.nickname.trim().isNotEmpty ?? false) ? user!.nickname : '사용자';
-            final email = (user?.email?.trim().isNotEmpty ?? false) ? user!.email! : '';
-            // final effectiveProvider =
-                // (user?.provider?.trim().isNotEmpty ?? false) ? user!.provider : provider;
-            // final providerIcon = _providerIconAsset(effectiveProvider);
+        final id = user?.id;
+        if (id != null && id.isNotEmpty && id != _userId) {
+          _userId = id;
+          _detailFuture = ApiClient.fetchUserDetail(id);
+        }
 
-            return Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      CommonProfileView(
-                        networkUrl: user?.profileImageUrl,
-                        size: 56,
-                        placeholder: Container(
-                          color: const Color(0xFFF2F2F2),
-                          alignment: Alignment.center,
-                          child: const Icon(
-                            PhosphorIconsRegular.user,
-                            size: 24,
-                            color: Color(0xFF9E9E9E),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              nickname,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontFamily: 'Pretendard',
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.black,
-                              ),
-                            ),
-                            Row(
-                              children: [
-                                // if (providerIcon != null) ...[
-                                //   SvgPicture.asset(
-                                //     providerIcon,
-                                //     width: 16,
-                                //     height: 16,
-                                //   ),
-                                //   const SizedBox(width: 4),
-                                // ],
-                                Expanded(
-                                  child: Text(
-                                    email,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      fontFamily: 'Pretendard',
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w400,
-                                      color: Color(0xFF8E8E8E),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      SizedBox(
-                        width: 50,
-                        child: CommonRoundedButton(
-                          title: '편집',
-                          onTap: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(builder: (_) => const ProfileEditView()),
-                            );
-                          },
-                          height: 32,
-                          radius: 8,
-                          backgroundColor: const Color(0xFFF5F5F5),
-                          textColor: Colors.black,
-                          textStyle: TextStyle(
-                            fontFamily: 'Pretendard',
-                            fontSize: 12,
-                            color: Colors.grey[600],
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ),
-                    ],
+        if (_detailFuture == null) {
+          return const ProfileUserSection();
+        }
+
+        return FutureBuilder<ProfileDisplayUser>(
+          future: _detailFuture,
+          builder: (context, snapshot) {
+            final resolved = snapshot.data;
+            if (resolved == null) {
+              return const ProfileUserSection();
+            }
+            return ProfileUserSection(
+              showEditButton: true,
+              displayUser: resolved,
+              showFollowActions: true,
+              showFollowButton: false,
+              feedCount: resolved.feedCount,
+              followerCount: resolved.followerCount,
+              followingCount: resolved.followingCount,
+              followingLabel: '팔로잉',
+              followerLabel: '팔로우',
+              onFollowingTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => FollowingListView(userId: resolved.id),
                   ),
-                  if (introduction.isNotEmpty) ...[
-                    const SizedBox(height: 20),
-                    LayoutBuilder(
-                      builder: (context, constraints) {
-                        final painter = TextPainter(
-                          text: TextSpan(
-                            text: introduction,
-                            style: TextStyle(
-                              fontFamily: 'Pretendard',
-                              fontSize: 14,
-                              fontWeight: FontWeight.w400,
-                              color: Colors.grey[800],
-                            ),
-                          ),
-                          maxLines: 4,
-                          textDirection: TextDirection.ltr,
-                        )..layout(maxWidth: constraints.maxWidth);
-                        final didOverflow = painter.didExceedMaxLines;
-                        if (_showToggle != didOverflow) {
-                          WidgetsBinding.instance.addPostFrameCallback((_) {
-                            if (mounted) {
-                              setState(() => _showToggle = didOverflow);
-                            }
-                          });
-                        }
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              introduction,
-                              maxLines: _expanded ? null : 4,
-                              overflow: _expanded
-                                  ? TextOverflow.visible
-                                  : TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontFamily: 'Pretendard',
-                                fontSize: 14,
-                                fontWeight: FontWeight.w400,
-                                color: Colors.grey[800],
-                              ),
-                            ),
-                            if (_showToggle)
-                              CommonInkWell(
-                                onTap: () {
-                                  setState(() => _expanded = !_expanded);
-                                },
-                                child: Padding(
-                                  padding: const EdgeInsets.only(top: 6),
-                                  child: Text(
-                                    _expanded ? '접기' : '더보기',
-                                    style: const TextStyle(
-                                      fontFamily: 'Pretendard',
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w400,
-                                      color: Colors.black,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                          ],
-                        );
-                      },
-                    ),
-                  ],
-                ],
-              ),
+                );
+              },
+              onFollowerTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => FollowListView(userId: resolved.id),
+                  ),
+                );
+              },
             );
           },
         );
@@ -677,23 +543,37 @@ class _ProfileFeedGridState extends State<_ProfileFeedGrid> {
             handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context),
           ),
           SliverPadding(
-            padding: const EdgeInsets.fromLTRB(1, 1, 1, 1),
+            padding: EdgeInsets.zero,
             sliver: SliverGrid(
               delegate: SliverChildBuilderDelegate(
                 (context, index) {
                   final feed = _feeds[index];
                   final url = feed.images.isNotEmpty ? feed.images.first.cdnUrl : null;
-                  return ProfileFeedListItemView(
-                    imageUrl: url ?? '',
+                  return CommonInkWell(
+                    onTap: () {
+                      showCupertinoModalPopup(
+                        context: context,
+                        builder: (_) => SizedBox.expand(
+                          child: ProfileFeedListView(
+                            feeds: _feeds,
+                            initialIndex: index,
+                          ),
+                        ),
+                      );
+                    },
+                    child: ProfileFeedListItemView(
+                      imageUrl: url ?? '',
+                      imageCount: feed.images.length,
+                    ),
                   );
                 },
                 childCount: _feeds.length,
               ),
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 3,
-                mainAxisSpacing: 1,
-                crossAxisSpacing: 1,
-                childAspectRatio: 1,
+                mainAxisSpacing: 0,
+                crossAxisSpacing: 0,
+                childAspectRatio: 4 / 5,
               ),
             ),
           ),

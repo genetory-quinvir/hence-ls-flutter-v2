@@ -6,10 +6,12 @@ class CommonActivityIndicator extends StatelessWidget {
     super.key,
     this.size = 40,
     this.color = Colors.black,
+    this.strokeWidth = 4,
   });
 
   final double size;
   final Color color;
+  final double strokeWidth;
 
   @override
   Widget build(BuildContext context) {
@@ -19,6 +21,7 @@ class CommonActivityIndicator extends StatelessWidget {
       child: LoadingIndicator(
         indicatorType: Indicator.circleStrokeSpin,
         colors: [color],
+        strokeWidth: strokeWidth,
       ),
     );
   }

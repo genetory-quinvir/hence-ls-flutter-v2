@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../state/home_tab_controller.dart';
 import 'common_inkwell.dart';
 
 class CommonTabView extends StatelessWidget {
@@ -25,6 +26,7 @@ class CommonTabView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final unread = HomeTabController.hasUnreadNotifications;
     const items = [
       _TabItem(
         label: '맵',
@@ -66,11 +68,35 @@ class CommonTabView extends StatelessWidget {
             child: CommonInkWell(
               onTap: () => onTap(index),
               child: Center(
-                child: Icon(
-                  isActive ? item.activeIcon : item.icon,
-                  size: iconSize,
-                  color: color,
-                  semanticLabel: item.label,
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Icon(
+                      isActive ? item.activeIcon : item.icon,
+                      size: iconSize,
+                      color: color,
+                      semanticLabel: item.label,
+                    ),
+                    if (index == 3)
+                      Positioned(
+                        top: -2,
+                        right: -2,
+                        child: ValueListenableBuilder<bool>(
+                          valueListenable: unread,
+                          builder: (context, hasUnread, _) {
+                            if (!hasUnread) return const SizedBox.shrink();
+                            return Container(
+                              width: 4,
+                              height: 4,
+                              decoration: const BoxDecoration(
+                                color: Color(0xFFE53935),
+                                shape: BoxShape.circle,
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                  ],
                 ),
               ),
             ),

@@ -11,6 +11,7 @@ import '../common/widgets/common_textfield_view.dart';
 import '../common/widgets/common_textview_view.dart';
 import '../common/widgets/common_title_actionsheet.dart';
 import '../common/widgets/common_calendar_view.dart';
+import '../common/widgets/profile_image_view.dart';
 import '../common/permissions/media_permission_service.dart';
 import '../common/media/media_picker_service.dart';
 import '../common/media/media_conversion_service.dart';
@@ -506,15 +507,10 @@ class _ProfilePhotoSection extends StatelessWidget {
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          SizedBox(
-            width: 120,
-            height: 120,
-            child: ClipOval(
-              child: _ProfileImage(
-                imageFile: imageFile,
-                imageUrl: imageUrl,
-              ),
-            ),
+          ProfileImageView(
+            size: 120,
+            imageFile: imageFile,
+            imageUrl: imageUrl,
           ),
           Positioned(
             right: -2,
@@ -650,41 +646,6 @@ class _SelectionField extends StatelessWidget {
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _ProfileImage extends StatelessWidget {
-  const _ProfileImage({
-    required this.imageFile,
-    required this.imageUrl,
-  });
-
-  final File? imageFile;
-  final String? imageUrl;
-
-  @override
-  Widget build(BuildContext context) {
-    if (imageFile != null) {
-      return Image.file(
-        imageFile!,
-        fit: BoxFit.cover,
-      );
-    }
-    if (imageUrl != null && imageUrl!.trim().isNotEmpty) {
-      return Image.network(
-        imageUrl!,
-        fit: BoxFit.cover,
-      );
-    }
-    return Container(
-      color: const Color(0xFFF2F2F2),
-      alignment: Alignment.center,
-      child: const Icon(
-        PhosphorIconsRegular.user,
-        size: 52,
-        color: Color(0xFF9E9E9E),
       ),
     );
   }
