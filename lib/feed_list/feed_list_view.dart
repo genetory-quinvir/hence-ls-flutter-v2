@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:lottie/lottie.dart';
 
 import '../common/network/api_client.dart';
 import '../common/state/home_tab_controller.dart';
 import '../common/widgets/common_feed_item_view.dart';
-import '../common/widgets/common_activity.dart';
 import 'models/feed_models.dart';
 import 'widgets/feed_list_navigation_view.dart';
 
@@ -24,6 +24,7 @@ class _FeedListViewState extends State<FeedListView> {
   String? _nextCursor;
   int _selectedIndex = 0;
   int _currentPage = 0;
+  bool _allowRefreshForCurrentDrag = false;
   late final VoidCallback _reloadListener;
 
   String get _orderBy => _selectedIndex == 0 ? 'all' : 'popular';
@@ -58,13 +59,46 @@ class _FeedListViewState extends State<FeedListView> {
   Future<void> _handleRefresh() async {
     setState(() => _isRefreshing = true);
     final keepPage = _currentPage;
-    await _loadInitial();
+    await _reloadFirstPage();
     if (!mounted) return;
     if (_pageController.hasClients && _feeds.isNotEmpty) {
       final target = keepPage.clamp(0, _feeds.length - 1);
       _pageController.jumpToPage(target);
     }
     if (mounted) setState(() => _isRefreshing = false);
+  }
+
+  Future<void> _reloadFirstPage() async {
+    if (_isLoading) return;
+    setState(() {
+      _nextCursor = null;
+      _hasNext = true;
+      _isLoading = true;
+    });
+    try {
+      final json = await ApiClient.fetchFeeds(
+        orderBy: _orderBy,
+        limit: 20,
+      );
+      final data = (json['data'] as Map<String, dynamic>? ?? const {});
+      final feedsJson = (data['feeds'] as List<dynamic>? ?? []);
+      final refreshedFeeds = feedsJson
+          .whereType<Map<String, dynamic>>()
+          .map(Feed.fromJson)
+          .toList();
+      final meta = (data['meta'] as Map<String, dynamic>? ?? const {});
+      setState(() {
+        _feeds
+          ..clear()
+          ..addAll(refreshedFeeds);
+        _nextCursor = meta['nextCursor'] as String?;
+        _hasNext = (meta['hasNext'] as bool?) ?? false;
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   Future<void> _loadMore() async {
@@ -115,6 +149,21 @@ class _FeedListViewState extends State<FeedListView> {
             children: [
               RefreshIndicator(
                 onRefresh: _handleRefresh,
+                color: Colors.transparent,
+                backgroundColor: Colors.transparent,
+                strokeWidth: 0.01,
+                notificationPredicate: (notification) {
+                  if (notification is ScrollStartNotification) {
+                    _allowRefreshForCurrentDrag =
+                        _currentPage == 0 &&
+                        notification.metrics.extentBefore == 0;
+                  } else if (notification is ScrollEndNotification) {
+                    _allowRefreshForCurrentDrag = false;
+                  }
+                  if (!_allowRefreshForCurrentDrag) return false;
+                  return notification.depth == 0 &&
+                      notification.metrics.extentBefore == 0;
+                },
                 child: PageView.builder(
                   scrollDirection: Axis.vertical,
                   controller: _pageController,
@@ -122,7 +171,9 @@ class _FeedListViewState extends State<FeedListView> {
                   itemCount: _feeds.length,
                   onPageChanged: (index) {
                     _currentPage = index;
-                    if (index >= _feeds.length - 2) {
+                    if (_feeds.length > 1 &&
+                        index > 0 &&
+                        index >= _feeds.length - 2) {
                       _loadMore();
                     }
                   },
@@ -156,16 +207,19 @@ class _FeedListViewState extends State<FeedListView> {
                     ),
                   ),
                 ),
-              if (_isRefreshing && _feeds.isNotEmpty)
+              if (_isRefreshing)
                 Positioned(
                   top: MediaQuery.of(context).padding.top + 12,
                   left: 0,
                   right: 0,
                   child: Center(
-                    child: CommonActivityIndicator(
-                      size: 40,
-                      color: Colors.white,
-                      strokeWidth: 4,
+                    child: SizedBox(
+                      width: 40,
+                      height: 40,
+                      child: Lottie.asset(
+                        'assets/images/lottie/logo_loading.json',
+                        repeat: true,
+                      ),
                     ),
                   ),
                 ),

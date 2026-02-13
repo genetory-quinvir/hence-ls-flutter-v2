@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:hence_ls_flutter_v2/common/widgets/common_inkwell.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -357,23 +358,23 @@ class _ProfileEditViewState extends State<ProfileEditView> {
     _ensureControllers();
     _setInitialSnapshotIfNeeded();
     final canSubmit = _isDirty() && !_isSaving;
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: Stack(
-        children: [
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.dark,
+      child: Scaffold(
+        backgroundColor: Colors.white,
+        body: Stack(
+          children: [
           Column(
             children: [
               SafeArea(
                 bottom: false,
                 child: CommonNavigationView(
-                  left: GestureDetector(
-                    onTap: () => Navigator.of(context).maybePop(),
-                    child: const Icon(
-                      PhosphorIconsRegular.caretLeft,
-                      size: 24,
-                      color: Colors.black,
-                    ),
+                  left: const Icon(
+                    PhosphorIconsRegular.caretLeft,
+                    size: 24,
+                    color: Colors.black,
                   ),
+                  onLeftTap: () => Navigator.of(context).maybePop(),
                   title: '프로필 편집',
                 ),
               ),
@@ -477,7 +478,8 @@ class _ProfileEditViewState extends State<ProfileEditView> {
                 ),
               ),
             ),
-        ],
+          ],
+        ),
       ),
     );
   }

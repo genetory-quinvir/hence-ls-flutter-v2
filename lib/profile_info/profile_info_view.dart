@@ -13,8 +13,6 @@ import '../profile/models/profile_display_user.dart';
 import '../profile/profile_feed_detail_view.dart';
 import '../profile/widgets/profile_feed_list_item_view.dart';
 import '../profile/widgets/profile_user_section.dart';
-import '../follow_list/follow_list_view.dart';
-import '../following_list/following_list_view.dart';
 
 class ProfileInfoView extends StatelessWidget {
   const ProfileInfoView({
@@ -41,14 +39,12 @@ class ProfileInfoView extends StatelessWidget {
             SizedBox(height: MediaQuery.of(context).padding.top),
             CommonNavigationView(
               title: '프로필 정보',
-              left: GestureDetector(
-                onTap: () => Navigator.of(context).maybePop(),
-                child: const Icon(
-                  PhosphorIconsRegular.x,
-                  size: 24,
-                  color: Colors.black,
-                ),
+              left: const Icon(
+                PhosphorIconsRegular.x,
+                size: 24,
+                color: Colors.black,
               ),
+              onLeftTap: () => Navigator.of(context).maybePop(),
             ),
             const SizedBox(height: 16),
             Expanded(
@@ -167,20 +163,6 @@ class _ProfileInfoBodyState extends State<_ProfileInfoBody> {
                 isFollowedByMe: user.isFollowedByMe,
                 followerCount: _followerCount,
                 onFollowToggle: _isTogglingFollow ? null : _toggleFollow,
-                onFollowingTap: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => FollowingListView(userId: user.id),
-                    ),
-                  );
-                },
-                onFollowerTap: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => FollowListView(userId: user.id),
-                    ),
-                  );
-                },
               ),
             ),
             const SliverToBoxAdapter(child: SizedBox(height: 20)),
@@ -190,18 +172,13 @@ class _ProfileInfoBodyState extends State<_ProfileInfoBody> {
                 pinned: true,
                 delegate: _TabBarHeaderDelegate(
                   const TabBar(
+                    isScrollable: true,
+                    tabAlignment: TabAlignment.start,
+                    padding: EdgeInsets.zero,
                     labelColor: Colors.black,
                     unselectedLabelColor: Color(0xFF8E8E8E),
-                    indicatorSize: TabBarIndicatorSize.tab,
-                    indicator: BoxDecoration(
-                      border: Border(
-                        bottom: BorderSide(
-                          color: Colors.black,
-                          width: 2,
-                        ),
-                      ),
-                      borderRadius: BorderRadius.zero,
-                    ),
+                    dividerColor: Colors.transparent,
+                    indicatorColor: Colors.transparent,
                     overlayColor: MaterialStatePropertyAll(Colors.transparent),
                     splashFactory: NoSplash.splashFactory,
                     labelStyle: TextStyle(
@@ -320,7 +297,7 @@ class _ProfileInfoFeedGridState extends State<_ProfileInfoFeedGrid> {
             handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context),
           ),
           SliverPadding(
-            padding: EdgeInsets.zero,
+            padding: const EdgeInsets.symmetric(vertical: 2),
             sliver: SliverGrid(
               delegate: SliverChildBuilderDelegate(
                 (context, index) {
@@ -349,8 +326,8 @@ class _ProfileInfoFeedGridState extends State<_ProfileInfoFeedGrid> {
               ),
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 3,
-                mainAxisSpacing: 0,
-                crossAxisSpacing: 0,
+                mainAxisSpacing: 2,
+                crossAxisSpacing: 2,
                 childAspectRatio: 4 / 5,
               ),
             ),

@@ -5,13 +5,13 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../common/auth/auth_store.dart';
 import '../../common/widgets/common_inkwell.dart';
-import '../../common/widgets/common_rounded_button.dart';
 import 'profile_activity_info_view.dart';
 import 'profile_feed_list_item_view.dart';
 import 'profile_user_section.dart';
 import '../../common/network/api_client.dart';
 import '../../feed_list/models/feed_models.dart';
 import '../../common/widgets/common_activity.dart';
+import '../../common/widgets/common_image_view.dart';
 import 'profile_participant_list_item_view.dart';
 import '../../common/widgets/common_empty_view.dart';
 import '../profile_feed_detail_view.dart';
@@ -19,19 +19,78 @@ import '../models/profile_display_user.dart';
 import '../../following_list/following_list_view.dart';
 import '../../follow_list/follow_list_view.dart';
 
-class ProfileSignedView extends StatelessWidget {
-  const ProfileSignedView({super.key});
+class ProfileSignedView extends StatefulWidget {
+  const ProfileSignedView({
+    super.key,
+    this.onHeaderCollapsedChanged,
+  });
+
+  final ValueChanged<bool>? onHeaderCollapsedChanged;
+
+  @override
+  State<ProfileSignedView> createState() => _ProfileSignedViewState();
+}
+
+class _ProfileSignedViewState extends State<ProfileSignedView> {
+  final ScrollController _scrollController = ScrollController();
+  final GlobalKey _headerKey = GlobalKey();
+  double _collapseOffset = 120;
+  bool _isHeaderCollapsed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_handleScroll);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _measureHeaderHeight();
+      _handleScroll();
+    });
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_handleScroll);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _measureHeaderHeight() {
+    final context = _headerKey.currentContext;
+    if (context == null) return;
+    final renderBox = context.findRenderObject();
+    if (renderBox is! RenderBox || !renderBox.hasSize) return;
+    final next = 16 + renderBox.size.height;
+    if ((next - _collapseOffset).abs() < 0.5) return;
+    _collapseOffset = next;
+    _handleScroll();
+  }
+
+  void _handleScroll() {
+    if (!_scrollController.hasClients) return;
+    final next = _scrollController.offset >= _collapseOffset;
+    if (next == _isHeaderCollapsed) return;
+    _isHeaderCollapsed = next;
+    widget.onHeaderCollapsedChanged?.call(next);
+  }
 
   @override
   Widget build(BuildContext context) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _measureHeaderHeight();
+    });
     return DefaultTabController(
       length: 3,
       child: NestedScrollView(
+        controller: _scrollController,
         headerSliverBuilder: (context, innerBoxIsScrolled) {
           return [
             const SliverToBoxAdapter(child: SizedBox(height: 16)),
-            const SliverToBoxAdapter(
-              child: _ProfileHeaderUserSection(),
+            SliverToBoxAdapter(
+              child: KeyedSubtree(
+                key: _headerKey,
+                child: const _ProfileHeaderUserSection(),
+              ),
             ),
             const SliverToBoxAdapter(child: SizedBox(height: 24)),
             const SliverToBoxAdapter(child: _ProfileActivitySection()),
@@ -44,16 +103,7 @@ class ProfileSignedView extends StatelessWidget {
                   const TabBar(
                     labelColor: Colors.black,
                     unselectedLabelColor: Color(0xFF8E8E8E),
-                    indicatorSize: TabBarIndicatorSize.tab,
-                    indicator: BoxDecoration(
-                      border: Border(
-                        bottom: BorderSide(
-                          color: Colors.black,
-                          width: 2,
-                        ),
-                      ),
-                      borderRadius: BorderRadius.zero,
-                    ),
+                    indicatorColor: Colors.transparent,
                     overlayColor: MaterialStatePropertyAll(Colors.transparent),
                     splashFactory: NoSplash.splashFactory,
                     labelStyle: TextStyle(
@@ -134,9 +184,10 @@ class _ProfileHeaderUserSectionState extends State<_ProfileHeaderUserSection> {
               displayUser: resolved,
               showFollowActions: true,
               showFollowButton: false,
-              feedCount: resolved.feedCount,
-              followerCount: resolved.followerCount,
-              followingCount: resolved.followingCount,
+              feedCount: user?.feedCount ?? resolved.feedCount,
+              followerCount: user?.followerCount ?? resolved.followerCount,
+              followingCount: user?.followingCount ?? resolved.followingCount,
+              activityLevel: user?.activityLevel ?? resolved.activityLevel,
               followingLabel: '팔로잉',
               followerLabel: '팔로우',
               onFollowingTap: () {
@@ -496,6 +547,13 @@ class _ProfileFeedGridState extends State<_ProfileFeedGrid> {
           .whereType<Map<String, dynamic>>()
           .map(Feed.fromJson)
           .toList();
+      final prefetchUrls = newFeeds
+          .map((feed) => feed.images.isNotEmpty ? (feed.images.first.cdnUrl ?? '') : '')
+          .where((url) => url.trim().isNotEmpty)
+          .toList();
+      if (prefetchUrls.isNotEmpty) {
+        CommonImageView.prefetchNetworkUrls(prefetchUrls);
+      }
       final meta = (data['meta'] as Map<String, dynamic>? ?? const {});
       setState(() {
         _feeds.addAll(newFeeds);
@@ -543,7 +601,7 @@ class _ProfileFeedGridState extends State<_ProfileFeedGrid> {
             handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context),
           ),
           SliverPadding(
-            padding: EdgeInsets.zero,
+            padding: const EdgeInsets.symmetric(vertical: 2),
             sliver: SliverGrid(
               delegate: SliverChildBuilderDelegate(
                 (context, index) {
@@ -571,8 +629,8 @@ class _ProfileFeedGridState extends State<_ProfileFeedGrid> {
               ),
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 3,
-                mainAxisSpacing: 0,
-                crossAxisSpacing: 0,
+                mainAxisSpacing: 2,
+                crossAxisSpacing: 2,
                 childAspectRatio: 4 / 5,
               ),
             ),

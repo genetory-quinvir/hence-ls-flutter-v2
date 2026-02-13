@@ -2,11 +2,11 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../common/location/naver_location_service.dart';
 import '../common/permissions/location_permission_service.dart';
 import '../common/widgets/common_feed_marker.dart';
-import '../common/widgets/common_inkwell.dart';
 import '../common/widgets/common_map_view.dart';
 import '../common/widgets/common_navigation_view.dart';
 import '../common/widgets/common_rounded_button.dart';
@@ -126,22 +126,30 @@ class _PlaceSelectViewState extends State<PlaceSelectView> {
               );
             },
           );
-    return Material(
-      color: Colors.white,
-      child: Column(
-        children: [
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.light,
+      child: Material(
+        color: Colors.black,
+        child: Column(
+          children: [
           SafeArea(
             bottom: false,
             child: CommonNavigationView(
-              title: '장소 선택',
-              left: CommonInkWell(
-                onTap: () => Navigator.of(context).maybePop(),
-                child: const Icon(
-                  Icons.close,
-                  size: 24,
-                  color: Colors.black,
+              titleWidget: const Text(
+                '장소 선택',
+                style: TextStyle(
+                  fontFamily: 'Pretendard',
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
                 ),
               ),
+              left: const Icon(
+                Icons.close,
+                size: 24,
+                color: Colors.white,
+              ),
+              onLeftTap: () => Navigator.of(context).maybePop(),
             ),
           ),
           Expanded(
@@ -167,6 +175,7 @@ class _PlaceSelectViewState extends State<PlaceSelectView> {
               focusNode: _placeFocusNode,
               title: '장소',
               hintText: '장소를 입력해주세요',
+              darkStyle: true,
             ),
           ),
           const SizedBox(height: 16),
@@ -179,11 +188,14 @@ class _PlaceSelectViewState extends State<PlaceSelectView> {
                 onTap: _submit,
                 height: 50,
                 radius: 12,
+                backgroundColor: Colors.white,
+                textColor: Colors.black,
               ),
             ),
           ),
           const SizedBox(height: 16),
-        ],
+          ],
+        ),
       ),
     );
   }

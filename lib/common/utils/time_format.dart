@@ -22,11 +22,14 @@ String formatRelativeTime(String dateTimeString) {
   final y = time.year.toString().padLeft(4, '0');
   final m = time.month.toString().padLeft(2, '0');
   final d = time.day.toString().padLeft(2, '0');
-  final isPm = time.hour >= 12;
-  final h12 = time.hour % 12 == 0 ? 12 : time.hour % 12;
-  final hour = h12.toString().padLeft(2, '0');
-  final minute = time.minute.toString().padLeft(2, '0');
-  final meridiem = isPm ? 'PM' : 'AM';
 
-  return '$y. $m. $d $meridiem $hour:$minute';
+  return '$y. $m. $d';
+
+  // final isPm = time.hour >= 12;
+  // final h12 = time.hour % 12 == 0 ? 12 : time.hour % 12;
+  // final hour = h12.toString().padLeft(2, '0');
+  // final minute = time.minute.toString().padLeft(2, '0');
+  // final meridiem = isPm ? 'PM' : 'AM';
+
+  // return '$y. $m. $d $meridiem $hour:$minute';
 }

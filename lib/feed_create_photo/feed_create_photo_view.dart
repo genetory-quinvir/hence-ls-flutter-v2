@@ -7,6 +7,8 @@ import 'package:flutter/services.dart';
 import '../common/widgets/common_inkwell.dart';
 import '../common/widgets/common_image_view.dart';
 import '../common/widgets/common_title_actionsheet.dart';
+import '../common/media/media_picker_service.dart';
+import '../common/permissions/media_permission_service.dart';
 import '../feed_create_info/feed_create_info_view.dart';
 
 class FeedCreatePhotoView extends StatefulWidget {
@@ -21,6 +23,7 @@ class _FeedCreatePhotoViewState extends State<FeedCreatePhotoView> {
   final List<AssetPathEntity> _albums = [];
   final Map<String, int> _albumCounts = {};
   final List<AssetEntity> _selected = [];
+  final ScrollController _gridController = ScrollController();
   AssetPathEntity? _currentAlbum;
   bool _isLoading = true;
   bool _hasMore = true;
@@ -34,18 +37,11 @@ class _FeedCreatePhotoViewState extends State<FeedCreatePhotoView> {
   void initState() {
     super.initState();
     _loadAlbum();
-    SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.dark);
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.dark);
   }
 
   @override
   void dispose() {
-    SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.dark);
+    _gridController.dispose();
     super.dispose();
   }
 
@@ -157,51 +153,104 @@ class _FeedCreatePhotoViewState extends State<FeedCreatePhotoView> {
     }
   }
 
+  void _showSnack(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
+  Future<void> _openCamera() async {
+    if (!await MediaPermissionService.ensureCamera()) {
+      _showSnack('카메라 권한이 필요합니다.');
+      return;
+    }
+    final picked = await MediaPickerService.pickFromCamera();
+    if (picked == null) return;
+    final asset = await PhotoManager.editor.saveImageWithPath(picked.path);
+    if (!mounted) return;
+    if (asset == null) {
+      _showSnack('촬영한 사진을 불러올 수 없습니다.');
+      return;
+    }
+    setState(() {
+      if (_assets.every((item) => item.id != asset.id)) {
+        _assets.insert(0, asset);
+      }
+      if (_selected.length < _maxSelection &&
+          _selected.every((item) => item.id != asset.id)) {
+        _selected.add(asset);
+      }
+    });
+    if (_gridController.hasClients) {
+      _gridController.jumpTo(0);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: Column(
-        children: [
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.light,
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body: Column(
+          children: [
           Padding(
             padding: EdgeInsets.only(
               top: MediaQuery.of(context).padding.top + 44,
-              left: 16,
-              right: 16,
+              left: 8,
+              right: 8,
             ),
             child: SizedBox(
-              height: 48,
-              child: Row(
+              height: 44,
+              child: Stack(
+                alignment: Alignment.center,
                 children: [
-                  CommonInkWell(
-                    onTap: () => Navigator.of(context).maybePop(),
-                    child: const Icon(
-                      Icons.close,
-                      color: Colors.black,
-                      size: 24,
+                  const Center(
+                    child: Text(
+                      '사진 선택',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
                     ),
                   ),
-                  const Spacer(),
-                  IgnorePointer(
-                    ignoring: _selected.isEmpty,
+                  Align(
+                    alignment: Alignment.centerLeft,
                     child: CommonInkWell(
-                      onTap: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => FeedCreateInfoView(
-                              selectedAssets: List.of(_selected),
+                      onTap: () => Navigator.of(context).maybePop(),
+                      child: const Icon(
+                        Icons.close,
+                        color: Colors.white,
+                        size: 24,
+                      ),
+                    ),
+                  ),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: IgnorePointer(
+                      ignoring: _selected.isEmpty,
+                      child: CommonInkWell(
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => FeedCreateInfoView(
+                                selectedAssets: List.of(_selected),
+                              ),
                             ),
+                          );
+                        },
+                        child: Text(
+                          _selected.isNotEmpty
+                              ? '다음 (${_selected.length})'
+                              : '다음',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: _selected.isNotEmpty
+                                ? Colors.white
+                                : const Color(0xFF9E9E9E),
                           ),
-                        );
-                      },
-                      child: Text(
-                        '다음',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: _selected.isNotEmpty
-                              ? Colors.black
-                              : const Color(0xFF9E9E9E),
                         ),
                       ),
                     ),
@@ -223,13 +272,13 @@ class _FeedCreatePhotoViewState extends State<FeedCreatePhotoView> {
                         style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w600,
-                          color: Colors.black,
+                          color: Colors.white,
                         ),
                       ),
                       const SizedBox(width: 6),
                       const Icon(
                         Icons.keyboard_arrow_down,
-                        color: Colors.black,
+                        color: Colors.white,
                         size: 20,
                       ),
                     ],
@@ -254,6 +303,7 @@ class _FeedCreatePhotoViewState extends State<FeedCreatePhotoView> {
                       return false;
                     },
                     child: GridView.builder(
+                      controller: _gridController,
                       padding: EdgeInsets.zero,
                       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                         crossAxisCount: 3,
@@ -264,13 +314,16 @@ class _FeedCreatePhotoViewState extends State<FeedCreatePhotoView> {
                       itemCount: _assets.length + 1,
                       itemBuilder: (context, index) {
                         if (index == 0) {
-                          return Container(
-                            color: const Color(0xFFFAFAFA),
-                            child: Center(
-                              child: Icon(
-                                PhosphorIconsFill.camera,
-                                color: const Color(0xFF757575),
-                                size: 28,
+                          return CommonInkWell(
+                            onTap: _openCamera,
+                            child: Container(
+                              color: const Color(0xFF1E1E1E),
+                              child: Center(
+                                child: Icon(
+                                  PhosphorIconsFill.camera,
+                                  color: const Color(0xFFBDBDBD),
+                                  size: 28,
+                                ),
                               ),
                             ),
                           );
@@ -303,7 +356,8 @@ class _FeedCreatePhotoViewState extends State<FeedCreatePhotoView> {
                     ),
                   ),
           ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -329,7 +383,7 @@ class _PermissionDeniedView extends StatelessWidget {
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w500,
-              color: Colors.black,
+              color: Colors.white,
             ),
           ),
           const SizedBox(height: 12),
@@ -339,7 +393,7 @@ class _PermissionDeniedView extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               decoration: BoxDecoration(
-                color: Colors.black,
+                color: Colors.white,
                 borderRadius: BorderRadius.circular(8),
               ),
               child: const Text(
@@ -347,7 +401,7 @@ class _PermissionDeniedView extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
-                  color: Colors.white,
+                  color: Colors.black,
                 ),
               ),
             ),
@@ -360,7 +414,7 @@ class _PermissionDeniedView extends StatelessWidget {
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
-                color: Color(0xFF757575),
+                color: Color(0xFFBDBDBD),
               ),
             ),
           ),
@@ -382,7 +436,7 @@ class _AssetThumbnail extends StatelessWidget {
       builder: (context, snapshot) {
         final bytes = snapshot.data;
         final Widget child = bytes == null
-            ? Container(color: const Color(0xFFFAFAFA))
+            ? Container(color: const Color(0xFF1E1E1E))
             : CommonImageView(
                 memoryBytes: bytes,
                 cacheKey: '${asset.id}_thumb',
@@ -411,9 +465,11 @@ class _SelectionBadge extends StatelessWidget {
       width: 22,
       height: 22,
       decoration: BoxDecoration(
-        color: isSelected ? Colors.black : Colors.transparent,
+        color: isSelected ? Colors.white : Colors.transparent,
         border: Border.all(
-          color: isSelected ? Colors.black : const Color(0xFF9E9E9E),
+          color: isSelected
+              ? Colors.white
+              : Colors.white.withOpacity(0.6),
           width: 1.5,
         ),
         shape: BoxShape.circle,
@@ -425,7 +481,7 @@ class _SelectionBadge extends StatelessWidget {
               style: const TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
-                color: Colors.white,
+                color: Colors.black,
               ),
             )
           : null,

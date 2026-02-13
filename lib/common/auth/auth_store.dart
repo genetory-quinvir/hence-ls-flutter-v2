@@ -115,6 +115,9 @@ class AuthStore {
       gender: user.gender,
       dateOfBirth: user.dateOfBirth,
       activityLevel: user.activityLevel,
+      feedCount: user.feedCount,
+      followerCount: user.followerCount,
+      followingCount: user.followingCount,
     );
   }
 
@@ -210,6 +213,9 @@ class AuthStore {
       'provider=${user.provider ?? ''} '
       'gender=${user.gender ?? ''} '
       'dateOfBirth=${user.dateOfBirth ?? ''} '
+      'feedCount=${user.feedCount?.toString() ?? ''} '
+      'followerCount=${user.followerCount?.toString() ?? ''} '
+      'followingCount=${user.followingCount?.toString() ?? ''} '
       'profileImageUrl=${user.profileImageUrl ?? ''}',
     );
   }

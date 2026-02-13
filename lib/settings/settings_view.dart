@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:naver_login_sdk/naver_login_sdk.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -54,21 +55,21 @@ class _SettingsViewState extends State<SettingsView> {
   @override
   Widget build(BuildContext context) {
     const version = '1.0.0';
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: Column(
-        children: [
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.dark,
+      child: Scaffold(
+        backgroundColor: Colors.white,
+        body: Column(
+          children: [
           SafeArea(
             bottom: false,
             child: CommonNavigationView(
-              left: GestureDetector(
-                onTap: () => Navigator.of(context).maybePop(),
-                child: Icon(
-                  PhosphorIconsRegular.caretLeft,
-                  size: 24,
-                  color: Colors.black,
-                ),
+              left: const Icon(
+                PhosphorIconsRegular.caretLeft,
+                size: 24,
+                color: Colors.black,
               ),
+              onLeftTap: () => Navigator.of(context).maybePop(),
               title: '설정',
             ),
           ),
@@ -228,7 +229,8 @@ class _SettingsViewState extends State<SettingsView> {
               },
             ),
           ),
-        ],
+          ],
+        ),
       ),
     );
   }

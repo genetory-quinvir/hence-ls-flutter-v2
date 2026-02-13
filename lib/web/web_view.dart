@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
@@ -44,21 +45,21 @@ class _WebViewPageState extends State<WebViewPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: Column(
-        children: [
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.dark,
+      child: Scaffold(
+        backgroundColor: Colors.white,
+        body: Column(
+          children: [
           SafeArea(
             bottom: false,
             child: CommonNavigationView(
-              left: GestureDetector(
-                onTap: () => Navigator.of(context).maybePop(),
-                child: Icon(
-                  PhosphorIconsRegular.caretLeft,
-                  size: 24,
-                  color: Colors.black,
-                ),
+              left: const Icon(
+                PhosphorIconsRegular.caretLeft,
+                size: 24,
+                color: Colors.black,
               ),
+              onLeftTap: () => Navigator.of(context).maybePop(),
               title: widget.title,
             ),
           ),
@@ -76,7 +77,8 @@ class _WebViewPageState extends State<WebViewPage> {
                 ),
               ),
             ),
-        ],
+          ],
+        ),
       ),
     );
   }

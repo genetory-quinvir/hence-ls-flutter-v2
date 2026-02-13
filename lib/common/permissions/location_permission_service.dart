@@ -16,4 +16,8 @@ class LocationPermissionService {
   static Future<PermissionStatus> getStatus() async {
     return Permission.locationWhenInUse.status;
   }
+
+  static bool isGrantedStatus(PermissionStatus status) {
+    return status.isGranted || status.isLimited;
+  }
 }

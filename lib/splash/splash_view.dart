@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../common/auth/auth_store.dart';
 import '../common/network/api_client.dart';
@@ -50,15 +51,18 @@ class _SplashViewState extends State<SplashView> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: FutureBuilder<void>(
-        future: _loadFuture,
-        builder: (context, snapshot) {
-          return const Center(
-            child: CommonActivityIndicator(color: Colors.white),
-          );
-        },
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.light,
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body: FutureBuilder<void>(
+          future: _loadFuture,
+          builder: (context, snapshot) {
+            return const Center(
+              child: CommonActivityIndicator(color: Colors.white),
+            );
+          },
+        ),
       ),
     );
   }

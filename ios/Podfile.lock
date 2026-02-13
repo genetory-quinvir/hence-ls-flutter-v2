@@ -210,6 +210,9 @@ PODS:
     - NMapsGeometry
   - package_info_plus (0.4.5):
     - Flutter
+  - path_provider_foundation (0.0.1):
+    - Flutter
+    - FlutterMacOS
   - permission_handler_apple (9.3.0):
     - Flutter
   - photo_manager (3.8.3):
@@ -251,6 +254,7 @@ DEPENDENCIES:
   - kakao_flutter_sdk_common (from `.symlinks/plugins/kakao_flutter_sdk_common/ios`)
   - naver_login_sdk (from `.symlinks/plugins/naver_login_sdk/ios`)
   - package_info_plus (from `.symlinks/plugins/package_info_plus/ios`)
+  - path_provider_foundation (from `.symlinks/plugins/path_provider_foundation/darwin`)
   - permission_handler_apple (from `.symlinks/plugins/permission_handler_apple/ios`)
   - photo_manager (from `.symlinks/plugins/photo_manager/darwin`)
   - shared_preferences_foundation (from `.symlinks/plugins/shared_preferences_foundation/darwin`)
@@ -322,6 +326,8 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/naver_login_sdk/ios"
   package_info_plus:
     :path: ".symlinks/plugins/package_info_plus/ios"
+  path_provider_foundation:
+    :path: ".symlinks/plugins/path_provider_foundation/darwin"
   permission_handler_apple:
     :path: ".symlinks/plugins/permission_handler_apple/ios"
   photo_manager:
@@ -377,6 +383,7 @@ SPEC CHECKSUMS:
   NMapsGeometry: 4e02554fa9880ef02ed96b075dc84355d6352479
   NMapsMap: 1964e6f9073301ad3cbe3a12235ba36f6f6cd905
   package_info_plus: af8e2ca6888548050f16fa2f1938db7b5a5df499
+  path_provider_foundation: bb55f6dbba17d0dccd6737fe6f7f34fbd0376880
   permission_handler_apple: 4ed2196e43d0651e8ff7ca3483a069d469701f2d
   photo_manager: fe4cbb0808b96f8be4af7ce6ae18dcd9c9b983c6
   PromisesObjC: f5707f49cb48b9636751c5b2e7d227e43fba9f47
@@ -388,6 +395,6 @@ SPEC CHECKSUMS:
   sqflite_darwin: 20b2a3a3b70e43edae938624ce550a3cbf66a3d0
   webview_flutter_wkwebview: 8ebf4fded22593026f7dbff1fbff31ea98573c8d
 
-PODFILE CHECKSUM: fcb1c91e578b8e7ecd437d6299fdcb03df7b9903
+PODFILE CHECKSUM: 14fe72836f13380c291cd8336eb936ba813ea926
 
 COCOAPODS: 1.16.2

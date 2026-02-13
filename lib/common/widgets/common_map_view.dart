@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:permission_handler/permission_handler.dart';
 
-import '../permissions/location_permission_service.dart';
+import 'common_alert_view.dart';
 
 class CommonMapView extends StatefulWidget {
   const CommonMapView({
@@ -31,6 +32,8 @@ class _CommonMapViewState extends State<CommonMapView> {
   late final Future<void> _initFuture;
   NaverMapController? _controller;
   NOverlayImage? _myLocationIcon;
+  bool _didAutoPromptLocationPermission = false;
+  bool _isFetchingMyLocation = false;
 
   @override
   void initState() {
@@ -38,6 +41,9 @@ class _CommonMapViewState extends State<CommonMapView> {
     _initFuture = FlutterNaverMap.isInitialized
         ? Future.value()
         : FlutterNaverMap().init(clientId: clientId);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _ensureLocationPermission(autoPrompt: true);
+    });
   }
 
   @override
@@ -70,6 +76,7 @@ class _CommonMapViewState extends State<CommonMapView> {
               onMapReady: (controller) {
                 _controller = controller;
                 _configureLocationOverlay(context);
+                _syncMyLocationOverlay();
               },
               onCameraIdle: () async {
                 if (widget.onCenterChanged == null) return;
@@ -121,23 +128,9 @@ class _CommonMapViewState extends State<CommonMapView> {
   Future<void> _moveToMyLocation() async {
     final controller = _controller;
     if (controller == null) return;
-    final granted = await LocationPermissionService.isGranted();
-    if (!granted) {
-      final requested = await LocationPermissionService.requestWhenInUse();
-      if (!requested) return;
-    }
-    final position = await Geolocator.getCurrentPosition(
-      desiredAccuracy: LocationAccuracy.high,
-    );
-    final overlay = controller.getLocationOverlay();
-    overlay.setIsVisible(true);
-    overlay.setPosition(NLatLng(position.latitude, position.longitude));
-    await controller.updateCamera(
-      NCameraUpdate.withParams(
-        target: NLatLng(position.latitude, position.longitude),
-        zoom: 15,
-      ),
-    );
+    final granted = await _ensureLocationPermission();
+    if (!granted) return;
+    await _syncMyLocationOverlay(moveCamera: true);
   }
 
   Future<void> _configureLocationOverlay(BuildContext context) async {
@@ -155,7 +148,7 @@ class _CommonMapViewState extends State<CommonMapView> {
         width: 16,
         height: 16,
         decoration: BoxDecoration(
-          color: Colors.black,
+          color: Colors.blue[600],
           shape: BoxShape.circle,
           border: Border.all(color: Colors.white, width: 2),
         ),
@@ -163,5 +156,125 @@ class _CommonMapViewState extends State<CommonMapView> {
     );
     overlay.setIcon(_myLocationIcon!);
     overlay.setIconSize(const Size(16, 16));
+  }
+
+  Future<bool> _ensureLocationPermission({bool autoPrompt = false}) async {
+    if (!mounted) return false;
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    debugPrint('[CommonMapView] serviceEnabled=$serviceEnabled');
+    if (!serviceEnabled) {
+      if (autoPrompt) {
+        await _showLocationServiceAlert();
+      }
+      return false;
+    }
+
+    var permission = await Geolocator.checkPermission();
+    debugPrint('[CommonMapView] currentPermission=$permission');
+    if (permission == LocationPermission.always ||
+        permission == LocationPermission.whileInUse) {
+      return true;
+    }
+
+    if (autoPrompt && _didAutoPromptLocationPermission) return false;
+    if (autoPrompt) _didAutoPromptLocationPermission = true;
+    if (!mounted) return false;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      barrierColor: const Color(0x99000000),
+      builder: (_) {
+        return Material(
+          type: MaterialType.transparency,
+            child: CommonAlertView(
+              title: '위치 권한 필요',
+              subTitle: '지도 사용을 위해 위치 권한이 필요합니다.',
+              primaryButtonTitle: '확인',
+              secondaryButtonTitle: '설정으로 이동',
+              onPrimaryTap: () => Navigator.of(context).pop(true),
+              onSecondaryTap: () async {
+                Navigator.of(context).pop(false);
+                await openAppSettings();
+              },
+            ),
+          );
+        },
+      );
+    if (!mounted || confirmed != true) return false;
+
+    permission = await Geolocator.requestPermission();
+    debugPrint('[CommonMapView] requestedPermission=$permission');
+    if (permission == LocationPermission.always ||
+        permission == LocationPermission.whileInUse) {
+      return true;
+    }
+    if (permission == LocationPermission.deniedForever) {
+      await openAppSettings();
+    }
+    return false;
+  }
+
+  Future<void> _syncMyLocationOverlay({bool moveCamera = false}) async {
+    if (_isFetchingMyLocation) return;
+    final controller = _controller;
+    if (controller == null) return;
+
+    final granted = await _ensureLocationPermission();
+    if (!granted) return;
+
+    _isFetchingMyLocation = true;
+    try {
+      controller.setLocationTrackingMode(NLocationTrackingMode.noFollow);
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+      debugPrint(
+        '[CommonMapView] position lat=${position.latitude}, lng=${position.longitude}',
+      );
+      final target = NLatLng(position.latitude, position.longitude);
+      final overlay = controller.getLocationOverlay();
+      overlay.setIsVisible(true);
+      overlay.setPosition(target);
+
+      if (moveCamera) {
+        await controller.updateCamera(
+          NCameraUpdate.withParams(
+            target: target,
+            zoom: 15,
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('[CommonMapView] syncMyLocationOverlay failed: $e');
+      // Ignore transient GPS/platform errors; user can retry with the location button.
+    } finally {
+      _isFetchingMyLocation = false;
+    }
+  }
+
+  Future<void> _showLocationServiceAlert() async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      barrierColor: const Color(0x99000000),
+      builder: (_) {
+        return Material(
+          type: MaterialType.transparency,
+          child: CommonAlertView(
+            title: '위치 서비스 필요',
+            subTitle: '기기의 위치 서비스가 꺼져 있습니다.',
+            primaryButtonTitle: '확인',
+            secondaryButtonTitle: '설정으로 이동',
+            onPrimaryTap: () => Navigator.of(context).pop(),
+            onSecondaryTap: () async {
+              Navigator.of(context).pop();
+              await Geolocator.openLocationSettings();
+            },
+          ),
+        );
+      },
+    );
   }
 }

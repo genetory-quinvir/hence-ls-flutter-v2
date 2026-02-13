@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../common/widgets/common_navigation_view.dart';
@@ -9,21 +10,21 @@ class SignSuccessView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: SafeArea(
-        bottom: true,
-        child: Column(
-          children: [
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.dark,
+      child: Scaffold(
+        backgroundColor: Colors.white,
+        body: SafeArea(
+          bottom: true,
+          child: Column(
+            children: [
             CommonNavigationView(
-              left: GestureDetector(
-                onTap: () => Navigator.of(context).maybePop(),
-                child: Icon(
-                  PhosphorIconsRegular.x,
-                  size: 24,
-                  color: Colors.black,
-                ),
+              left: const Icon(
+                PhosphorIconsRegular.x,
+                size: 24,
+                color: Colors.black,
               ),
+              onLeftTap: () => Navigator.of(context).maybePop(),
               title: '회원가입 완료',
             ),
             const Expanded(
@@ -50,10 +51,10 @@ class SignSuccessView extends StatelessWidget {
                 textColor: Colors.white,
               ),
             ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 }
-

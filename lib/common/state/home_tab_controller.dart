@@ -5,6 +5,7 @@ class HomeTabController {
 
   static final ValueNotifier<int> currentIndex = ValueNotifier<int>(0);
   static final ValueNotifier<int> feedReloadSignal = ValueNotifier<int>(0);
+  static final ValueNotifier<int> profileReloadSignal = ValueNotifier<int>(0);
   static final ValueNotifier<bool> hasUnreadNotifications =
       ValueNotifier<bool>(false);
 
@@ -14,6 +15,10 @@ class HomeTabController {
 
   static void requestFeedReload() {
     feedReloadSignal.value += 1;
+  }
+
+  static void requestProfileReload() {
+    profileReloadSignal.value += 1;
   }
 
   static void setUnreadNotifications(bool value) {

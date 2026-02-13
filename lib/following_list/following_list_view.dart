@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../common/widgets/common_activity.dart';
@@ -6,7 +7,9 @@ import '../common/widgets/common_empty_view.dart';
 import '../common/widgets/common_navigation_view.dart';
 import '../common/widgets/common_profile_view.dart';
 import '../common/widgets/common_inkwell.dart';
+import '../common/widgets/common_rounded_button.dart';
 import '../common/network/api_client.dart';
+import '../common/auth/auth_store.dart';
 import '../profile/models/follow_user.dart';
 import '../profile/models/profile_display_user.dart';
 import '../profile_info/profile_info_view.dart';
@@ -26,6 +29,7 @@ class FollowingListView extends StatefulWidget {
 
 class _FollowingListViewState extends State<FollowingListView> {
   final List<FollowUser> _users = [];
+  final Set<String> _togglingUserIds = <String>{};
   bool _isLoading = false;
   bool _hasNext = true;
   String? _nextCursor;
@@ -54,16 +58,20 @@ class _FollowingListViewState extends State<FollowingListView> {
         limit: 20,
         cursor: _nextCursor,
       );
-      final data = (json['data'] as Map<String, dynamic>? ?? const {});
-      final listJson = (data['following'] as List<dynamic>? ??
-          data['users'] as List<dynamic>? ??
-          data['items'] as List<dynamic>? ??
+      final data = json['data'];
+      final root = data is Map<String, dynamic>
+          ? data
+          : json;
+      final listJson = (root['following'] as List<dynamic>? ??
+          root['users'] as List<dynamic>? ??
+          root['items'] as List<dynamic>? ??
           const []);
       final newUsers = listJson
           .whereType<Map<String, dynamic>>()
           .map(FollowUser.fromJson)
+          .map((user) => user.copyWith(isFollowing: true))
           .toList();
-      final meta = (data['meta'] as Map<String, dynamic>? ?? const {});
+      final meta = (root['meta'] as Map<String, dynamic>? ?? const {});
       setState(() {
         _users.addAll(newUsers);
         _nextCursor = meta['nextCursor'] as String?;
@@ -74,19 +82,53 @@ class _FollowingListViewState extends State<FollowingListView> {
     }
   }
 
+  Future<void> _toggleFollow(FollowUser user) async {
+    if (_togglingUserIds.contains(user.id)) return;
+    final index = _users.indexWhere((item) => item.id == user.id);
+    if (index < 0) return;
+    final previous = _users[index];
+    final nextFollowing = !previous.isFollowing;
+    setState(() {
+      _togglingUserIds.add(user.id);
+      _users[index] = previous.copyWith(isFollowing: nextFollowing);
+    });
+    try {
+      if (nextFollowing) {
+        await ApiClient.followUser(user.id);
+      } else {
+        await ApiClient.unfollowUser(user.id);
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _users[index] = previous;
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _togglingUserIds.remove(user.id);
+        });
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: Column(
-        children: [
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.dark,
+      child: Scaffold(
+        backgroundColor: Colors.white,
+        body: Column(
+          children: [
           SizedBox(height: MediaQuery.of(context).padding.top),
           CommonNavigationView(
             title: '팔로잉',
-            left: CommonInkWell(
-              onTap: () => Navigator.of(context).maybePop(),
-              child: const Icon(PhosphorIconsRegular.caretLeft, size: 24, color: Colors.black),
+            left: const Icon(
+              PhosphorIconsRegular.caretLeft,
+              size: 24,
+              color: Colors.black,
             ),
+            onLeftTap: () => Navigator.of(context).maybePop(),
           ),
           Expanded(
             child: _users.isEmpty && _isLoading
@@ -110,7 +152,7 @@ class _FollowingListViewState extends State<FollowingListView> {
                         child: ListView.separated(
                           padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
                           itemCount: _users.length + (_isLoading ? 1 : 0),
-                          separatorBuilder: (_, __) => const SizedBox(height: 12),
+                          separatorBuilder: (_, _) => const SizedBox(height: 12),
                           itemBuilder: (context, index) {
                             if (index >= _users.length) {
                               return const Center(
@@ -124,6 +166,7 @@ class _FollowingListViewState extends State<FollowingListView> {
                             final name = user.nickname.isNotEmpty
                                 ? user.nickname
                                 : (user.name ?? '사용자');
+                            final isMe = AuthStore.instance.currentUser.value?.id == user.id;
                             return CommonInkWell(
                               onTap: () {
                                 final displayUser = ProfileDisplayUser(
@@ -161,6 +204,34 @@ class _FollowingListViewState extends State<FollowingListView> {
                                       ),
                                     ),
                                   ),
+                                  if (!isMe) ...[
+                                    const SizedBox(width: 12),
+                                    SizedBox(
+                                      width: 64,
+                                      child: CommonRoundedButton(
+                                        title: user.isFollowing ? '팔로잉' : '팔로우',
+                                        onTap: _togglingUserIds.contains(user.id)
+                                            ? null
+                                            : () => _toggleFollow(user),
+                                        height: 32,
+                                        radius: 8,
+                                        backgroundColor: user.isFollowing
+                                            ? const Color(0xFFF2F2F2)
+                                            : Colors.black,
+                                        textColor: user.isFollowing
+                                            ? Colors.black
+                                            : Colors.white,
+                                        textStyle: TextStyle(
+                                          fontFamily: 'Pretendard',
+                                          fontSize: 12,
+                                          color: user.isFollowing
+                                              ? Colors.black
+                                              : Colors.white,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ],
                               ),
                             );
@@ -168,7 +239,8 @@ class _FollowingListViewState extends State<FollowingListView> {
                         ),
                       ),
           ),
-        ],
+          ],
+        ),
       ),
     );
   }

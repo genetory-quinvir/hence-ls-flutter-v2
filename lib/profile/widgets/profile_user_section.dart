@@ -5,7 +5,6 @@ import 'package:flutter_svg/flutter_svg.dart';
 import '../../common/auth/auth_store.dart';
 import '../../common/widgets/common_inkwell.dart';
 import '../../common/widgets/common_profile_view.dart';
-import '../../common/widgets/common_inkwell.dart';
 import '../../common/widgets/common_rounded_button.dart';
 import '../../profile_edit/profile_edit_view.dart';
 import '../models/profile_display_user.dart';
@@ -55,12 +54,16 @@ class _ProfileUserSectionState extends State<ProfileUserSection> {
   Widget build(BuildContext context) {
     if (widget.displayUser != null) {
       final user = widget.displayUser!;
+      final fallbackEmail = AuthStore.instance.currentUser.value?.email?.trim() ?? '';
+      final resolvedEmail = user.email?.trim().isNotEmpty == true
+          ? user.email!.trim()
+          : fallbackEmail;
         return _ProfileUserContent(
           nickname: user.nickname.trim().isNotEmpty ? user.nickname : '사용자',
-          email: user.email?.trim().isNotEmpty == true ? user.email!.trim() : '',
+          email: resolvedEmail,
           introduction: user.introduction?.trim() ?? '',
           profileImageUrl: user.profileImageUrl,
-          showEditButton: false,
+          showEditButton: widget.showEditButton,
           feedCount: widget.feedCount ?? user.feedCount,
           followingCount: widget.followingCount ?? user.followingCount,
           followerCount: widget.followerCount ?? user.followerCount,
@@ -93,9 +96,9 @@ class _ProfileUserSectionState extends State<ProfileUserSection> {
           introduction: introduction,
           profileImageUrl: user?.profileImageUrl,
           showEditButton: widget.showEditButton,
-          feedCount: widget.feedCount,
-          followingCount: widget.followingCount,
-          followerCount: widget.followerCount,
+          feedCount: widget.feedCount ?? user?.feedCount,
+          followingCount: widget.followingCount ?? user?.followingCount,
+          followerCount: widget.followerCount ?? user?.followerCount,
           showFollowActions: widget.showFollowActions,
           showFollowButton: widget.showFollowButton,
           followingLabel: widget.followingLabel,

@@ -7,6 +7,7 @@ import '../network/api_client.dart';
 import '../utils/time_format.dart';
 import 'common_inkwell.dart';
 import 'common_image_view.dart';
+import 'common_profile_view.dart';
 import '../../profile/models/profile_display_user.dart';
 import '../../feed_comment/feed_comment_view.dart';
 import '../../profile_info/profile_info_view.dart';
@@ -256,14 +257,19 @@ class _CommonFeedItemViewState extends State<CommonFeedItemView> {
                         child: Container(
                           width: 36,
                           height: 36,
-                          decoration: const BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Color(0xFF212121),
-                          ),
-                          clipBehavior: Clip.antiAlias,
-                          child: CommonImageView(
+                          color: const Color(0xFF212121),
+                          child: CommonProfileView(
+                            size: 36,
                             networkUrl: author.profileImageUrl,
-                            fit: BoxFit.cover,
+                            placeholder: Container(
+                              color: const Color(0xFF212121),
+                              alignment: Alignment.center,
+                              child: const Icon(
+                                PhosphorIconsRegular.user,
+                                size: 18,
+                                color: Color(0xFF9E9E9E),
+                              ),
+                            ),
                           ),
                         ),
                       ),
@@ -358,6 +364,7 @@ class _CommonFeedItemViewState extends State<CommonFeedItemView> {
                   color: _liked ? const Color(0xFFE53935) : Colors.white,
                   count: _likeCount,
                   onTap: _isTogglingLike ? null : _toggleLike,
+                  animateOnTap: true,
                 ),
                 const SizedBox(height: 24),
                 _ActionIcon(
@@ -368,12 +375,6 @@ class _CommonFeedItemViewState extends State<CommonFeedItemView> {
                 const SizedBox(height: 24),
                 _ActionIcon(
                   icon: PhosphorIconsRegular.shareNetwork,
-                  count: 0,
-                  onTap: () {},
-                ),
-                const SizedBox(height: 24),
-                _ActionIcon(
-                  icon: PhosphorIconsRegular.star,
                   count: 0,
                   onTap: () {},
                 ),
@@ -395,35 +396,110 @@ class _CommonFeedItemViewState extends State<CommonFeedItemView> {
   }
 }
 
-class _ActionIcon extends StatelessWidget {
+class _ActionIcon extends StatefulWidget {
   const _ActionIcon({
     required this.icon,
     required this.count,
     this.color = Colors.white,
     this.onTap,
+    this.animateOnTap = false,
   });
 
   final IconData icon;
   final int count;
   final Color color;
   final VoidCallback? onTap;
+  final bool animateOnTap;
+
+  @override
+  State<_ActionIcon> createState() => _ActionIconState();
+}
+
+class _ActionIconState extends State<_ActionIcon>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _rotation;
+  late final Animation<double> _translateY;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 260),
+    );
+    _rotation = TweenSequence<double>([
+      TweenSequenceItem(
+        tween: Tween(begin: 0.0, end: 0.18).chain(
+          CurveTween(curve: Curves.easeOut),
+        ),
+        weight: 45,
+      ),
+      TweenSequenceItem(
+        tween: Tween(begin: 0.18, end: 0.0).chain(
+          CurveTween(curve: Curves.easeInOut),
+        ),
+        weight: 55,
+      ),
+    ]).animate(_controller);
+    _translateY = TweenSequence<double>([
+      TweenSequenceItem(
+        tween: Tween(begin: 0.0, end: -10.0).chain(
+          CurveTween(curve: Curves.easeOut),
+        ),
+        weight: 40,
+      ),
+      TweenSequenceItem(
+        tween: Tween(begin: -10.0, end: 0.0).chain(
+          CurveTween(curve: Curves.easeIn),
+        ),
+        weight: 60,
+      ),
+    ]).animate(_controller);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _handleTap() {
+    final onTap = widget.onTap;
+    if (onTap == null) return;
+    onTap();
+    if (!widget.animateOnTap) return;
+    _controller.forward(from: 0);
+  }
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
         CommonInkWell(
-          onTap: onTap,
+          onTap: _handleTap,
           child: Column(
             children: [
-              Icon(
-                icon,
-                color: color,
-                size: 24,
+              AnimatedBuilder(
+                animation: _controller,
+                builder: (context, child) {
+                  return Transform.translate(
+                    offset: Offset(0, _translateY.value),
+                    child: Transform.rotate(
+                      angle: _rotation.value,
+                      child: child,
+                    ),
+                  );
+                },
+                child: Icon(
+                  widget.icon,
+                  color: widget.color,
+                  size: 24,
+                ),
               ),
               const SizedBox(height: 4),
               Text(
-                '$count',
+                '${widget.count}',
                 style: const TextStyle(
                   fontFamily: 'Pretendard',
                   fontSize: 12,

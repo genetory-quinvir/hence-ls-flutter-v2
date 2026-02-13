@@ -14,6 +14,7 @@ class CommonTextFieldView extends StatefulWidget {
     this.textInputAction,
     this.onChanged,
     this.enabled = true,
+    this.darkStyle = false,
   });
 
   final TextEditingController? controller;
@@ -26,6 +27,7 @@ class CommonTextFieldView extends StatefulWidget {
   final TextInputAction? textInputAction;
   final ValueChanged<String>? onChanged;
   final bool enabled;
+  final bool darkStyle;
 
   @override
   State<CommonTextFieldView> createState() => _CommonTextFieldViewState();
@@ -108,10 +110,20 @@ class _CommonTextFieldViewState extends State<CommonTextFieldView> {
     const double headerHeight = 20;
     const double inputHeight = 44;
     const double headerGap = 4;
+    final containerColor =
+        widget.darkStyle ? const Color(0xFF1E1E1E) : const Color(0xFFF2F2F2);
+    final labelColor =
+        widget.darkStyle ? const Color(0xFFBDBDBD) : const Color(0xFF757575);
+    final hintColor = widget.darkStyle
+        ? Colors.white.withOpacity(0.35)
+        : Colors.black.withOpacity(0.35);
+    final textColor = widget.darkStyle ? Colors.white : Colors.black;
+    final clearColor =
+        widget.darkStyle ? const Color(0xFFBDBDBD) : const Color(0xFF9E9E9E);
 
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFFF2F2F2),
+        color: containerColor,
         borderRadius: BorderRadius.circular(12),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -130,20 +142,20 @@ class _CommonTextFieldViewState extends State<CommonTextFieldView> {
                         Expanded(
                           child: Text(
                             widget.title!,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w400,
-                              color: Color(0xFF757575),
+                              color: labelColor,
                             ),
                           ),
                         ),
                         if (showCounter)
                           Text(
                             '$currentLength/${widget.maxLength}',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w400,
-                              color: Color(0xFF757575),
+                              color: labelColor,
                             ),
                           ),
                       ],
@@ -164,12 +176,17 @@ class _CommonTextFieldViewState extends State<CommonTextFieldView> {
                       enabled: widget.enabled,
                       decoration: InputDecoration(
                         hintText: widget.hintText,
-                        hintStyle: TextStyle(color: Colors.black.withOpacity(0.35)),
+                        hintStyle: TextStyle(color: hintColor),
                         filled: false,
                         isDense: true,
                         contentPadding: EdgeInsets.zero,
                         border: InputBorder.none,
                         counterText: '',
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        disabledBorder: InputBorder.none,
+                        errorBorder: InputBorder.none,
+                        focusedErrorBorder: InputBorder.none,
                         suffixIconConstraints: const BoxConstraints(
                           minWidth: 16,
                           minHeight: 36,
@@ -182,14 +199,15 @@ class _CommonTextFieldViewState extends State<CommonTextFieldView> {
                           child: InkWell(
                             onTap: showClear ? _clearText : null,
                             customBorder: const CircleBorder(),
-                            child: const Icon(
+                            child: Icon(
                               PhosphorIconsFill.xCircle,
                               size: 20,
-                              color: Color(0xFF9E9E9E),
+                              color: clearColor,
                             ),
                           ),
                         ),
                       ),
+                      style: TextStyle(color: textColor),
                     ),
                   ),
                 ],
@@ -209,12 +227,17 @@ class _CommonTextFieldViewState extends State<CommonTextFieldView> {
                     enabled: widget.enabled,
                     decoration: InputDecoration(
                       hintText: widget.hintText,
-                      hintStyle: TextStyle(color: Colors.black.withOpacity(0.35)),
+                      hintStyle: TextStyle(color: hintColor),
                       filled: false,
                       isDense: true,
                       contentPadding: EdgeInsets.zero,
                       border: InputBorder.none,
                       counterText: '',
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                      disabledBorder: InputBorder.none,
+                      errorBorder: InputBorder.none,
+                      focusedErrorBorder: InputBorder.none,
                       suffixIconConstraints: const BoxConstraints(
                         minWidth: 16,
                         minHeight: 36,
@@ -227,14 +250,15 @@ class _CommonTextFieldViewState extends State<CommonTextFieldView> {
                         child: InkWell(
                           onTap: showClear ? _clearText : null,
                           customBorder: const CircleBorder(),
-                          child: const Icon(
+                          child: Icon(
                             PhosphorIconsFill.xCircle,
                             size: 20,
-                            color: Color(0xFF9E9E9E),
+                            color: clearColor,
                           ),
                         ),
                       ),
                     ),
+                    style: TextStyle(color: textColor),
                   ),
                 ),
               ),

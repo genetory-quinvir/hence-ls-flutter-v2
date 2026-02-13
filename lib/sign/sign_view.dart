@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
 import 'package:naver_login_sdk/naver_login_sdk.dart';
@@ -10,7 +11,6 @@ import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
 import '../common/widgets/common_navigation_view.dart';
-import '../common/widgets/common_inkwell.dart';
 import '../common/widgets/common_rounded_button.dart';
 import '../common/auth/auth_models.dart';
 import '../common/auth/auth_store.dart';
@@ -317,33 +317,31 @@ class _SignViewState extends State<SignView> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: SafeArea(
-        bottom: true,
-        child: Column(
-          children: [
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.dark,
+      child: Scaffold(
+        backgroundColor: Colors.white,
+        body: SafeArea(
+          bottom: true,
+          child: Column(
+            children: [
             CommonNavigationView(
-              left: GestureDetector(
-                onTap: () => Navigator.of(context).maybePop(),
-                child: Icon(
-                  PhosphorIconsRegular.x,
-                  size: 24,
-                  color: Colors.black,
+              left: const Icon(
+                PhosphorIconsRegular.x,
+                size: 24,
+                color: Colors.black,
+              ),
+              onLeftTap: () => Navigator.of(context).maybePop(),
+              right: Text(
+                '둘러보기',
+                style: TextStyle(
+                  fontFamily: 'Pretendard',
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.grey[600],
                 ),
               ),
-              right: CommonInkWell(
-                onTap: () => Navigator.of(context).maybePop(),
-                child: Text(
-                  '둘러보기',
-                  style: TextStyle(
-                    fontFamily: 'Pretendard',
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.grey[600],
-                  ),
-                ),
-              ),
+              onRightTap: () => Navigator.of(context).maybePop(),
             ),
             const Expanded(child: SizedBox.shrink()),
             Padding(
@@ -472,7 +470,8 @@ class _SignViewState extends State<SignView> {
                 ),
               ),
             ),
-          ],
+            ],
+          ),
         ),
       ),
     );

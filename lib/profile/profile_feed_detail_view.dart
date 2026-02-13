@@ -17,37 +17,40 @@ class ProfileFeedDetailView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: Stack(
-        children: [
-          PageView.builder(
-            scrollDirection: Axis.vertical,
-            controller: PageController(initialPage: initialIndex),
-            itemCount: feeds.length,
-            itemBuilder: (context, index) {
-              return CommonFeedItemView(
-                key: ValueKey(feeds[index].id),
-                feed: feeds[index],
-                padding: EdgeInsets.zero,
-              );
-            },
-          ),
-          SafeArea(
-            bottom: false,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: CommonInkWell(
-                onTap: () => Navigator.of(context).maybePop(),
-                child: const Icon(
-                  Icons.close,
-                  color: Colors.white,
-                  size: 24,
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.light,
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body: Stack(
+          children: [
+            PageView.builder(
+              scrollDirection: Axis.vertical,
+              controller: PageController(initialPage: initialIndex),
+              itemCount: feeds.length,
+              itemBuilder: (context, index) {
+                return CommonFeedItemView(
+                  key: ValueKey(feeds[index].id),
+                  feed: feeds[index],
+                  padding: EdgeInsets.zero,
+                );
+              },
+            ),
+            SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: CommonInkWell(
+                  onTap: () => Navigator.of(context).maybePop(),
+                  child: const Icon(
+                    Icons.close,
+                    color: Colors.white,
+                    size: 24,
+                  ),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

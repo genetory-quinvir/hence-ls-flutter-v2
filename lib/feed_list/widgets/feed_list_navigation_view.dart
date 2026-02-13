@@ -19,35 +19,82 @@ class FeedListNavigationView extends StatelessWidget {
     const selectedStyle = TextStyle(
       color: Colors.white,
       fontFamily: 'Pretendard',
-      fontSize: 18,
-      fontWeight: FontWeight.w600,
+      fontSize: 20,
+      fontWeight: FontWeight.w800,
     );
     const unselectedStyle = TextStyle(
       color: Color(0x55FFFFFF),
       fontFamily: 'Pretendard',
-      fontSize: 18,
-      fontWeight: FontWeight.w600,
+      fontSize: 20,
+      fontWeight: FontWeight.w800,
     );
 
     return SafeArea(
       bottom: false,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CommonInkWell(
-              onTap: onLatestTap,
-              child: Text('최신', style: selectedIndex == 0 ? selectedStyle : unselectedStyle),
-            ),
-            const SizedBox(width: 16),
-            CommonInkWell(
-              onTap: onPopularTap,
-              child: Text('인기', style: selectedIndex == 1 ? selectedStyle : unselectedStyle),
-            ),
-          ],
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CommonInkWell(
+                onTap: onLatestTap,
+                child: _TabLabel(
+                  title: '최신',
+                  selected: selectedIndex == 0,
+                  selectedStyle: selectedStyle,
+                  unselectedStyle: unselectedStyle,
+                ),
+              ),
+              const SizedBox(width: 16),
+              CommonInkWell(
+                onTap: onPopularTap,
+                child: _TabLabel(
+                  title: '인기',
+                  selected: selectedIndex == 1,
+                  selectedStyle: selectedStyle,
+                  unselectedStyle: unselectedStyle,
+                ),
+              ),
+            ],
+          ),
         ),
+      ),
+    );
+  }
+}
+
+class _TabLabel extends StatelessWidget {
+  const _TabLabel({
+    required this.title,
+    required this.selected,
+    required this.selectedStyle,
+    required this.unselectedStyle,
+  });
+
+  final String title;
+  final bool selected;
+  final TextStyle selectedStyle;
+  final TextStyle unselectedStyle;
+
+  @override
+  Widget build(BuildContext context) {
+    return IntrinsicWidth(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: selected ? selectedStyle : unselectedStyle,
+          ),
+          Container(
+            height: 2,
+            width: double.infinity,
+            color: selected ? Colors.white : Colors.transparent,
+          ),
+        ],
       ),
     );
   }

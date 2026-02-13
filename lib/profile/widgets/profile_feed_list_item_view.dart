@@ -23,6 +23,7 @@ class ProfileFeedListItemView extends StatelessWidget {
             backgroundColor: const Color(0xFFF2F2F2),
             networkUrl: imageUrl,
             fit: BoxFit.cover,
+            replayNetworkFade: false,
           ),
           if (imageCount > 1)
             Positioned(

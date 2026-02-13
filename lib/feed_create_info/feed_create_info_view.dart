@@ -15,6 +15,7 @@ import '../common/auth/auth_store.dart';
 import '../common/network/api_client.dart';
 import '../common/state/home_tab_controller.dart';
 import '../common/widgets/common_activity.dart';
+import '../common/widgets/common_alert_view.dart';
 import '../common/widgets/common_inkwell.dart';
 import '../common/widgets/common_image_view.dart';
 import '../common/widgets/common_textfield_view.dart';
@@ -40,17 +41,16 @@ class _FeedCreateInfoViewState extends State<FeedCreateInfoView> {
   final TextEditingController _placeController = TextEditingController();
   final TextEditingController _contentController = TextEditingController();
   bool _isUploading = false;
+  bool _isPrefillingLocation = false;
+  bool _didPromptLocationPermission = false;
   double? _selectedLongitude;
   double? _selectedLatitude;
 
   @override
   void initState() {
     super.initState();
-    SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.dark);
     _pageController = PageController();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _prefillLocation();
-    });
+    _prefillLocation();
   }
 
   @override
@@ -58,8 +58,13 @@ class _FeedCreateInfoViewState extends State<FeedCreateInfoView> {
     _pageController.dispose();
     _placeController.dispose();
     _contentController.dispose();
-    SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.dark);
     super.dispose();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _prefillLocation();
   }
 
   Future<Uint8List?> _imageFuture(AssetEntity asset) {
@@ -98,19 +103,56 @@ class _FeedCreateInfoViewState extends State<FeedCreateInfoView> {
   }
 
   Future<void> _prefillLocation() async {
+    if (_isPrefillingLocation) return;
     if (_placeController.text.trim().isNotEmpty) return;
-    final position = await _getCurrentPosition();
-    if (!mounted || position == null) return;
-    _selectedLatitude = position.latitude;
-    _selectedLongitude = position.longitude;
-    final place = await NaverLocationService.reverseGeocode(
-      latitude: position.latitude,
-      longitude: position.longitude,
-    );
-    if (!mounted) return;
-    if (place != null && place.trim().isNotEmpty) {
-      _placeController.text = place.trim();
+    _isPrefillingLocation = true;
+    try {
+      final granted = await _ensureLocationPermission();
+      if (!mounted || !granted) return;
+      final position = await _getCurrentPosition();
+      if (!mounted || position == null) return;
+      _selectedLatitude = position.latitude;
+      _selectedLongitude = position.longitude;
+      final place = await NaverLocationService.reverseGeocode(
+        latitude: position.latitude,
+        longitude: position.longitude,
+      );
+      if (!mounted) return;
+      if (place != null && place.trim().isNotEmpty) {
+        _placeController.text = place.trim();
+      }
+    } finally {
+      _isPrefillingLocation = false;
     }
+  }
+
+  Future<bool> _ensureLocationPermission() async {
+    final status = await LocationPermissionService.getStatus();
+    if (LocationPermissionService.isGrantedStatus(status)) {
+      return true;
+    }
+    if (_didPromptLocationPermission) return false;
+    _didPromptLocationPermission = true;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      barrierColor: const Color(0x99000000),
+      builder: (_) {
+        return Material(
+          type: MaterialType.transparency,
+          child: CommonAlertView(
+            title: '위치 권한 필요',
+            subTitle: '현재 위치로 장소를 자동 입력하려면 위치 권한이 필요합니다.',
+            primaryButtonTitle: '확인',
+            secondaryButtonTitle: '취소',
+            onPrimaryTap: () => Navigator.of(context).pop(true),
+            onSecondaryTap: () => Navigator.of(context).pop(false),
+          ),
+        );
+      },
+    );
+    if (!mounted || confirmed != true) return false;
+    return LocationPermissionService.requestWhenInUse();
   }
 
   Future<Position?> _getCurrentPosition() async {
@@ -118,10 +160,7 @@ class _FeedCreateInfoViewState extends State<FeedCreateInfoView> {
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) return null;
       final granted = await LocationPermissionService.isGranted();
-      if (!granted) {
-        final requested = await LocationPermissionService.requestWhenInUse();
-        if (!requested) return null;
-      }
+      if (!granted) return null;
       return Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
       );
@@ -186,8 +225,18 @@ class _FeedCreateInfoViewState extends State<FeedCreateInfoView> {
       HomeTabController.requestFeedReload();
     } catch (e) {
       if (!mounted) return;
+      final message = e.toString();
+      final isPathProviderError =
+          message.contains('path_provider_foundation') ||
+          message.contains('PathProviderApi.getDirectoryPath');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('피드 업로드 실패: $e')),
+        SnackBar(
+          content: Text(
+            isPathProviderError
+                ? '피드 업로드 실패: 임시 저장소 접근 오류입니다. 앱을 완전히 종료 후 다시 시도해주세요.'
+                : '피드 업로드 실패: $message',
+          ),
+        ),
       );
     } finally {
       if (mounted) setState(() => _isUploading = false);
@@ -196,37 +245,55 @@ class _FeedCreateInfoViewState extends State<FeedCreateInfoView> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: Stack(
-        children: [
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.light,
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body: Stack(
+          children: [
           Column(
             children: [
               SafeArea(
                 bottom: false,
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  padding: const EdgeInsets.symmetric(horizontal: 8,),
                   child: SizedBox(
-                    height: 48,
-                    child: Row(
+                    height: 44,
+                    child: Stack(
+                      alignment: Alignment.center,
                       children: [
-                        CommonInkWell(
-                          onTap: () => Navigator.of(context).maybePop(),
-                          child: const Icon(
-                            Icons.arrow_back_ios_new,
-                            size: 20,
-                            color: Colors.black,
-                          ),
-                        ),
-                        const Spacer(),
-                        CommonInkWell(
-                          onTap: _submitFeed,
-                          child: const Text(
-                            '올리기',
+                        const Center(
+                          child: Text(
+                            '정보 입력',
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w600,
-                              color: Colors.black,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: CommonInkWell(
+                            onTap: () => Navigator.of(context).maybePop(),
+                            child: const Icon(
+                              Icons.arrow_back_ios_new,
+                              size: 20,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: CommonInkWell(
+                            onTap: _submitFeed,
+                            child: const Text(
+                              '올리기',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                              ),
                             ),
                           ),
                         ),
@@ -242,53 +309,33 @@ class _FeedCreateInfoViewState extends State<FeedCreateInfoView> {
                       return const SizedBox.shrink();
                     }
                     final hasMultiple = widget.selectedAssets.length > 1;
-                    final screen = MediaQuery.of(context).size;
-                    final cardWidth = screen.width - 32;
-                    final cardHeight = cardWidth * (5 / 4);
+                    final imageHeight = constraints.maxWidth * (5 / 4);
                     return SingleChildScrollView(
+                      padding: const EdgeInsets.only(bottom: 16),
                       child: Column(
                         children: [
                           const SizedBox(height: 16),
-                          Container(
-                            color: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            child: SizedBox(
-                              height: cardHeight,
-                              child: hasMultiple
-                                  ? PageView.builder(
-                                      controller: _pageController,
-                                      onPageChanged: (index) {
-                                        setState(() => _pageIndex = index);
-                                      },
-                                      itemCount: widget.selectedAssets.length,
-                                      itemBuilder: (context, index) {
-                                        return Center(
-                                          child: SizedBox(
-                                            width: cardWidth,
-                                            height: cardHeight,
-                                            child: _SelectedImageCard(
-                                              future: _imageFuture(
-                                                  widget.selectedAssets[index]),
-                                              cacheKey:
-                                                  '${widget.selectedAssets[index].id}_1600',
-                                            ),
-                                          ),
-                                        );
-                                      },
-                                    )
-                                  : Center(
-                                      child: SizedBox(
-                                        width: cardWidth,
-                                        height: cardHeight,
-                                        child: _SelectedImageCard(
-                                          future: _imageFuture(
-                                              widget.selectedAssets.first),
-                                          cacheKey:
-                                              '${widget.selectedAssets.first.id}_1600',
-                                        ),
-                                      ),
-                                    ),
-                            ),
+                          SizedBox(
+                            width: double.infinity,
+                            height: imageHeight,
+                            child: hasMultiple
+                                ? PageView.builder(
+                                    controller: _pageController,
+                                    onPageChanged: (index) {
+                                      setState(() => _pageIndex = index);
+                                    },
+                                    itemCount: widget.selectedAssets.length,
+                                    itemBuilder: (context, index) {
+                                      return _SelectedImageCard(
+                                        future: _imageFuture(widget.selectedAssets[index]),
+                                        cacheKey: '${widget.selectedAssets[index].id}_1600',
+                                      );
+                                    },
+                                  )
+                                : _SelectedImageCard(
+                                    future: _imageFuture(widget.selectedAssets.first),
+                                    cacheKey: '${widget.selectedAssets.first.id}_1600',
+                                  ),
                           ),
                           if (hasMultiple) ...[
                             const SizedBox(height: 12),
@@ -301,7 +348,7 @@ class _FeedCreateInfoViewState extends State<FeedCreateInfoView> {
                           const SizedBox(height: 16),
                           Container(
                             width: double.infinity,
-                            color: Colors.white,
+                            color: Colors.black,
                             padding: const EdgeInsets.symmetric(
                               horizontal: 16,
                               vertical: 16,
@@ -316,6 +363,7 @@ class _FeedCreateInfoViewState extends State<FeedCreateInfoView> {
                                       controller: _placeController,
                                       title: '장소',
                                       hintText: '장소 입력',
+                                      darkStyle: true,
                                     ),
                                   ),
                                 ),
@@ -324,11 +372,11 @@ class _FeedCreateInfoViewState extends State<FeedCreateInfoView> {
                                   controller: _contentController,
                                   title: '내용',
                                   hintText: '내용 입력',
+                                  darkStyle: true,
                                 ),
                               ],
                             ),
                           ),
-                          const SizedBox(height: 16),
                         ],
                       ),
                     );
@@ -345,7 +393,8 @@ class _FeedCreateInfoViewState extends State<FeedCreateInfoView> {
                 child: const CommonActivityIndicator(size: 36, color: Colors.white),
               ),
             ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -362,29 +411,22 @@ class _SelectedImageCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFF212121),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: FutureBuilder<Uint8List?>(
-        future: future,
-        builder: (context, snapshot) {
-          final bytes = snapshot.data;
-          if (bytes == null) {
-            return Container(color: const Color(0xFF212121));
-          }
-          return RepaintBoundary(
-            child: CommonImageView(
-              memoryBytes: bytes,
-              cacheKey: cacheKey,
-              fit: BoxFit.contain,
-              backgroundColor: Colors.transparent,
-            ),
-          );
-        },
-      ),
+    return FutureBuilder<Uint8List?>(
+      future: future,
+      builder: (context, snapshot) {
+        final bytes = snapshot.data;
+        if (bytes == null) {
+          return const ColoredBox(color: Colors.black);
+        }
+        return RepaintBoundary(
+          child: CommonImageView(
+            memoryBytes: bytes,
+            cacheKey: cacheKey,
+            fit: BoxFit.contain,
+            backgroundColor: Colors.black,
+          ),
+        );
+      },
     );
   }
 }
@@ -410,7 +452,7 @@ class _PageIndicator extends StatelessWidget {
           margin: const EdgeInsets.symmetric(horizontal: 3),
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: i == index ? Colors.black : const Color(0xFFBDBDBD),
+            color: i == index ? Colors.white : const Color(0xFF666666),
           ),
         ),
       ),

@@ -10,7 +10,6 @@ import '../auth/auth_store.dart';
 import '../../feed_comment/models/feed_comment_model.dart';
 import '../../feed_comment/models/mention_user.dart';
 import '../../profile/models/profile_display_user.dart';
-import '../../profile/models/follow_user.dart';
 
 class ApiClient {
   ApiClient._();
@@ -448,12 +447,12 @@ class ApiClient {
     final query = <String, String>{
       'dir': dir,
       'limit': '$limit',
-      'userId': userId,
     };
     if (cursor != null && cursor.isNotEmpty) {
       query['cursor'] = cursor;
     }
-    final uri = Uri.parse('$baseUrl/api/v1/feeds').replace(queryParameters: query);
+    final uri = Uri.parse('$baseUrl/api/v1/feeds/user/$userId')
+        .replace(queryParameters: query);
     _logRequest('GET', uri);
     final response = await _sendWithAuthRetry(
       () => http.get(uri, headers: _headers()),
@@ -505,18 +504,26 @@ class ApiClient {
     if (cursor != null && cursor.isNotEmpty) {
       query['cursor'] = cursor;
     }
-    final uri = Uri.parse('$baseUrl/api/v1/user-follow/followers/$userId')
-        .replace(queryParameters: query);
-    _logRequest('GET', uri);
-    final response = await _sendWithAuthRetry(
-      () => http.get(uri, headers: _headers()),
-      retryRequest: () => http.get(uri, headers: _headers()),
-    );
-    _logResponse(response);
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception('Followers request failed: ${response.statusCode}');
+    final candidates = <Uri>[
+      Uri.parse('$baseUrl/api/v1/users/$userId/followers')
+          .replace(queryParameters: query),
+      Uri.parse('$baseUrl/api/v1/user-follow/followers/$userId')
+          .replace(queryParameters: query),
+    ];
+    http.Response? lastResponse;
+    for (final uri in candidates) {
+      _logRequest('GET', uri);
+      final response = await _sendWithAuthRetry(
+        () => http.get(uri, headers: _headers()),
+        retryRequest: () => http.get(uri, headers: _headers()),
+      );
+      _logResponse(response);
+      lastResponse = response;
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
     }
-    return jsonDecode(response.body) as Map<String, dynamic>;
+    throw Exception('Followers request failed: ${lastResponse?.statusCode ?? 'unknown'}');
   }
 
   static Future<Map<String, dynamic>> fetchFollowing({
@@ -532,18 +539,26 @@ class ApiClient {
     if (cursor != null && cursor.isNotEmpty) {
       query['cursor'] = cursor;
     }
-    final uri = Uri.parse('$baseUrl/api/v1/user-follow/following/$userId')
-        .replace(queryParameters: query);
-    _logRequest('GET', uri);
-    final response = await _sendWithAuthRetry(
-      () => http.get(uri, headers: _headers()),
-      retryRequest: () => http.get(uri, headers: _headers()),
-    );
-    _logResponse(response);
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception('Following request failed: ${response.statusCode}');
+    final candidates = <Uri>[
+      Uri.parse('$baseUrl/api/v1/users/$userId/following')
+          .replace(queryParameters: query),
+      Uri.parse('$baseUrl/api/v1/user-follow/following/$userId')
+          .replace(queryParameters: query),
+    ];
+    http.Response? lastResponse;
+    for (final uri in candidates) {
+      _logRequest('GET', uri);
+      final response = await _sendWithAuthRetry(
+        () => http.get(uri, headers: _headers()),
+        retryRequest: () => http.get(uri, headers: _headers()),
+      );
+      _logResponse(response);
+      lastResponse = response;
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
     }
-    return jsonDecode(response.body) as Map<String, dynamic>;
+    throw Exception('Following request failed: ${lastResponse?.statusCode ?? 'unknown'}');
   }
 
   static Future<Map<String, dynamic>> fetchMySpaceParticipants({
@@ -570,6 +585,62 @@ class ApiClient {
       throw Exception('My space participants request failed: ${response.statusCode}');
     }
     return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  static Future<List<Map<String, dynamic>>> fetchNearbySpaces({
+    required double latitude,
+    required double longitude,
+    bool? onlyMine,
+    double radiusKm = 10,
+    String? date,
+    int limit = 30,
+    String? liveStatus,
+    List<String>? tagNames,
+    String? hasCategory,
+  }) async {
+    final query = <String, String>{
+      'onlyMine': '${onlyMine ?? false}',
+      'latitude': '$latitude',
+      'longitude': '$longitude',
+      'radius': '$radiusKm',
+      if (date != null && date.isNotEmpty) 'date': date,
+      'limit': '$limit',
+    };
+    if (liveStatus != null && liveStatus.trim().isNotEmpty) {
+      query['liveStatus'] = liveStatus.trim();
+    }
+    if (hasCategory != null && hasCategory.trim().isNotEmpty) {
+      query['hasCategory'] = hasCategory.trim();
+    }
+    if (tagNames != null && tagNames.isNotEmpty) {
+      query['tagNames'] = tagNames.join(',');
+    }
+    final uri = Uri.parse('$baseUrl/api/v1/space/near').replace(queryParameters: query);
+    _logRequest('GET', uri);
+    final response = await _sendWithAuthRetry(
+      () => http.get(uri, headers: _headers()),
+      retryRequest: () => http.get(uri, headers: _headers()),
+    );
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Nearby spaces request failed: ${response.statusCode}');
+    }
+    final json = jsonDecode(response.body);
+    final data = json is Map<String, dynamic> ? json['data'] : null;
+    if (data is List) {
+      return data.whereType<Map<String, dynamic>>().toList();
+    }
+    final root = data is Map<String, dynamic> ? data : json;
+    if (root is Map<String, dynamic>) {
+      final list = root['spaces'] ?? root['items'] ?? root['list'];
+      if (list is List) {
+        return list.whereType<Map<String, dynamic>>().toList();
+      }
+    }
+    if (root is List) {
+      return root.whereType<Map<String, dynamic>>().toList();
+    }
+    return const <Map<String, dynamic>>[];
   }
 
   static Future<FeedCommentPage> fetchFeedComments({

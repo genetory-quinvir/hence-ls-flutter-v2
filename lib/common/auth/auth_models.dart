@@ -9,6 +9,9 @@ class AuthUser {
     this.gender,
     this.dateOfBirth,
     this.activityLevel,
+    this.feedCount,
+    this.followerCount,
+    this.followingCount,
   });
 
   final String id;
@@ -20,6 +23,9 @@ class AuthUser {
   final String? gender;
   final String? dateOfBirth;
   final int? activityLevel;
+  final int? feedCount;
+  final int? followerCount;
+  final int? followingCount;
 
   factory AuthUser.fromJson(Map<String, dynamic> json) {
     final profileImage = json['profileImage'];
@@ -38,6 +44,10 @@ class AuthUser {
       gender: (json['gender'] as String?)?.toLowerCase(),
       dateOfBirth: json['dateOfBirth'] as String?,
       activityLevel: (json['activityLevel'] as num?)?.toInt(),
+      feedCount: (json['feedCount'] as num?)?.toInt() ??
+          (json['postCount'] as num?)?.toInt(),
+      followerCount: (json['followerCount'] as num?)?.toInt(),
+      followingCount: (json['followingCount'] as num?)?.toInt(),
     );
   }
 
@@ -52,6 +62,9 @@ class AuthUser {
       'gender': gender,
       'dateOfBirth': dateOfBirth,
       'activityLevel': activityLevel,
+      'feedCount': feedCount,
+      'followerCount': followerCount,
+      'followingCount': followingCount,
     };
   }
 
@@ -66,6 +79,10 @@ class AuthUser {
       gender: (json['gender'] as String?)?.toLowerCase(),
       dateOfBirth: json['dateOfBirth'] as String?,
       activityLevel: (json['activityLevel'] as num?)?.toInt(),
+      feedCount: (json['feedCount'] as num?)?.toInt() ??
+          (json['postCount'] as num?)?.toInt(),
+      followerCount: (json['followerCount'] as num?)?.toInt(),
+      followingCount: (json['followingCount'] as num?)?.toInt(),
     );
   }
 }

@@ -13,6 +13,7 @@ class CommonTextViewView extends StatefulWidget {
     this.textInputAction,
     this.onChanged,
     this.enabled = true,
+    this.darkStyle = false,
   });
 
   final TextEditingController? controller;
@@ -25,6 +26,7 @@ class CommonTextViewView extends StatefulWidget {
   final TextInputAction? textInputAction;
   final ValueChanged<String>? onChanged;
   final bool enabled;
+  final bool darkStyle;
 
   @override
   State<CommonTextViewView> createState() => _CommonTextViewViewState();
@@ -94,10 +96,18 @@ class _CommonTextViewViewState extends State<CommonTextViewView> {
     final hasTitle = widget.title != null && widget.title!.trim().isNotEmpty;
     final showCounter = hasTitle && widget.maxLength != null;
     final currentLength = _controller.text.length;
+    final containerColor =
+        widget.darkStyle ? const Color(0xFF1E1E1E) : const Color(0xFFF2F2F2);
+    final labelColor =
+        widget.darkStyle ? const Color(0xFFBDBDBD) : const Color(0xFF757575);
+    final hintColor = widget.darkStyle
+        ? Colors.white.withOpacity(0.35)
+        : Colors.black.withOpacity(0.35);
+    final textColor = widget.darkStyle ? Colors.white : Colors.black;
 
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFFF2F2F2),
+        color: containerColor,
         borderRadius: BorderRadius.circular(12),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -112,20 +122,20 @@ class _CommonTextViewViewState extends State<CommonTextViewView> {
                   Expanded(
                     child: Text(
                       widget.title!,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w400,
-                        color: Color(0xFF757575),
+                        color: labelColor,
                       ),
                     ),
                   ),
                   if (showCounter)
                     Text(
                       '$currentLength/${widget.maxLength}',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w400,
-                        color: Color(0xFF757575),
+                        color: labelColor,
                       ),
                     ),
                 ],
@@ -144,13 +154,19 @@ class _CommonTextViewViewState extends State<CommonTextViewView> {
             enabled: widget.enabled,
             decoration: InputDecoration(
               hintText: widget.hintText,
-              hintStyle: TextStyle(color: Colors.black.withOpacity(0.35)),
+              hintStyle: TextStyle(color: hintColor),
               filled: false,
               isDense: true,
               contentPadding: EdgeInsets.zero,
               border: InputBorder.none,
               counterText: '',
+              enabledBorder: InputBorder.none,
+              focusedBorder: InputBorder.none,
+              disabledBorder: InputBorder.none,
+              errorBorder: InputBorder.none,
+              focusedErrorBorder: InputBorder.none,
             ),
+            style: TextStyle(color: textColor),
           ),
         ],
       ),

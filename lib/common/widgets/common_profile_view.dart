@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:figma_squircle/figma_squircle.dart';
 
 import 'common_image_view.dart';
 
@@ -23,9 +24,13 @@ class CommonProfileView extends StatelessWidget {
     return SizedBox(
       width: size,
       height: size,
-      child: ClipOval(
+      child: ClipSmoothRect(
+        radius: SmoothBorderRadius(
+          cornerRadius: size * 0.34,
+          cornerSmoothing: 1,
+        ),
         child: !hasImage && placeholder != null
-            ? placeholder
+            ? placeholder!
             : CommonImageView(
                 networkUrl: networkUrl,
                 assetPath: assetPath,
