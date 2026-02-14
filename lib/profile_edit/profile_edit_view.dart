@@ -101,22 +101,22 @@ class _ProfileEditViewState extends State<ProfileEditView> {
     if (_isGenderPlaceholder) return null;
     switch (_genderText) {
       case '여성':
-        return 'female';
+        return 'FEMALE';
       case '남성':
-        return 'male';
+        return 'MALE';
       case '비밀':
-        return 'secret';
+        return 'SECRET';
     }
     return null;
   }
 
   String _mapGenderLabel(String value) {
-    switch (value.toLowerCase()) {
-      case 'female':
+    switch (value.toUpperCase()) {
+      case 'FEMALE':
         return '여성';
-      case 'male':
+      case 'MALE':
         return '남성';
-      case 'secret':
+      case 'SECRET':
         return '비밀';
     }
     return '성별을 입력하세요';

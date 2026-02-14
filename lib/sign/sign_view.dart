@@ -357,7 +357,7 @@ class _SignViewState extends State<SignView> {
                     textColor: Colors.white,
                     leadingCentered: true,
                     leading: SvgPicture.asset(
-                      'lib/assets/images/icon_naver.svg',
+                      'assets/images/icon_naver.svg',
                       width: 24,
                       height: 24,
                     ),
@@ -372,7 +372,7 @@ class _SignViewState extends State<SignView> {
                     textColor: Colors.black,
                     leadingCentered: true,
                     leading: SvgPicture.asset(
-                      'lib/assets/images/icon_kakao.svg',
+                      'assets/images/icon_kakao.svg',
                       width: 24,
                       height: 24,
                     ),
@@ -388,7 +388,7 @@ class _SignViewState extends State<SignView> {
                     borderColor: const Color(0xFFE0E0E0),
                     leadingCentered: true,
                     leading: SvgPicture.asset(
-                      'lib/assets/images/icon_google.svg',
+                      'assets/images/icon_google.svg',
                       width: 24,
                       height: 24,
                     ),
@@ -403,7 +403,7 @@ class _SignViewState extends State<SignView> {
                     textColor: Colors.white,
                     leadingCentered: true,
                     leading: SvgPicture.asset(
-                      'lib/assets/images/icon_apple.svg',
+                      'assets/images/icon_apple.svg',
                       width: 24,
                       height: 24,
                       colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn),

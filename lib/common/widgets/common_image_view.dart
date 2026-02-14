@@ -15,6 +15,7 @@ class CommonImageView extends StatelessWidget {
     this.blurSigma = 8,
     this.backgroundColor = Colors.transparent,
     this.replayNetworkFade = true,
+    this.placeholderLogoSize = 24,
   });
 
   final String? networkUrl;
@@ -25,6 +26,7 @@ class CommonImageView extends StatelessWidget {
   final double blurSigma;
   final Color backgroundColor;
   final bool replayNetworkFade;
+  final double placeholderLogoSize;
 
   static final _MemoryCache _cache = _MemoryCache(maxEntries: 200);
   static Future<void> prefetchNetworkUrls(Iterable<String> urls) async {
@@ -106,9 +108,9 @@ class CommonImageView extends StatelessWidget {
       color: backgroundColor,
       alignment: Alignment.center,
       child: SvgPicture.asset(
-        'lib/assets/images/icon_logo.svg',
-        width: 24,
-        height: 24,
+        'assets/images/icon_logo.svg',
+        width: placeholderLogoSize,
+        height: placeholderLogoSize,
         colorFilter: ColorFilter.mode(
           const Color(0xFF9E9E9E),
           BlendMode.srcIn,

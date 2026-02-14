@@ -217,7 +217,7 @@ class _ProfileUserContent extends StatelessWidget {
                       Row(
                         children: [
                           SvgPicture.asset(
-                            'lib/assets/images/levels/icon_level_${activityLevel!.clamp(0, 5)}.svg',
+                            'assets/images/levels/icon_level_${activityLevel!.clamp(0, 5)}.svg',
                             width: 14,
                             height: 14,
                           ),

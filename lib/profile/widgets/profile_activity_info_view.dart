@@ -166,7 +166,7 @@ class _LevelItem extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         SvgPicture.asset(
-          'lib/assets/images/levels/icon_level_$level.svg',
+          'assets/images/levels/icon_level_$level.svg',
           width: 28,
           height: 28,
         ),

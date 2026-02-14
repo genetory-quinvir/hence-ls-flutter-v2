@@ -254,10 +254,9 @@ class _CommonFeedItemViewState extends State<CommonFeedItemView> {
                             ),
                           );
                         },
-                        child: Container(
+                        child: SizedBox(
                           width: 36,
                           height: 36,
-                          color: const Color(0xFF212121),
                           child: CommonProfileView(
                             size: 36,
                             networkUrl: author.profileImageUrl,

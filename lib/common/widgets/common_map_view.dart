@@ -11,15 +11,21 @@ class CommonMapView extends StatefulWidget {
     this.initialLatitude,
     this.initialLongitude,
     this.onCenterChanged,
+    this.onCameraMoving,
+    this.onCameraIdle,
     this.centerMarker,
     this.showMyLocationButton = true,
+    this.onMapReady,
   });
 
   final double? initialLatitude;
   final double? initialLongitude;
   final ValueChanged<NLatLng>? onCenterChanged;
+  final VoidCallback? onCameraMoving;
+  final VoidCallback? onCameraIdle;
   final Widget? centerMarker;
   final bool showMyLocationButton;
+  final ValueChanged<NaverMapController>? onMapReady;
 
   @override
   State<CommonMapView> createState() => _CommonMapViewState();
@@ -77,8 +83,13 @@ class _CommonMapViewState extends State<CommonMapView> {
                 _controller = controller;
                 _configureLocationOverlay(context);
                 _syncMyLocationOverlay();
+                widget.onMapReady?.call(controller);
+              },
+              onCameraChange: (_, __) {
+                widget.onCameraMoving?.call();
               },
               onCameraIdle: () async {
+                widget.onCameraIdle?.call();
                 if (widget.onCenterChanged == null) return;
                 final controller = _controller;
                 if (controller == null) return;

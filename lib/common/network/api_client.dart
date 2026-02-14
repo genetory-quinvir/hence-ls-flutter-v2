@@ -595,6 +595,7 @@ class ApiClient {
     String? date,
     int limit = 30,
     String? liveStatus,
+    String? purpose,
     List<String>? tagNames,
     String? hasCategory,
   }) async {
@@ -608,6 +609,9 @@ class ApiClient {
     };
     if (liveStatus != null && liveStatus.trim().isNotEmpty) {
       query['liveStatus'] = liveStatus.trim();
+    }
+    if (purpose != null && purpose.trim().isNotEmpty) {
+      query['purpose'] = purpose.trim();
     }
     if (hasCategory != null && hasCategory.trim().isNotEmpty) {
       query['hasCategory'] = hasCategory.trim();
@@ -627,6 +631,47 @@ class ApiClient {
     }
     final json = jsonDecode(response.body);
     final data = json is Map<String, dynamic> ? json['data'] : null;
+
+    // New format:
+    // {
+    //   "data": {
+    //     "livespace": [],
+    //     "feed": []
+    //   }
+    // }
+    if (data is Map<String, dynamic>) {
+      final livespaceRaw = data['livespace'];
+      final feedRaw = data['feed'];
+      if (livespaceRaw is List || feedRaw is List) {
+        final merged = <Map<String, dynamic>>[];
+        if (livespaceRaw is List) {
+          for (final item in livespaceRaw.whereType<Map<String, dynamic>>()) {
+            final next = Map<String, dynamic>.from(item);
+            next['purpose'] =
+                ((next['purpose'] as String?) ?? 'LIVE').toUpperCase();
+            merged.add(next);
+          }
+        }
+        if (feedRaw is List) {
+          for (final item in feedRaw.whereType<Map<String, dynamic>>()) {
+            final next = Map<String, dynamic>.from(item);
+            next['purpose'] =
+                ((next['purpose'] as String?) ?? 'FEED').toUpperCase();
+            final rawFeed = next['feed'];
+            if (rawFeed is! Map<String, dynamic>) {
+              // If feed item is provided directly, wrap it for current consumers.
+              if (next.containsKey('id') &&
+                  (next.containsKey('content') || next.containsKey('images'))) {
+                next['feed'] = Map<String, dynamic>.from(item);
+              }
+            }
+            merged.add(next);
+          }
+        }
+        return merged;
+      }
+    }
+
     if (data is List) {
       return data.whereType<Map<String, dynamic>>().toList();
     }

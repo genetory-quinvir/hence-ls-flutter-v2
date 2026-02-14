@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../common/widgets/common_empty_view.dart';
 import '../common/widgets/common_livespace_item_view.dart';
+import '../common/widgets/common_feed_list_item_view.dart';
+import '../feed_list/models/feed_models.dart';
 
 class MapListView extends StatelessWidget {
   const MapListView({
@@ -24,12 +27,20 @@ class MapListView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (isLoading && items.isEmpty) {
-      return const Center(
-        child: SizedBox(
+      return Container(
+        color: Colors.white,
+        alignment: Alignment.center,
+        child: const SizedBox(
           width: 24,
           height: 24,
           child: CircularProgressIndicator(strokeWidth: 2),
         ),
+      );
+    }
+    if (items.isEmpty) {
+      return const CommonEmptyView(
+        message: '표시할 항목이 없습니다.',
+        showButton: false,
       );
     }
     return Container(
@@ -42,13 +53,20 @@ class MapListView extends StatelessWidget {
           bottom: 24,
         ),
         itemCount: items.length,
-        separatorBuilder: (_, _) => const Divider(
-          height: 1,
-          thickness: 1,
-          color: Color(0xFFEAEAEA),
-        ),
+        separatorBuilder: (_, _) => const SizedBox.shrink(),
         itemBuilder: (context, index) {
           final item = items[index];
+          final purpose = (item['purpose'] as String?)?.toUpperCase();
+          if (purpose == 'FEED') {
+            final rawFeed = item['feed'];
+            final feedMap =
+                rawFeed is Map<String, dynamic> ? rawFeed : item;
+            final feed = Feed.fromJson(feedMap);
+            return CommonFeedListItemView(
+              feed: feed,
+              onTap: () {},
+            );
+          }
           final thumbnailRaw = item['thumbnail'];
           final thumbnailMap =
               thumbnailRaw is Map<String, dynamic> ? thumbnailRaw : null;

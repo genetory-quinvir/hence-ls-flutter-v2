@@ -28,21 +28,21 @@ class NotificationListItemView extends StatelessWidget {
         template == 'POINTS_USED_GACHA' ||
         template == 'POINTS_USED_ENTRY' ||
         template == 'POINTS_USED_ITEM') {
-      return 'lib/assets/images/icon_noti_point.svg';
+      return 'assets/images/icon_noti_point.svg';
     } else if (template == 'REPORT_ACCEPTED' ||
         template == 'CONTENTS_DELETED' ||
         template == 'WRITER_WARNING' ||
         template == 'USER_BLOCKED' ||
         template == 'SPACE_SHUT_DOWN') {
-      return 'lib/assets/images/icon_noti_report.svg';
+      return 'assets/images/icon_noti_report.svg';
     } else if (template == 'NEW_COMMENT' || template == 'WELCOME_SIGNUP') {
-      return 'lib/assets/images/icon_noti_system.svg';
+      return 'assets/images/icon_noti_system.svg';
     } else if (template == 'NEW_FEED' ||
         template == 'SPACE_10_MIN_CLOSE' ||
         template == 'FEED_LIKED') {
       return null;
     } else {
-      return 'lib/assets/images/icon_noti_notice.svg';
+      return 'assets/images/icon_noti_notice.svg';
     }
   }
 

@@ -234,7 +234,7 @@ class _ProfileActivitySection extends StatelessWidget {
             child: Row(
               children: [
                 SvgPicture.asset(
-                  'lib/assets/images/levels/icon_level_$clampedLevel.svg',
+                  'assets/images/levels/icon_level_$clampedLevel.svg',
                   width: 32,
                   height: 32,
                 ),
