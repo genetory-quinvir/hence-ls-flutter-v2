@@ -27,15 +27,21 @@ class FeedCreateInfoView extends StatefulWidget {
   const FeedCreateInfoView({
     super.key,
     required this.selectedAssets,
+    this.editFeedId,
+    this.initialContent,
     this.initialPlaceName,
     this.initialLatitude,
     this.initialLongitude,
+    this.initialImageUrls = const <String>[],
   });
 
   final List<AssetEntity> selectedAssets;
+  final String? editFeedId;
+  final String? initialContent;
   final String? initialPlaceName;
   final double? initialLatitude;
   final double? initialLongitude;
+  final List<String> initialImageUrls;
 
   @override
   State<FeedCreateInfoView> createState() => _FeedCreateInfoViewState();
@@ -60,6 +66,10 @@ class _FeedCreateInfoViewState extends State<FeedCreateInfoView> {
     if (widget.initialPlaceName != null &&
         widget.initialPlaceName!.trim().isNotEmpty) {
       _placeController.text = widget.initialPlaceName!.trim();
+    }
+    if (widget.initialContent != null &&
+        widget.initialContent!.trim().isNotEmpty) {
+      _contentController.text = widget.initialContent!.trim();
     }
     _selectedLatitude = widget.initialLatitude;
     _selectedLongitude = widget.initialLongitude;
@@ -98,7 +108,11 @@ class _FeedCreateInfoViewState extends State<FeedCreateInfoView> {
           initialLongitude: _selectedLongitude,
           markerImageFuture: widget.selectedAssets.isNotEmpty
               ? _imageFuture(widget.selectedAssets.first)
-              : null,
+              : (widget.initialImageUrls.isNotEmpty
+                  ? CommonImageView.fetchNetworkBytes(
+                      widget.initialImageUrls.first,
+                    )
+                  : null),
         ),
       ),
     );
@@ -212,29 +226,40 @@ class _FeedCreateInfoViewState extends State<FeedCreateInfoView> {
     setState(() => _isUploading = true);
     try {
       final placeName = _placeController.text.trim();
+      if (widget.editFeedId != null && widget.editFeedId!.isNotEmpty) {
+        await ApiClient.updatePersonalFeed(
+          feedId: widget.editFeedId!,
+          content: content,
+          placeName: placeName,
+          longitude: _selectedLongitude,
+          latitude: _selectedLatitude,
+        );
+      } else {
+        final files = <File>[];
+        for (final asset in widget.selectedAssets) {
+          final file = await _assetToFile(asset);
+          if (file == null) continue;
+          final webp = await MediaConversionService.toWebp(file);
+          files.add(webp);
+        }
 
-      final files = <File>[];
-      for (final asset in widget.selectedAssets) {
-        final file = await _assetToFile(asset);
-        if (file == null) continue;
-        final webp = await MediaConversionService.toWebp(file);
-        files.add(webp);
+        final fileIds =
+            files.isEmpty ? <String>[] : await ApiClient.uploadFeedImages(files);
+
+        await ApiClient.createPersonalFeed(
+          content: content,
+          fileIds: fileIds,
+          placeName: placeName,
+          longitude: _selectedLongitude ?? 0,
+          latitude: _selectedLatitude ?? 0,
+        );
       }
-
-      final fileIds =
-          files.isEmpty ? <String>[] : await ApiClient.uploadFeedImages(files);
-
-      await ApiClient.createPersonalFeed(
-        content: content,
-        fileIds: fileIds,
-        placeName: placeName,
-        longitude: _selectedLongitude ?? 0,
-        latitude: _selectedLatitude ?? 0,
-      );
 
       if (!mounted) return;
       Navigator.of(context).popUntil((route) => route.isFirst);
-      HomeTabController.switchTo(1);
+      if (widget.editFeedId == null || widget.editFeedId!.isEmpty) {
+        HomeTabController.switchTo(1);
+      }
       HomeTabController.requestFeedReload();
     } catch (e) {
       if (!mounted) return;
@@ -258,6 +283,7 @@ class _FeedCreateInfoViewState extends State<FeedCreateInfoView> {
 
   @override
   Widget build(BuildContext context) {
+    final isEdit = widget.editFeedId != null && widget.editFeedId!.isNotEmpty;
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.light,
       child: Scaffold(
@@ -289,8 +315,8 @@ class _FeedCreateInfoViewState extends State<FeedCreateInfoView> {
                           alignment: Alignment.centerLeft,
                           child: CommonInkWell(
                             onTap: () => Navigator.of(context).maybePop(),
-                            child: const Icon(
-                              Icons.arrow_back_ios_new,
+                            child: Icon(
+                              isEdit ? Icons.close : Icons.arrow_back_ios_new,
                               size: 20,
                               color: Colors.white,
                             ),
@@ -308,10 +334,13 @@ class _FeedCreateInfoViewState extends State<FeedCreateInfoView> {
               Expanded(
                 child: LayoutBuilder(
                   builder: (context, constraints) {
-                    if (widget.selectedAssets.isEmpty) {
+                    final hasAssets = widget.selectedAssets.isNotEmpty;
+                    final hasInitialImages = widget.initialImageUrls.isNotEmpty;
+                    if (!hasAssets && !hasInitialImages) {
                       return const SizedBox.shrink();
                     }
-                    final hasMultiple = widget.selectedAssets.length > 1;
+                    final hasMultiple =
+                        hasAssets ? widget.selectedAssets.length > 1 : hasInitialImages && widget.initialImageUrls.length > 1;
                     final imageHeight = constraints.maxWidth * (5 / 4);
                     return SingleChildScrollView(
                       padding: const EdgeInsets.only(bottom: 16),
@@ -321,29 +350,54 @@ class _FeedCreateInfoViewState extends State<FeedCreateInfoView> {
                           SizedBox(
                             width: double.infinity,
                             height: imageHeight,
-                            child: hasMultiple
-                                ? PageView.builder(
-                                    controller: _pageController,
-                                    onPageChanged: (index) {
-                                      setState(() => _pageIndex = index);
-                                    },
-                                    itemCount: widget.selectedAssets.length,
-                                    itemBuilder: (context, index) {
-                                      return _SelectedImageCard(
-                                        future: _imageFuture(widget.selectedAssets[index]),
-                                        cacheKey: '${widget.selectedAssets[index].id}_1600',
-                                      );
-                                    },
-                                  )
-                                : _SelectedImageCard(
-                                    future: _imageFuture(widget.selectedAssets.first),
-                                    cacheKey: '${widget.selectedAssets.first.id}_1600',
-                                  ),
+                            child: hasAssets
+                                ? (hasMultiple
+                                    ? PageView.builder(
+                                        controller: _pageController,
+                                        onPageChanged: (index) {
+                                          setState(() => _pageIndex = index);
+                                        },
+                                        itemCount: widget.selectedAssets.length,
+                                        itemBuilder: (context, index) {
+                                          return _SelectedImageCard(
+                                            future: _imageFuture(
+                                              widget.selectedAssets[index],
+                                            ),
+                                            cacheKey:
+                                                '${widget.selectedAssets[index].id}_1600',
+                                          );
+                                        },
+                                      )
+                                    : _SelectedImageCard(
+                                        future: _imageFuture(
+                                          widget.selectedAssets.first,
+                                        ),
+                                        cacheKey:
+                                            '${widget.selectedAssets.first.id}_1600',
+                                      ))
+                                : (hasMultiple
+                                    ? PageView.builder(
+                                        controller: _pageController,
+                                        onPageChanged: (index) {
+                                          setState(() => _pageIndex = index);
+                                        },
+                                        itemCount: widget.initialImageUrls.length,
+                                        itemBuilder: (context, index) {
+                                          return _NetworkImageCard(
+                                            url: widget.initialImageUrls[index],
+                                          );
+                                        },
+                                      )
+                                    : _NetworkImageCard(
+                                        url: widget.initialImageUrls.first,
+                                      )),
                           ),
                           if (hasMultiple) ...[
                             const SizedBox(height: 12),
                             _PageIndicator(
-                              count: widget.selectedAssets.length,
+                              count: hasAssets
+                                  ? widget.selectedAssets.length
+                                  : widget.initialImageUrls.length,
                               index: _pageIndex,
                             ),
                             const SizedBox(height: 12),
@@ -473,6 +527,23 @@ class _PageIndicator extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _NetworkImageCard extends StatelessWidget {
+  const _NetworkImageCard({
+    required this.url,
+  });
+
+  final String url;
+
+  @override
+  Widget build(BuildContext context) {
+    return CommonImageView(
+      networkUrl: url,
+      fit: BoxFit.contain,
+      backgroundColor: Colors.black,
     );
   }
 }

@@ -329,6 +329,57 @@ class ApiClient {
     }
   }
 
+  static Future<void> updatePersonalFeed({
+    required String feedId,
+    required String content,
+    String? placeName,
+    double? longitude,
+    double? latitude,
+    List<String>? fileIds,
+  }) async {
+    final uri = Uri.parse('$baseUrl/api/v1/personal-feed/$feedId');
+    final body = <String, dynamic>{
+      'content': content,
+    };
+    if (placeName != null) {
+      body['placeName'] = placeName;
+    }
+    if (longitude != null) {
+      body['longitude'] = longitude;
+    }
+    if (latitude != null) {
+      body['latitude'] = latitude;
+    }
+    if (fileIds != null) {
+      body['fileIds'] = fileIds;
+    }
+
+    _logJsonRequest('PATCH', uri, body);
+    final response = await _sendWithAuthRetry(
+      () => http.patch(uri, headers: _headers(json: true), body: jsonEncode(body)),
+      retryRequest: () => http.patch(uri, headers: _headers(json: true), body: jsonEncode(body)),
+    );
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Personal feed update failed: ${response.statusCode}');
+    }
+  }
+
+  static Future<void> deletePersonalFeed({
+    required String feedId,
+  }) async {
+    final uri = Uri.parse('$baseUrl/api/v1/personal-feed/$feedId');
+    _logRequest('DELETE', uri);
+    final response = await _sendWithAuthRetry(
+      () => http.delete(uri, headers: _headers()),
+      retryRequest: () => http.delete(uri, headers: _headers()),
+    );
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Personal feed delete failed: ${response.statusCode}');
+    }
+  }
+
   static String? _extractS3Key(dynamic json) {
     if (json is! Map<String, dynamic>) return null;
     final data = json['data'];

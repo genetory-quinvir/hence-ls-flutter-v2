@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:figma_squircle/figma_squircle.dart';
 
+import 'package:phosphor_flutter/phosphor_flutter.dart';
+
 import 'common_image_view.dart';
 
 class CommonProfileView extends StatelessWidget {
@@ -29,8 +31,18 @@ class CommonProfileView extends StatelessWidget {
           cornerRadius: size * 0.34,
           cornerSmoothing: 1,
         ),
-        child: !hasImage && placeholder != null
-            ? placeholder!
+        child: !hasImage
+            ? (placeholder ??
+                const ColoredBox(
+                  color: Color(0xFFF2F2F2),
+                  child: Center(
+                    child: Icon(
+                      PhosphorIconsFill.user,
+                      size: 12,
+                      color: Color(0xFF9E9E9E),
+                    ),
+                  ),
+                ))
             : CommonImageView(
                 networkUrl: networkUrl,
                 assetPath: assetPath,

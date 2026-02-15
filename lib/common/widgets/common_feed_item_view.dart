@@ -3,7 +3,12 @@ import 'package:flutter/cupertino.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../feed_list/models/feed_models.dart';
+import '../auth/auth_store.dart';
 import '../network/api_client.dart';
+import '../state/home_tab_controller.dart';
+import '../../feed_create_info/feed_create_info_view.dart';
+import 'common_title_actionsheet.dart';
+import 'common_alert_view.dart';
 import '../utils/time_format.dart';
 import 'common_inkwell.dart';
 import 'common_image_view.dart';
@@ -379,7 +384,7 @@ class _CommonFeedItemViewState extends State<CommonFeedItemView> {
                 ),
                 const SizedBox(height: 24),
                 CommonInkWell(
-                  onTap: () {},
+                  onTap: () => _showMoreSheet(context),
                   child: const Icon(
                     PhosphorIconsRegular.dotsThree,
                     color: Colors.white,
@@ -392,6 +397,99 @@ class _CommonFeedItemViewState extends State<CommonFeedItemView> {
         ],
       ),
     );
+  }
+
+  void _showMoreSheet(BuildContext context) {
+    final currentUserId = AuthStore.instance.currentUser.value?.id;
+    final isMine =
+        currentUserId != null && currentUserId.isNotEmpty && currentUserId == widget.feed.author.userId;
+    final items = isMine
+        ? const [
+            CommonTitleActionSheetItem(label: '공유하기', value: 'share'),
+            CommonTitleActionSheetItem(label: '수정하기', value: 'edit'),
+            CommonTitleActionSheetItem(
+              label: '삭제하기',
+              value: 'delete',
+              isDestructive: true,
+            ),
+          ]
+        : const [
+            CommonTitleActionSheetItem(label: '공유하기', value: 'share'),
+            CommonTitleActionSheetItem(
+              label: '신고하기',
+              value: 'report',
+              isDestructive: true,
+            ),
+          ];
+    CommonTitleActionSheet.show(
+      context,
+      title: '더보기',
+      items: items,
+      onSelected: (item) {
+        switch (item.value) {
+          case 'edit':
+            _openEditPage(context);
+            break;
+          case 'delete':
+            _deleteFeed(context);
+            break;
+          default:
+            break;
+        }
+      },
+    );
+  }
+
+  Future<void> _openEditPage(BuildContext context) async {
+    final imageUrls = widget.feed.images
+        .map((image) => image.cdnUrl ?? image.fileUrl ?? image.thumbnailUrl)
+        .whereType<String>()
+        .where((url) => url.trim().isNotEmpty)
+        .toList();
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => FeedCreateInfoView(
+          selectedAssets: const [],
+          editFeedId: widget.feed.id,
+          initialContent: widget.feed.content,
+          initialPlaceName: widget.feed.space?.placeName ?? '',
+          initialImageUrls: imageUrls,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _deleteFeed(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) {
+        return Material(
+          type: MaterialType.transparency,
+          child: CommonAlertView(
+            title: '피드를 삭제할까요?',
+            subTitle: '삭제한 피드는 복구할 수 없습니다.',
+            primaryButtonTitle: '삭제',
+            secondaryButtonTitle: '취소',
+            onPrimaryTap: () => Navigator.of(dialogContext).pop(true),
+            onSecondaryTap: () => Navigator.of(dialogContext).pop(false),
+          ),
+        );
+      },
+    );
+    if (confirmed != true) return;
+    try {
+      await ApiClient.deletePersonalFeed(feedId: widget.feed.id);
+      if (!context.mounted) return;
+      Navigator.of(context).maybePop();
+      HomeTabController.requestFeedReload();
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('삭제 실패: $e')),
+      );
+    }
   }
 }
 

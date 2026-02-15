@@ -9,10 +9,14 @@ class LivespaceDetailProfileView extends StatelessWidget {
     super.key,
     required this.title,
     required this.thumbnailUrl,
+    required this.profileImageUrl,
+    required this.nickname,
   });
 
   final String title;
   final String thumbnailUrl;
+  final String? profileImageUrl;
+  final String nickname;
 
   @override
   Widget build(BuildContext context) {
@@ -47,17 +51,41 @@ class LivespaceDetailProfileView extends StatelessWidget {
                 height: _HeaderSection.titleBlockHeight,
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                  child: Align(
-                    alignment: Alignment.topLeft,
-                    child: Text(
-                      title,
-                      style: const TextStyle(
-                        fontFamily: 'Pretendard',
-                        fontSize: 20,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.black,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          fontFamily: 'Pretendard',
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.black,
+                        ),
                       ),
-                    ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          CommonProfileView(
+                            size: 20,
+                            networkUrl: profileImageUrl,
+                            placeholder: const ColoredBox(
+                              color: Color(0xFFF2F2F2),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            nickname,
+                            style: const TextStyle(
+                              fontFamily: 'Pretendard',
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                              color: Color(0xFF616161),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -83,7 +111,7 @@ class _HeaderSection extends StatelessWidget {
   static const double overlap = 25;
   static const double bottomPadding = 12;
   static const double defaultHeight = 317;
-  static const double titleBlockHeight = 48;
+  static const double titleBlockHeight = 68;
 
   @override
   Widget build(BuildContext context) {

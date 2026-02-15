@@ -27,6 +27,22 @@ class LivespaceDetailView extends StatelessWidget {
         (space['thumbnailUrl'] as String?) ??
         (space['imageUrl'] as String?) ??
         '';
+    final user = space['user'] is Map<String, dynamic>
+        ? space['user'] as Map<String, dynamic>
+        : space['creator'] is Map<String, dynamic>
+            ? space['creator'] as Map<String, dynamic>
+            : space['host'] is Map<String, dynamic>
+                ? space['host'] as Map<String, dynamic>
+                : null;
+    final profileImageUrl = _stringOrEmpty(user?['profileImageUrl']) ??
+        _stringOrEmpty(user?['profileImage']) ??
+        _stringOrEmpty(user?['thumbnailUrl']) ??
+        _stringOrEmpty(user?['avatarUrl']);
+    final nickname = _stringOrEmpty(user?['nickname']) ??
+        _stringOrEmpty(user?['name']) ??
+        _stringOrEmpty(space['nickname']) ??
+        _stringOrEmpty(space['userName']) ??
+        '-';
     final place = _stringOrEmpty(space['address']) ??
         _stringOrEmpty(space['place']) ??
         _stringOrEmpty(space['locationName']) ??
@@ -58,8 +74,8 @@ class LivespaceDetailView extends StatelessWidget {
                 elevation: 0,
                 pinned: false,
                 stretch: true,
-                expandedHeight: 365,
-                collapsedHeight: 365,
+                expandedHeight: 385,
+                collapsedHeight: 385,
                 toolbarHeight: 0,
                 flexibleSpace: FlexibleSpaceBar(
                   stretchModes: const [
@@ -68,6 +84,8 @@ class LivespaceDetailView extends StatelessWidget {
                   background: LivespaceDetailProfileView(
                     title: title,
                     thumbnailUrl: thumbnail,
+                    profileImageUrl: profileImageUrl,
+                    nickname: nickname,
                   ),
                 ),
               ),

@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:custom_refresh_indicator/custom_refresh_indicator.dart';
 
@@ -8,6 +9,7 @@ import '../common/widgets/common_livespace_list_item_view.dart';
 import '../common/widgets/common_feed_list_item_view.dart';
 import '../feed_list/models/feed_models.dart';
 import '../livespace_detail/livespace_detail_view.dart';
+import '../profile/profile_feed_detail_view.dart';
 
 class MapListView extends StatelessWidget {
   const MapListView({
@@ -74,6 +76,14 @@ class MapListView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final feeds = <Feed>[];
+    for (final item in items) {
+      final purpose = (item['purpose'] as String?)?.toUpperCase();
+      if (purpose != 'FEED') continue;
+      final rawFeed = item['feed'];
+      final feedMap = rawFeed is Map<String, dynamic> ? rawFeed : item;
+      feeds.add(Feed.fromJson(feedMap));
+    }
     final content = isLoading && items.isEmpty
         ? Container(
             color: Colors.white,
@@ -113,7 +123,21 @@ class MapListView extends StatelessWidget {
             return CommonFeedListItemView(
               feed: feed,
               distanceText: _distanceLabel(lat: lat, lng: lng),
-              onTap: () {},
+              onTap: () {
+                if (feeds.isEmpty) return;
+                final initialIndex =
+                    feeds.indexWhere((entry) => entry.id == feed.id);
+                if (initialIndex < 0) return;
+                showCupertinoModalPopup(
+                  context: context,
+                  builder: (_) => SizedBox.expand(
+                    child: ProfileFeedDetailView(
+                      feeds: feeds,
+                      initialIndex: initialIndex,
+                    ),
+                  ),
+                );
+              },
             );
           }
                   final thumbnailRaw = item['thumbnail'];

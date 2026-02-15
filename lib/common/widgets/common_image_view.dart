@@ -29,6 +29,10 @@ class CommonImageView extends StatelessWidget {
   final double placeholderLogoSize;
 
   static final _MemoryCache _cache = _MemoryCache(maxEntries: 200);
+  static Future<Uint8List?> fetchNetworkBytes(String url) {
+    return _NetworkImageCache.fetch(url);
+  }
+
   static Future<void> prefetchNetworkUrls(Iterable<String> urls) async {
     final futures = <Future<Uint8List?>>[];
     for (final raw in urls) {
