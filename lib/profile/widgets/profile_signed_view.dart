@@ -12,7 +12,7 @@ import '../../common/network/api_client.dart';
 import '../../feed_list/models/feed_models.dart';
 import '../../common/widgets/common_activity.dart';
 import '../../common/widgets/common_image_view.dart';
-import 'profile_participant_list_item_view.dart';
+import '../../common/widgets/common_livespace_list_item_view.dart';
 import '../../common/widgets/common_empty_view.dart';
 import '../profile_feed_detail_view.dart';
 import '../models/profile_display_user.dart';
@@ -441,43 +441,65 @@ class _ProfileParticipantListState extends State<_ProfileParticipantList> {
           SliverOverlapInjector(
             handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context),
           ),
-          SliverList(
-            delegate: SliverChildBuilderDelegate(
-              (context, index) {
-                final item = _items[index];
-                final title = (item['title'] as String?) ??
-                    (item['spaceTitle'] as String?) ??
-                    (item['name'] as String?) ??
-                    '라이브스페이스';
-                final subtitle = (item['placeName'] as String?) ??
-                    (item['address'] as String?) ??
-                    (item['location'] as String?) ??
-                    '';
-                final thumbnail = (item['thumbnail'] as String?) ??
-                    (item['thumbnailUrl'] as String?) ??
-                    (item['imageUrl'] as String?) ??
-                    '';
-                final fallbackUrl = (item['fileUrl'] as String?) ??
-                    (item['image'] as String?) ??
-                    '';
-                return Column(
-                  children: [
-                    ProfileParticipantListItemView(
-                      title: title,
-                      subtitle: subtitle,
-                      thumbnailUrl: thumbnail,
-                      fallbackUrl: fallbackUrl,
-                    ),
-                    if (index != _items.length - 1)
-                      const Divider(
-                        height: 1,
-                        thickness: 1,
-                        color: Color(0xFFE0E0E0),
-                      ),
-                  ],
-                );
-              },
-              childCount: _items.length,
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+            sliver: SliverList(
+              delegate: SliverChildBuilderDelegate(
+                (context, index) {
+                  final item = _items[index];
+                  final title = (item['title'] as String?) ??
+                      (item['spaceTitle'] as String?) ??
+                      (item['name'] as String?) ??
+                      '라이브 스페이스';
+                  final placeName = (item['placeName'] as String?) ??
+                      (item['address'] as String?) ??
+                      (item['location'] as String?) ??
+                      '';
+                  final dateText = (item['date'] as String?) ??
+                      (item['startAt'] as String?) ??
+                      (item['createdAt'] as String?) ??
+                      '오늘';
+                  final thumbnailRaw = item['thumbnail'];
+                  final thumbnailMap =
+                      thumbnailRaw is Map<String, dynamic> ? thumbnailRaw : null;
+                  final thumbnail = (thumbnailRaw is String ? thumbnailRaw : null) ??
+                      thumbnailMap?['cdnUrl'] as String? ??
+                      thumbnailMap?['fileUrl'] as String? ??
+                      (item['thumbnailUrl'] as String?) ??
+                      (item['imageUrl'] as String?) ??
+                      '';
+                  final fallbackUrl = (item['fileUrl'] as String?) ??
+                      (item['image'] as String?) ??
+                      '';
+                  final commentCount = (item['commentCount'] as num?)?.toInt() ??
+                      (item['comments'] as num?)?.toInt() ??
+                      0;
+                  final likeCount = (item['likeCount'] as num?)?.toInt() ??
+                      (item['likes'] as num?)?.toInt() ??
+                      0;
+                  String? distanceText;
+                  final distanceRaw = item['distance'];
+                  if (distanceRaw is String && distanceRaw.trim().isNotEmpty) {
+                    distanceText = distanceRaw.trim();
+                  } else if (distanceRaw is num) {
+                    final km = distanceRaw.toDouble();
+                    distanceText = '${km.toStringAsFixed(1)}km';
+                  } else if (item['distanceKm'] is num) {
+                    final km = (item['distanceKm'] as num).toDouble();
+                    distanceText = '${km.toStringAsFixed(1)}km';
+                  }
+                  return CommonLivespaceListItemView(
+                    title: title,
+                    thumbnailUrl: thumbnail.isNotEmpty ? thumbnail : fallbackUrl,
+                    dateText: dateText,
+                    placeName: placeName,
+                    commentCount: commentCount,
+                    likeCount: likeCount,
+                    distanceText: distanceText,
+                  );
+                },
+                childCount: _items.length,
+              ),
             ),
           ),
           if (_isLoading)
@@ -601,7 +623,7 @@ class _ProfileFeedGridState extends State<_ProfileFeedGrid> {
             handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context),
           ),
           SliverPadding(
-            padding: const EdgeInsets.symmetric(vertical: 2),
+            padding: const EdgeInsets.symmetric(vertical: 16),
             sliver: SliverGrid(
               delegate: SliverChildBuilderDelegate(
                 (context, index) {

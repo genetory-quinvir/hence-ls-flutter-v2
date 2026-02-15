@@ -7,8 +7,10 @@ import 'package:flutter/services.dart';
 import '../common/widgets/common_inkwell.dart';
 import '../common/widgets/common_image_view.dart';
 import '../common/widgets/common_title_actionsheet.dart';
+import '../common/widgets/common_rounded_button.dart';
 import '../common/media/media_picker_service.dart';
 import '../common/permissions/media_permission_service.dart';
+import '../common/location/naver_location_service.dart';
 import '../feed_create_info/feed_create_info_view.dart';
 
 class FeedCreatePhotoView extends StatefulWidget {
@@ -32,6 +34,35 @@ class _FeedCreatePhotoViewState extends State<FeedCreatePhotoView> {
 
   static const int _pageSize = 60;
   static const int _maxSelection = 5;
+
+  Future<void> _goNext() async {
+    if (_selected.isEmpty) return;
+    final place = await _resolveSelectedPlace();
+    if (!mounted) return;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => FeedCreateInfoView(
+          selectedAssets: List.of(_selected),
+          initialPlaceName: place?.name,
+          initialLatitude: place?.lat,
+          initialLongitude: place?.lng,
+        ),
+      ),
+    );
+  }
+
+  Future<({String name, double lat, double lng})?> _resolveSelectedPlace() async {
+    if (_selected.isEmpty) return null;
+    final asset = _selected.first;
+    final latLng = await asset.latlngAsync();
+    if (latLng == null) return null;
+    final place = await NaverLocationService.reverseGeocode(
+      latitude: latLng.latitude,
+      longitude: latLng.longitude,
+    );
+    if (place == null || place.trim().isEmpty) return null;
+    return (name: place.trim(), lat: latLng.latitude, lng: latLng.longitude);
+  }
 
   @override
   void initState() {
@@ -228,32 +259,7 @@ class _FeedCreatePhotoViewState extends State<FeedCreatePhotoView> {
                   ),
                   Align(
                     alignment: Alignment.centerRight,
-                    child: IgnorePointer(
-                      ignoring: _selected.isEmpty,
-                      child: CommonInkWell(
-                        onTap: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => FeedCreateInfoView(
-                                selectedAssets: List.of(_selected),
-                              ),
-                            ),
-                          );
-                        },
-                        child: Text(
-                          _selected.isNotEmpty
-                              ? '다음 (${_selected.length})'
-                              : '다음',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: _selected.isNotEmpty
-                                ? Colors.white
-                                : const Color(0xFF9E9E9E),
-                          ),
-                        ),
-                      ),
-                    ),
+                    child: const SizedBox(width: 24, height: 24),
                   ),
                 ],
               ),
@@ -355,6 +361,25 @@ class _FeedCreatePhotoViewState extends State<FeedCreatePhotoView> {
                       },
                     ),
                   ),
+          ),
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+              child: Opacity(
+                opacity: _selected.isNotEmpty ? 1 : 0.5,
+                child: CommonRoundedButton(
+                  title: _selected.isNotEmpty
+                      ? '다음 (${_selected.length})'
+                      : '다음',
+                  onTap: _selected.isNotEmpty ? _goNext : null,
+                  height: 50,
+                  radius: 12,
+                  backgroundColor: Colors.white,
+                  textColor: Colors.black,
+                ),
+              ),
+            ),
           ),
           ],
         ),

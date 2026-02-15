@@ -18,6 +18,7 @@ import '../common/widgets/common_activity.dart';
 import '../common/widgets/common_alert_view.dart';
 import '../common/widgets/common_inkwell.dart';
 import '../common/widgets/common_image_view.dart';
+import '../common/widgets/common_rounded_button.dart';
 import '../common/widgets/common_textfield_view.dart';
 import '../place_select/place_select_view.dart';
 import '../sign/sign_view.dart';
@@ -26,9 +27,15 @@ class FeedCreateInfoView extends StatefulWidget {
   const FeedCreateInfoView({
     super.key,
     required this.selectedAssets,
+    this.initialPlaceName,
+    this.initialLatitude,
+    this.initialLongitude,
   });
 
   final List<AssetEntity> selectedAssets;
+  final String? initialPlaceName;
+  final double? initialLatitude;
+  final double? initialLongitude;
 
   @override
   State<FeedCreateInfoView> createState() => _FeedCreateInfoViewState();
@@ -50,6 +57,12 @@ class _FeedCreateInfoViewState extends State<FeedCreateInfoView> {
   void initState() {
     super.initState();
     _pageController = PageController();
+    if (widget.initialPlaceName != null &&
+        widget.initialPlaceName!.trim().isNotEmpty) {
+      _placeController.text = widget.initialPlaceName!.trim();
+    }
+    _selectedLatitude = widget.initialLatitude;
+    _selectedLongitude = widget.initialLongitude;
     _prefillLocation();
   }
 
@@ -285,17 +298,7 @@ class _FeedCreateInfoViewState extends State<FeedCreateInfoView> {
                         ),
                         Align(
                           alignment: Alignment.centerRight,
-                          child: CommonInkWell(
-                            onTap: _submitFeed,
-                            child: const Text(
-                              '올리기',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
+                          child: const SizedBox(width: 24, height: 24),
                         ),
                       ],
                     ),
@@ -381,6 +384,20 @@ class _FeedCreateInfoViewState extends State<FeedCreateInfoView> {
                       ),
                     );
                   },
+                ),
+              ),
+              SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                  child: CommonRoundedButton(
+                    title: '올리기',
+                    onTap: _submitFeed,
+                    height: 50,
+                    radius: 12,
+                    backgroundColor: Colors.white,
+                    textColor: Colors.black,
+                  ),
                 ),
               ),
             ],

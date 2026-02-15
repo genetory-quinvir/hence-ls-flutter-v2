@@ -35,8 +35,8 @@ class CommonTabView extends StatelessWidget {
       ),
       _TabItem(
         label: '피드',
-        icon: PhosphorIconsRegular.rss,
-        activeIcon: PhosphorIconsFill.rss,
+        icon: PhosphorIconsRegular.article,
+        activeIcon: PhosphorIconsFill.article,
       ),
       _TabItem(
         label: '만들기',

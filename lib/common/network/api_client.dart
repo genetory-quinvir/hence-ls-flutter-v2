@@ -596,6 +596,7 @@ class ApiClient {
     int limit = 30,
     String? liveStatus,
     String? purpose,
+    String? sortBy,
     List<String>? tagNames,
     String? hasCategory,
   }) async {
@@ -612,6 +613,9 @@ class ApiClient {
     }
     if (purpose != null && purpose.trim().isNotEmpty) {
       query['purpose'] = purpose.trim();
+    }
+    if (sortBy != null && sortBy.trim().isNotEmpty) {
+      query['sortBy'] = sortBy.trim();
     }
     if (hasCategory != null && hasCategory.trim().isNotEmpty) {
       query['hasCategory'] = hasCategory.trim();

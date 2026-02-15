@@ -138,7 +138,7 @@ class _FollowingListViewState extends State<FollowingListView> {
                 : _users.isEmpty
                     ? const CommonEmptyView(
                         message: '팔로잉이 없습니다.',
-                        buttonText: '닫기',
+                        showButton: false,
                       )
                     : NotificationListener<ScrollNotification>(
                         onNotification: (notification) {

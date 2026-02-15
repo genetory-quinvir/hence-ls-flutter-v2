@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:custom_refresh_indicator/custom_refresh_indicator.dart';
 import 'package:flutter/services.dart';
-import 'package:lottie/lottie.dart';
 
 import '../common/network/api_client.dart';
 import '../common/state/home_tab_controller.dart';
@@ -147,11 +147,8 @@ class _FeedListViewState extends State<FeedListView> {
           removeBottom: true,
           child: Stack(
             children: [
-              RefreshIndicator(
+              CustomRefreshIndicator(
                 onRefresh: _handleRefresh,
-                color: Colors.transparent,
-                backgroundColor: Colors.transparent,
-                strokeWidth: 0.01,
                 notificationPredicate: (notification) {
                   if (notification is ScrollStartNotification) {
                     _allowRefreshForCurrentDrag =
@@ -163,6 +160,28 @@ class _FeedListViewState extends State<FeedListView> {
                   if (!_allowRefreshForCurrentDrag) return false;
                   return notification.depth == 0 &&
                       notification.metrics.extentBefore == 0;
+                },
+                builder: (context, child, controller) {
+                  return Stack(
+                    alignment: Alignment.topCenter,
+                    children: [
+                      child,
+                      Positioned(
+                        top: MediaQuery.of(context).padding.top + 12,
+                        child: Opacity(
+                          opacity: controller.value.clamp(0.0, 1.0),
+                          child: const SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
                 },
                 child: PageView.builder(
                   scrollDirection: Axis.vertical,
@@ -212,13 +231,13 @@ class _FeedListViewState extends State<FeedListView> {
                   top: MediaQuery.of(context).padding.top + 12,
                   left: 0,
                   right: 0,
-                  child: Center(
+                  child: const Center(
                     child: SizedBox(
-                      width: 40,
-                      height: 40,
-                      child: Lottie.asset(
-                        'assets/images/lottie/logo_loading.json',
-                        repeat: true,
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
                       ),
                     ),
                   ),

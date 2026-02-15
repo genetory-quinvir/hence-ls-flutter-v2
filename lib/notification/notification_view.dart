@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:custom_refresh_indicator/custom_refresh_indicator.dart';
 import 'package:flutter/services.dart';
 
 import '../common/widgets/common_navigation_view.dart';
@@ -228,11 +229,9 @@ class _NotificationBodyState extends State<_NotificationBody> {
                             }
                             return false;
                           },
-                          child: RefreshIndicator(
+                          child: CustomRefreshIndicator(
                             onRefresh: _handleRefresh,
-                            color: Colors.transparent,
-                            backgroundColor: Colors.transparent,
-                            strokeWidth: 0.01,
+                            builder: (context, child, controller) => child,
                             child: ListView.builder(
                               padding: EdgeInsets.zero,
                               itemCount: _items.length +

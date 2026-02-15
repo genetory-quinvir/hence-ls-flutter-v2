@@ -11,10 +11,12 @@ class CommonFeedListItemView extends StatelessWidget {
   const CommonFeedListItemView({
     super.key,
     required this.feed,
+    this.distanceText,
     this.onTap,
   });
 
   final Feed feed;
+  final String? distanceText;
   final VoidCallback? onTap;
 
   @override
@@ -24,6 +26,7 @@ class CommonFeedListItemView extends StatelessWidget {
     final authorName =
         feed.author.nickname.isNotEmpty ? feed.author.nickname : feed.author.name;
     final createdAt = formatRelativeTime(feed.createdAt);
+    final authorImageUrl = feed.author.profileImageUrl;
     final placeName = feed.space?.placeName ?? '';
     final content = feed.content.trim().isEmpty ? '피드' : feed.content.trim();
 
@@ -66,8 +69,43 @@ class CommonFeedListItemView extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      ClipSmoothRect(
+                        radius: SmoothBorderRadius(
+                          cornerRadius: 5,
+                          cornerSmoothing: 1,
+                        ),
+                        child: SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CommonImageView(
+                            networkUrl: authorImageUrl,
+                            fit: BoxFit.cover,
+                            backgroundColor: const Color(0xFFF2F2F2),
+                            placeholderLogoSize: 8,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          authorName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontFamily: 'Pretendard',
+                            fontSize: 12,
+                            fontWeight: FontWeight.w400,
+                            color: Colors.black,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
                   Text(
-                    '$authorName · $createdAt',
+                    createdAt,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
@@ -106,6 +144,18 @@ class CommonFeedListItemView extends StatelessWidget {
                   const SizedBox(height: 8),
                   Row(
                     children: [
+                      if (distanceText != null && distanceText!.isNotEmpty) ...[
+                        Text(
+                          '~ ${distanceText!}',
+                          style: const TextStyle(
+                            fontFamily: 'Pretendard',
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF616161),
+                          ),
+                        ),
+                      ],
+                      const Spacer(),
                       const Icon(
                         PhosphorIconsRegular.chatCircle,
                         size: 15,

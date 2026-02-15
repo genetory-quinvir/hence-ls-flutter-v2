@@ -9,12 +9,14 @@ class MapNavigationView extends StatelessWidget {
     required this.selectedIndex,
     this.onLatestTap,
     this.onPopularTap,
+    this.onAddressTap,
     this.rightText,
   });
 
   final int selectedIndex;
   final VoidCallback? onLatestTap;
   final VoidCallback? onPopularTap;
+  final VoidCallback? onAddressTap;
   final String? rightText;
 
   @override
@@ -71,32 +73,35 @@ class MapNavigationView extends StatelessWidget {
               if (rightText != null && rightText!.trim().isNotEmpty)
                 Align(
                   alignment: Alignment.centerRight,
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 170),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          PhosphorIconsFill.mapPin,
-                          size: 14,
-                          color: Colors.black,
-                        ),
-                        const SizedBox(width: 4),
-                        Flexible(
-                          child: Text(
-                            rightText!,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            textAlign: TextAlign.right,
-                            style: TextStyle(
-                              fontFamily: 'Pretendard',
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
-                              color: Colors.black,
+                  child: CommonInkWell(
+                    onTap: onAddressTap,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 170),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            PhosphorIconsFill.mapPin,
+                            size: 14,
+                            color: Colors.black,
+                          ),
+                          const SizedBox(width: 4),
+                          Flexible(
+                            child: Text(
+                              rightText!,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: TextAlign.right,
+                              style: TextStyle(
+                                fontFamily: 'Pretendard',
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                color: Colors.black,
+                              ),
                             ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 ),

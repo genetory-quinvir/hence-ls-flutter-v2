@@ -9,6 +9,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../common/location/naver_location_service.dart';
 import '../common/network/api_client.dart';
+import '../common/widgets/common_calendar_view.dart';
 import '../common/widgets/common_dot_marker.dart';
 import '../common/widgets/common_cluster_marker.dart';
 import '../common/widgets/common_feed_marker.dart';
@@ -17,6 +18,7 @@ import '../common/widgets/common_livespace_marker.dart';
 import '../feed_list/models/feed_models.dart';
 import '../list/list_view.dart';
 import '../profile/profile_feed_detail_view.dart';
+import '../livespace_detail/livespace_detail_view.dart';
 import 'widgets/map_navigation_view.dart';
 
 class MapView extends StatefulWidget {
@@ -31,10 +33,12 @@ class _MapViewState extends State<MapView> {
   static const double _liveClusterDistancePx = 52;
   int _selectedIndex = 0;
   String _selectedFilter = '오늘';
+  bool _isHotArea = false;
   String _selectedListSort = '최신순';
   String _selectedListKind = 'LIVE';
   String _selectedPurposeScope = '전체';
   String _centerPlaceText = '';
+  DateTime? _selectedFilterDate;
   final ScrollController _chipScrollController = ScrollController();
   Timer? _reverseGeocodeDebounce;
   bool _isLoadingNear = false;
@@ -46,6 +50,14 @@ class _MapViewState extends State<MapView> {
   bool _isCameraMoving = false;
   String? _selectedLiveMarkerId;
   NLatLng? _lastCenter;
+  double? _lastZoom;
+  double _screenScale = 1.0;
+  double _mapViewportWidth = 0;
+  double _mapViewportHeight = 0;
+  NCircleOverlay? _radiusOverlay;
+  bool _isAddingRadiusOverlay = false;
+  ({NLatLng center, double radiusKm})? _pendingRadiusUpdate;
+  bool _radiusOverlayAdded = false;
   static const List<String> _filters = <String>[
     '오늘',
     '핫한 지역',
@@ -78,58 +90,20 @@ class _MapViewState extends State<MapView> {
   }
 
   List<Map<String, dynamic>> get _listItems {
-    final items = _purposeScopedSpaces.toList();
-    if (_selectedListSort == '인기순') {
-      items.sort((a, b) {
-        final aCount = ((a['participantCount'] as num?)?.toInt() ?? 0) +
-            ((a['likeCount'] as num?)?.toInt() ?? 0);
-        final bCount = ((b['participantCount'] as num?)?.toInt() ?? 0) +
-            ((b['likeCount'] as num?)?.toInt() ?? 0);
-        return bCount.compareTo(aCount);
-      });
-      return items;
-    }
-    if (_selectedListSort == '거리순') {
-      final center = _lastCenter;
-      if (center != null) {
-        items.sort((a, b) {
-          final aLat = (a['latitude'] as num?)?.toDouble();
-          final aLng = (a['longitude'] as num?)?.toDouble();
-          final bLat = (b['latitude'] as num?)?.toDouble();
-          final bLng = (b['longitude'] as num?)?.toDouble();
-          final aDistance = (aLat == null || aLng == null)
-              ? double.infinity
-              : _distanceMeters(
-                  lat1: center.latitude,
-                  lng1: center.longitude,
-                  lat2: aLat,
-                  lng2: aLng,
-                );
-          final bDistance = (bLat == null || bLng == null)
-              ? double.infinity
-              : _distanceMeters(
-                  lat1: center.latitude,
-                  lng1: center.longitude,
-                  lat2: bLat,
-                  lng2: bLng,
-                );
-          return aDistance.compareTo(bDistance);
-        });
-      }
-      return items;
-    }
-    // 최신순
-    DateTime parseDate(Map<String, dynamic> item) {
-      final raw = item['createdAt'] as String? ??
-          item['startAt'] as String? ??
-          item['startsAt'] as String? ??
-          '';
-      if (raw.isEmpty) return DateTime.fromMillisecondsSinceEpoch(0);
-      return DateTime.tryParse(raw.replaceFirst(' ', 'T')) ??
-          DateTime.fromMillisecondsSinceEpoch(0);
-    }
-    items.sort((a, b) => parseDate(b).compareTo(parseDate(a)));
-    return items;
+    return _purposeScopedSpaces.toList();
+  }
+
+  String _displayFilterLabel(String label) {
+    if (label != '오늘') return label;
+    final selected = _selectedFilterDate;
+    if (selected == null) return '오늘';
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final picked = DateTime(selected.year, selected.month, selected.day);
+    final diffDays = today.difference(picked).inDays;
+    if (diffDays == 0) return '오늘';
+    if (diffDays == 1) return '어제';
+    return '${picked.year}. ${picked.month}. ${picked.day}';
   }
 
   @override
@@ -180,29 +154,116 @@ class _MapViewState extends State<MapView> {
     return parts.first;
   }
 
-  Future<void> _fetchNearSpaces(NLatLng center) async {
+  double _radiusKmForZoom(double zoom) {
+    if (zoom >= 17) return 1;
+    if (zoom >= 15) return 3;
+    if (zoom >= 13) return 5;
+    if (zoom >= 11) return 30;
+    return 20;
+  }
+
+  double? _radiusKmForScreen() {
+    final controller = _mapController;
+    if (controller == null || _mapViewportHeight <= 0) return null;
+    final halfHeight = _mapViewportHeight / 2;
+    final metersPerDp = controller.getMeterPerDp();
+    final meters = metersPerDp * halfHeight;
+    if (meters.isNaN || meters.isInfinite || meters <= 0) return null;
+    return meters / 1000;
+  }
+
+  Future<void> _updateRadiusOverlay({
+    required NLatLng center,
+    required double radiusKm,
+  }) async {
+    return;
+    final controller = _mapController;
+    if (controller == null) return;
+    final radiusMeters = radiusKm * 1000;
+    if (_isAddingRadiusOverlay) {
+      _pendingRadiusUpdate = (center: center, radiusKm: radiusKm);
+      return;
+    }
+    if (_radiusOverlay == null || !_radiusOverlayAdded) {
+      final overlay = NCircleOverlay(
+        id: 'map_radius_overlay',
+        center: center,
+        radius: radiusMeters,
+        color: const Color(0x332E6BFF),
+        outlineColor: const Color(0x662E6BFF),
+        outlineWidth: 1.2,
+      );
+      _radiusOverlay = overlay;
+      _isAddingRadiusOverlay = true;
+      try {
+        await controller.addOverlay(overlay);
+        _radiusOverlayAdded = true;
+      } finally {
+        _isAddingRadiusOverlay = false;
+      }
+      final pending = _pendingRadiusUpdate;
+      _pendingRadiusUpdate = null;
+      if (pending != null) {
+        _updateRadiusOverlay(
+          center: pending.center,
+          radiusKm: pending.radiusKm,
+        );
+      }
+    } else {
+      try {
+        _radiusOverlay!.setCenter(center);
+        _radiusOverlay!.setRadius(radiusMeters);
+      } catch (_) {
+        _radiusOverlay = null;
+        _radiusOverlayAdded = false;
+        _updateRadiusOverlay(center: center, radiusKm: radiusKm);
+      }
+    }
+  }
+
+  Future<void> _fetchNearSpaces(NLatLng center, {double? zoom}) async {
     final filter = _selectedFilter;
+    final isHotArea = _isHotArea;
     final isTagFilter = filter == '러닝' || filter == '카페' || filter == '전시';
     final purpose = switch (_selectedPurposeScope) {
       '라이브스페이스만' => 'LIVE',
       '피드만' => 'FEED',
       _ => null,
     };
-    final now = DateTime.now();
-    final yyyy = now.year.toString().padLeft(4, '0');
-    final mm = now.month.toString().padLeft(2, '0');
-    final dd = now.day.toString().padLeft(2, '0');
-    final date = filter == '오늘' ? '$yyyy-$mm-$dd' : null;
+    String formatDate(DateTime value) {
+      final yyyy = value.year.toString().padLeft(4, '0');
+      final mm = value.month.toString().padLeft(2, '0');
+      final dd = value.day.toString().padLeft(2, '0');
+      return '$yyyy-$mm-$dd';
+    }
+    final date = filter == '오늘'
+        ? formatDate(_selectedFilterDate ?? DateTime.now())
+        : null;
+    final effectiveZoom = zoom ?? _lastZoom;
+    final sortBy = isHotArea
+        ? 'popular'
+        : switch (_selectedListSort) {
+            '인기순' => 'popular',
+            '거리순' => 'distance',
+            _ => 'latest',
+          };
+    final screenRadiusKm = _selectedIndex == 1 ? 100.0 : _radiusKmForScreen();
+    final baseRadiusKm =
+        effectiveZoom == null ? 10.0 : _radiusKmForZoom(effectiveZoom);
+    final fallbackRadiusKm = (baseRadiusKm * _screenScale).clamp(1.0, 30.0);
+    final radiusKm = (screenRadiusKm ?? fallbackRadiusKm).clamp(1.0, 500.0);
+    _updateRadiusOverlay(center: center, radiusKm: radiusKm);
     setState(() => _isLoadingNear = true);
     try {
       final spaces = await ApiClient.fetchNearbySpaces(
         latitude: center.latitude,
         longitude: center.longitude,
         onlyMine: false,
-        radiusKm: 10,
+        radiusKm: radiusKm,
         date: date,
         liveStatus: 'all',
         purpose: purpose,
+        sortBy: sortBy,
         tagNames: isTagFilter ? <String>[filter] : null,
         hasCategory: 'all',
       );
@@ -288,6 +349,7 @@ class _MapViewState extends State<MapView> {
       NPoint point,
       String? thumbnailUrl,
       Feed? feed,
+      Map<String, dynamic> space,
       bool isFocused,
       double lat,
       double lng,
@@ -308,6 +370,7 @@ class _MapViewState extends State<MapView> {
         point: point,
         thumbnailUrl: _thumbnailForSpace(space),
         feed: _feedFromSpace(space),
+        space: space,
         isFocused: isFocused,
         lat: lat,
         lng: lng,
@@ -359,6 +422,12 @@ class _MapViewState extends State<MapView> {
                         feeds: feeds,
                         initialIndex: initialIndex,
                       ),
+                    ),
+                  );
+                } else {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => LivespaceDetailView(space: single.space),
                     ),
                   );
                 }
@@ -443,6 +512,7 @@ class _MapViewState extends State<MapView> {
       NPoint point,
       String? thumbnailUrl,
       Feed? feed,
+      Map<String, dynamic> space,
       bool isFocused,
       double lat,
       double lng,
@@ -456,15 +526,16 @@ class _MapViewState extends State<MapView> {
       visited.add(i);
       final seed = entries[i];
       final members = <({
-        String markerId,
-        String purpose,
-        NPoint point,
-        String? thumbnailUrl,
-        Feed? feed,
-        bool isFocused,
-        double lat,
-        double lng,
-      })>[seed];
+      String markerId,
+      String purpose,
+      NPoint point,
+      String? thumbnailUrl,
+      Feed? feed,
+      Map<String, dynamic> space,
+      bool isFocused,
+      double lat,
+      double lng,
+    })>[seed];
       for (var j = i + 1; j < entries.length; j += 1) {
         if (visited.contains(j)) continue;
         final candidate = entries[j];
@@ -560,7 +631,8 @@ class _MapViewState extends State<MapView> {
       try {
         final camera = await controller.getCameraPosition();
         _lastCenter = camera.target;
-        _fetchNearSpaces(camera.target);
+        _lastZoom = camera.zoom;
+        _fetchNearSpaces(camera.target, zoom: camera.zoom);
       } catch (_) {
         // Ignore transient camera errors.
       }
@@ -570,6 +642,19 @@ class _MapViewState extends State<MapView> {
       if (_showLiveMarkers) return;
       setState(() => _showLiveMarkers = true);
     });
+  }
+
+  Future<void> _recenterToLastCenter() async {
+    final controller = _mapController;
+    final center = _lastCenter;
+    if (controller == null || center == null) return;
+    try {
+      await controller.updateCamera(
+        NCameraUpdate.withParams(target: center),
+      );
+    } catch (_) {
+      // Ignore transient map camera errors.
+    }
   }
 
   IconData _iconForFilter(String label) {
@@ -708,14 +793,36 @@ class _MapViewState extends State<MapView> {
                       ),
                     );
                   }
-                  final selected = _selectedFilter == label;
+                  final selected = label == '핫한 지역'
+                      ? _isHotArea
+                      : _selectedFilter == label;
                   final icon = _iconForFilter(label);
+                  final displayLabel = _displayFilterLabel(label);
                   return Padding(
                     padding: const EdgeInsets.only(right: 8),
                     child: KeyedSubtree(
                       key: _chipKeys[label],
                       child: GestureDetector(
-                        onTap: () {
+                        onTap: () async {
+                          if (label == '핫한 지역') {
+                            setState(() => _isHotArea = !_isHotArea);
+                            final center = _lastCenter;
+                            if (center != null) {
+                              _fetchNearSpaces(center);
+                            }
+                            return;
+                          }
+                          if (label == '오늘') {
+                            final picked = await CommonCalendarView.show(
+                              context,
+                              initialDate: _selectedFilterDate ?? DateTime.now(),
+                              lastDate: DateTime.now(),
+                            );
+                            if (!mounted) return;
+                            if (picked != null) {
+                              _selectedFilterDate = picked;
+                            }
+                          }
                           setState(() => _selectedFilter = label);
                           WidgetsBinding.instance.addPostFrameCallback((_) {
                             _centerChip();
@@ -730,7 +837,9 @@ class _MapViewState extends State<MapView> {
                           curve: Curves.easeOut,
                           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                           decoration: BoxDecoration(
-                            color: selected ? Colors.black : Colors.white,
+                            color: label == '핫한 지역' && selected
+                                ? const Color(0xFFE53935)
+                                : Colors.white,
                             borderRadius: BorderRadius.circular(999),
                             boxShadow: [
                               BoxShadow(
@@ -746,16 +855,24 @@ class _MapViewState extends State<MapView> {
                               Icon(
                                 icon,
                                 size: 16,
-                                color: selected ? Colors.white : Colors.black,
+                                color: label == '핫한 지역'
+                                    ? (selected
+                                        ? Colors.white
+                                        : const Color(0xFFE53935))
+                                    : label == '오늘'
+                                        ? const Color(0xFF7A5AF8)
+                                        : (selected ? Colors.white : Colors.black),
                               ),
                               const SizedBox(width: 6),
                               Text(
-                                label,
+                                displayLabel,
                                 style: TextStyle(
                                   fontFamily: 'Pretendard',
                                   fontSize: 13,
                                   fontWeight: FontWeight.w600,
-                                  color: selected ? Colors.white : Colors.black,
+                                  color: label == '핫한 지역' && selected
+                                      ? Colors.white
+                                      : Colors.black,
                                 ),
                               ),
                             ],
@@ -796,7 +913,13 @@ class _MapViewState extends State<MapView> {
                       color: const Color(0x33000000),
                     ),
                   GestureDetector(
-                    onTap: () => setState(() => _selectedListSort = label),
+                    onTap: () {
+                      setState(() => _selectedListSort = label);
+                      final center = _lastCenter;
+                      if (center != null) {
+                        _fetchNearSpaces(center);
+                      }
+                    },
                     behavior: HitTestBehavior.opaque,
                     child: Text(
                       label,
@@ -849,6 +972,8 @@ class _MapViewState extends State<MapView> {
 
   @override
   Widget build(BuildContext context) {
+    final mediaSize = MediaQuery.of(context).size;
+    _screenScale = (mediaSize.shortestSide / 375).clamp(0.85, 1.3);
     final topSafe = MediaQuery.of(context).padding.top;
     const navigationBottomOffset = 56.0;
     const chipTopOffset = navigationBottomOffset + 8;
@@ -881,13 +1006,23 @@ class _MapViewState extends State<MapView> {
                   child: _animatedLayer(
                     visible: _selectedIndex == 0,
                     hiddenOffset: const Offset(-0.04, 0),
-                    child: CommonMapView(
-                      onCenterChanged: _onMapCenterChanged,
-                      onCameraMoving: _onMapCameraMoving,
-                      onCameraIdle: _onMapCameraIdle,
-                      onMapReady: (controller) {
-                        _mapController = controller;
-                        _updateLiveMarkerPoints();
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        if (constraints.maxWidth > 0) {
+                          _mapViewportWidth = constraints.maxWidth;
+                        }
+                        if (constraints.maxHeight > 0) {
+                          _mapViewportHeight = constraints.maxHeight;
+                        }
+                        return CommonMapView(
+                          onCenterChanged: _onMapCenterChanged,
+                          onCameraMoving: _onMapCameraMoving,
+                          onCameraIdle: _onMapCameraIdle,
+                          onMapReady: (controller) {
+                            _mapController = controller;
+                            _updateLiveMarkerPoints();
+                          },
+                        );
                       },
                     ),
                   ),
@@ -914,6 +1049,14 @@ class _MapViewState extends State<MapView> {
                       topPadding: listTopPadding,
                       items: _listItems,
                       isLoading: _isLoadingNear,
+                      currentCenter: _lastCenter == null
+                          ? null
+                          : (lat: _lastCenter!.latitude, lng: _lastCenter!.longitude),
+                      onRefresh: () async {
+                        final center = _lastCenter;
+                        if (center == null) return;
+                        await _fetchNearSpaces(center);
+                      },
                     ),
                   ),
                 ),
@@ -973,6 +1116,11 @@ class _MapViewState extends State<MapView> {
                 selectedIndex: _selectedIndex,
                 onLatestTap: () => _onTabSelected(0),
                 onPopularTap: () => _onTabSelected(1),
+                onAddressTap: () async {
+                  _onTabSelected(0);
+                  await Future<void>.delayed(const Duration(milliseconds: 50));
+                  _recenterToLastCenter();
+                },
                 rightText: _centerPlaceText,
               ),
             ),
@@ -1013,6 +1161,7 @@ class _LiveMarkerCluster {
     NPoint point,
     String? thumbnailUrl,
     Feed? feed,
+    Map<String, dynamic> space,
     bool isFocused,
     double lat,
     double lng,

@@ -308,7 +308,7 @@ class _CommonCalendarViewState extends State<CommonCalendarView> {
             children: [
               const Expanded(
                 child: Text(
-                  '생년월일 변경',
+                  '날짜 변경',
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w500,
@@ -355,6 +355,31 @@ class _CommonCalendarViewState extends State<CommonCalendarView> {
                 ),
               ),
               const Spacer(),
+              CommonInkWell(
+                onTap: () {
+                  final now = DateTime.now();
+                  final today = DateTime(now.year, now.month, now.day);
+                  Navigator.of(context).pop(today);
+                },
+                child: Container(
+                  height: 32,
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF2F2F2),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: const Text(
+                    '오늘',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
               CommonInkWell(
                 onTap: _goToPreviousMonth,
                 child: const SizedBox(
@@ -408,6 +433,11 @@ class _CommonCalendarViewState extends State<CommonCalendarView> {
             itemBuilder: (context, index) {
               final cell = cells[index];
               final isSelected = _isSameDate(cell.date, _selectedDate);
+              final now = DateTime.now();
+              final isToday = _isSameDate(
+                cell.date,
+                DateTime(now.year, now.month, now.day),
+              );
               final isDisabled =
                   cell.date.isBefore(_firstDate) || cell.date.isAfter(_lastDate);
               final textColor = isSelected
@@ -430,6 +460,14 @@ class _CommonCalendarViewState extends State<CommonCalendarView> {
                   decoration: BoxDecoration(
                     color: backgroundColor,
                     borderRadius: BorderRadius.circular(12),
+                    border: isToday
+                        ? const Border.fromBorderSide(
+                            BorderSide(
+                              color: Color(0xFF2EEA7B),
+                              width: 1.6,
+                            ),
+                          )
+                        : null,
                   ),
                   child: Text(
                     '${cell.date.day}',
