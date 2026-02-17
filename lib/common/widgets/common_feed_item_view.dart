@@ -77,7 +77,11 @@ class _CommonFeedItemViewState extends State<CommonFeedItemView> {
       _likeCount = nextCount < 0 ? 0 : nextCount;
     });
     try {
-      await ApiClient.toggleFeedLike(widget.feed.id);
+      if (nextLiked) {
+        await ApiClient.likeFeed(widget.feed.id);
+      } else {
+        await ApiClient.unlikeFeed(widget.feed.id);
+      }
     } catch (_) {
       if (mounted) {
         setState(() {

@@ -80,7 +80,7 @@ class _ProfileSignedViewState extends State<ProfileSignedView> {
       _measureHeaderHeight();
     });
     return DefaultTabController(
-      length: 3,
+      length: 2,
       child: NestedScrollView(
         controller: _scrollController,
         headerSliverBuilder: (context, innerBoxIsScrolled) {
@@ -119,7 +119,6 @@ class _ProfileSignedViewState extends State<ProfileSignedView> {
                     tabs: [
                       Tab(text: '피드'),
                       Tab(text: '참여 스페이스'),
-                      Tab(text: '기록'),
                     ],
                   ),
                 ),
@@ -134,10 +133,6 @@ class _ProfileSignedViewState extends State<ProfileSignedView> {
               emptyButtonText: '피드 작성하기',
             ),
             const _ProfileParticipantList(),
-            const CommonEmptyView(
-              message: '기록이 없습니다.',
-              buttonText: '기록하기',
-            ),
           ],
         ),
       ),
@@ -395,12 +390,12 @@ class _ProfileParticipantListState extends State<_ProfileParticipantList> {
         limit: 20,
         cursor: _nextCursor,
       );
-      final data = (json['data'] as Map<String, dynamic>? ?? const {});
-      final itemsJson = (data['spaces'] as List<dynamic>? ??
-          data['participants'] as List<dynamic>? ??
-          data['items'] as List<dynamic>? ??
-          []);
-      final meta = (data['meta'] as Map<String, dynamic>? ?? const {});
+      final data = json['data'];
+      final itemsJson = data is List
+          ? data
+          : (data is Map<String, dynamic> ? data['feeds'] as List<dynamic>? : null) ??
+              const [];
+      final meta = (json['meta'] as Map<String, dynamic>? ?? const {});
       setState(() {
         _items.addAll(itemsJson.whereType<Map<String, dynamic>>());
         _nextCursor = meta['nextCursor'] as String?;
@@ -559,12 +554,19 @@ class _ProfileFeedGridState extends State<_ProfileFeedGrid> {
     if (_isLoading || !_hasNext) return;
     setState(() => _isLoading = true);
     try {
-      final json = await ApiClient.fetchMyFeeds(
+      final userId = AuthStore.instance.currentUser.value?.id ?? '';
+      final json = await ApiClient.fetchFeeds(
+        orderBy: 'latest',
         limit: 20,
         cursor: _nextCursor,
+        authorUserId: userId,
+        type: 'FEED',
       );
-      final data = (json['data'] as Map<String, dynamic>? ?? const {});
-      final feedsJson = (data['feeds'] as List<dynamic>? ?? []);
+      final data = json['data'];
+      final feedsJson = data is List
+          ? data
+          : (data is Map<String, dynamic> ? data['feeds'] as List<dynamic>? : null) ??
+              const [];
       final newFeeds = feedsJson
           .whereType<Map<String, dynamic>>()
           .map(Feed.fromJson)
@@ -576,7 +578,7 @@ class _ProfileFeedGridState extends State<_ProfileFeedGrid> {
       if (prefetchUrls.isNotEmpty) {
         CommonImageView.prefetchNetworkUrls(prefetchUrls);
       }
-      final meta = (data['meta'] as Map<String, dynamic>? ?? const {});
+      final meta = (json['meta'] as Map<String, dynamic>? ?? const {});
       setState(() {
         _feeds.addAll(newFeeds);
         _nextCursor = meta['nextCursor'] as String?;

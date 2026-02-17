@@ -14,6 +14,7 @@ import '../common/widgets/common_navigation_view.dart';
 import '../common/widgets/common_rounded_button.dart';
 import '../common/auth/auth_models.dart';
 import '../common/auth/auth_store.dart';
+import '../common/network/api_config.dart';
 import '../common/network/api_client.dart';
 import '../sign_success/sign_success_view.dart';
 import '../web/web_view.dart';
@@ -197,7 +198,7 @@ class _SignViewState extends State<SignView> {
               webAuthenticationOptions: WebAuthenticationOptions(
                 clientId: 'com.hence.ls.service',
                 redirectUri: Uri.parse(
-                  'https://ls-api-dev.hence.events/api/v1/auth/apple/callback',
+                  '${ApiConfig.baseUrl}/api/v1/auth/apple/callback',
                 ),
               ),
             );

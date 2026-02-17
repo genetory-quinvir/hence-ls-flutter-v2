@@ -15,6 +15,7 @@ class CommonMapView extends StatefulWidget {
     this.onCameraIdle,
     this.centerMarker,
     this.showMyLocationButton = true,
+    this.onCreateLiveSpace,
     this.onMapReady,
   });
 
@@ -25,6 +26,7 @@ class CommonMapView extends StatefulWidget {
   final VoidCallback? onCameraIdle;
   final Widget? centerMarker;
   final bool showMyLocationButton;
+  final VoidCallback? onCreateLiveSpace;
   final ValueChanged<NaverMapController>? onMapReady;
 
   @override
@@ -101,38 +103,62 @@ class _CommonMapViewState extends State<CommonMapView> {
               IgnorePointer(
                 child: widget.centerMarker!,
               ),
-            if (widget.showMyLocationButton)
+            if (widget.showMyLocationButton || widget.onCreateLiveSpace != null)
               Positioned(
                 right: 16,
                 bottom: 16,
-                child: GestureDetector(
-                  onTap: _moveToMyLocation,
-                  child: Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.18),
-                          blurRadius: 8,
-                          offset: const Offset(0, 3),
-                        ),
-                      ],
-                    ),
-                    alignment: Alignment.center,
-                    child: const Icon(
-                      Icons.my_location,
-                      size: 18,
-                      color: Colors.black,
-                    ),
-                  ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (widget.onCreateLiveSpace != null)
+                      _buildFloatingButton(
+                        icon: Icons.add,
+                        onTap: widget.onCreateLiveSpace!,
+                      ),
+                    if (widget.onCreateLiveSpace != null &&
+                        widget.showMyLocationButton)
+                      const SizedBox(height: 10),
+                    if (widget.showMyLocationButton)
+                      _buildFloatingButton(
+                        icon: Icons.my_location,
+                        onTap: _moveToMyLocation,
+                      ),
+                  ],
                 ),
               ),
           ],
         );
       },
+    );
+  }
+
+  Widget _buildFloatingButton({
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.18),
+              blurRadius: 8,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        alignment: Alignment.center,
+        child: Icon(
+          icon,
+          size: 18,
+          color: Colors.black,
+        ),
+      ),
     );
   }
 

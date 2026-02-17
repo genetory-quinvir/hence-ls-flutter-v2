@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../common/widgets/common_inkwell.dart';
 
@@ -8,11 +9,13 @@ class FeedListNavigationView extends StatelessWidget {
     required this.selectedIndex,
     this.onLatestTap,
     this.onPopularTap,
+    this.onNotificationTap,
   });
 
   final int selectedIndex;
   final VoidCallback? onLatestTap;
   final VoidCallback? onPopularTap;
+  final VoidCallback? onNotificationTap;
 
   @override
   Widget build(BuildContext context) {
@@ -33,32 +36,35 @@ class FeedListNavigationView extends StatelessWidget {
       bottom: false,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Align(
-          alignment: Alignment.centerLeft,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              CommonInkWell(
-                onTap: onLatestTap,
-                child: _TabLabel(
-                  title: '최신',
-                  selected: selectedIndex == 0,
-                  selectedStyle: selectedStyle,
-                  unselectedStyle: unselectedStyle,
-                ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CommonInkWell(
+                    onTap: onLatestTap,
+                    child: _TabLabel(
+                      title: '최신',
+                      selected: selectedIndex == 0,
+                      selectedStyle: selectedStyle,
+                      unselectedStyle: unselectedStyle,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  CommonInkWell(
+                    onTap: onPopularTap,
+                    child: _TabLabel(
+                      title: '인기',
+                      selected: selectedIndex == 1,
+                      selectedStyle: selectedStyle,
+                      unselectedStyle: unselectedStyle,
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(width: 16),
-              CommonInkWell(
-                onTap: onPopularTap,
-                child: _TabLabel(
-                  title: '인기',
-                  selected: selectedIndex == 1,
-                  selectedStyle: selectedStyle,
-                  unselectedStyle: unselectedStyle,
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

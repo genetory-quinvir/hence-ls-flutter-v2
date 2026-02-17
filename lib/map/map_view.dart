@@ -8,6 +8,9 @@ import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../common/location/naver_location_service.dart';
+import '../common/auth/auth_store.dart';
+import '../sign/sign_view.dart';
+import '../livespace_create/livespace_create_view.dart';
 import '../common/network/api_client.dart';
 import '../common/widgets/common_calendar_view.dart';
 import '../common/widgets/common_dot_marker.dart';
@@ -35,7 +38,7 @@ class _MapViewState extends State<MapView> {
   String _selectedFilter = '오늘';
   bool _isHotArea = false;
   String _selectedListSort = '최신순';
-  String _selectedListKind = 'LIVE';
+  String _selectedListKind = 'LIVESPACE';
   String _selectedPurposeScope = '전체';
   String _centerPlaceText = '';
   DateTime? _selectedFilterDate;
@@ -80,7 +83,7 @@ class _MapViewState extends State<MapView> {
   bool _isAllowedByPurposeScope(Map<String, dynamic> item) {
     final purpose = (item['purpose'] as String?)?.toUpperCase();
     if (purpose == null || purpose.isEmpty) return true;
-    if (purpose == 'LIVE') return _selectedPurposeScope == '라이브스페이스만';
+    if (purpose == 'LIVESPACE') return _selectedPurposeScope == '라이브스페이스만';
     if (purpose == 'FEED') return _selectedPurposeScope == '피드만';
     return _selectedPurposeScope == '전체';
   }
@@ -225,10 +228,10 @@ class _MapViewState extends State<MapView> {
     final filter = _selectedFilter;
     final isHotArea = _isHotArea;
     final isTagFilter = filter == '러닝' || filter == '카페' || filter == '전시';
-    final purpose = switch (_selectedPurposeScope) {
-      '라이브스페이스만' => 'LIVE',
+    final type = switch (_selectedPurposeScope) {
+      '라이브스페이스만' => 'LIVESPACE',
       '피드만' => 'FEED',
-      _ => null,
+      _ => 'ALL',
     };
     String formatDate(DateTime value) {
       final yyyy = value.year.toString().padLeft(4, '0');
@@ -240,13 +243,6 @@ class _MapViewState extends State<MapView> {
         ? formatDate(_selectedFilterDate ?? DateTime.now())
         : null;
     final effectiveZoom = zoom ?? _lastZoom;
-    final sortBy = isHotArea
-        ? 'popular'
-        : switch (_selectedListSort) {
-            '인기순' => 'popular',
-            '거리순' => 'distance',
-            _ => 'latest',
-          };
     final screenRadiusKm = _selectedIndex == 1 ? 100.0 : _radiusKmForScreen();
     final baseRadiusKm =
         effectiveZoom == null ? 10.0 : _radiusKmForZoom(effectiveZoom);
@@ -258,14 +254,10 @@ class _MapViewState extends State<MapView> {
       final spaces = await ApiClient.fetchNearbySpaces(
         latitude: center.latitude,
         longitude: center.longitude,
-        onlyMine: false,
         radiusKm: radiusKm,
         date: date,
-        liveStatus: 'all',
-        purpose: purpose,
-        sortBy: sortBy,
-        tagNames: isTagFilter ? <String>[filter] : null,
-        hasCategory: 'all',
+        type: type,
+        tags: isTagFilter ? <String>[filter] : null,
       );
       if (!mounted) return;
       setState(() => _nearSpaces = spaces);
@@ -356,7 +348,8 @@ class _MapViewState extends State<MapView> {
     })>[];
     for (var i = 0; i < _purposeScopedSpaces.length; i += 1) {
       final space = _purposeScopedSpaces[i];
-      final purpose = ((space['purpose'] as String?) ?? 'LIVE').toUpperCase();
+      final purpose =
+          ((space['purpose'] as String?) ?? 'LIVESPACE').toUpperCase();
       final markerId = 'space_${space['id'] ?? i}';
       final point = _liveMarkerPoints[markerId];
       if (point == null) continue;
@@ -1018,6 +1011,7 @@ class _MapViewState extends State<MapView> {
                           onCenterChanged: _onMapCenterChanged,
                           onCameraMoving: _onMapCameraMoving,
                           onCameraIdle: _onMapCameraIdle,
+                          onCreateLiveSpace: _handleCreateLiveSpace,
                           onMapReady: (controller) {
                             _mapController = controller;
                             _updateLiveMarkerPoints();
@@ -1139,6 +1133,26 @@ class _MapViewState extends State<MapView> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  void _handleCreateLiveSpace() {
+    if (!AuthStore.instance.isSignedIn.value) {
+      showCupertinoModalPopup(
+        context: context,
+        builder: (context) {
+          return const SizedBox.expand(
+            child: SignView(),
+          );
+        },
+      );
+      return;
+    }
+    showCupertinoModalPopup(
+      context: context,
+      builder: (_) => const SizedBox.expand(
+        child: LivespaceCreateView(),
       ),
     );
   }

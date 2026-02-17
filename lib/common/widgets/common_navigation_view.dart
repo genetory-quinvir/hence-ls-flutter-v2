@@ -45,10 +45,12 @@ class CommonNavigationView extends StatelessWidget {
             height: 44,
             child: Center(child: child),
           )
-        : ConstrainedBox(
-            constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
-            child: Align(
-              alignment: alignment,
+        : Align(
+            alignment: alignment,
+            widthFactor: 1,
+            heightFactor: 1,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
               child: child,
             ),
           );

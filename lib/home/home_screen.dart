@@ -6,11 +6,11 @@ import '../common/widgets/common_tab_view.dart';
 import '../feed_list/feed_list_view.dart';
 import '../map/map_view.dart';
 import '../profile/profile_view.dart';
-import '../notification/notification_view.dart';
 import '../feed_create_photo/feed_create_photo_view.dart';
 import '../common/state/home_tab_controller.dart';
 import '../common/auth/auth_store.dart';
 import '../sign/sign_view.dart';
+import '../notification/notification_view.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});

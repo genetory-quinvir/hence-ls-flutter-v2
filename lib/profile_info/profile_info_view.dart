@@ -246,18 +246,23 @@ class _ProfileInfoFeedGridState extends State<_ProfileInfoFeedGrid> {
     if (_isLoading || !_hasNext) return;
     setState(() => _isLoading = true);
     try {
-      final json = await ApiClient.fetchUserFeeds(
-        userId: widget.userId,
+      final json = await ApiClient.fetchFeeds(
+        orderBy: 'latest',
         limit: 20,
         cursor: _nextCursor,
+        authorUserId: widget.userId,
+        type: 'FEED',
       );
-      final data = (json['data'] as Map<String, dynamic>? ?? const {});
-      final feedsJson = (data['feeds'] as List<dynamic>? ?? []);
+      final data = json['data'];
+      final feedsJson = data is List
+          ? data
+          : (data is Map<String, dynamic> ? data['feeds'] as List<dynamic>? : null) ??
+              const [];
       final newFeeds = feedsJson
           .whereType<Map<String, dynamic>>()
           .map(Feed.fromJson)
           .toList();
-      final meta = (data['meta'] as Map<String, dynamic>? ?? const {});
+      final meta = (json['meta'] as Map<String, dynamic>? ?? const {});
       setState(() {
         _feeds.addAll(newFeeds);
         _nextCursor = meta['nextCursor'] as String?;

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:custom_refresh_indicator/custom_refresh_indicator.dart';
 import 'package:flutter/services.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../common/widgets/common_navigation_view.dart';
 import '../common/auth/auth_store.dart';
@@ -193,15 +194,28 @@ class _NotificationBodyState extends State<_NotificationBody> {
           bottom: false,
           child: CommonNavigationView(
             title: '알림',
-            right: const Text(
-              '모두 읽음',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-                color: Color(0xFF111111),
+            right: const SizedBox(
+              width: 72,
+              height: 44,
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: Text(
+                  '모두 읽음',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: Color(0xFF111111),
+                  ),
+                ),
               ),
             ),
             onRightTap: _markAllRead,
+            // left: const Icon(
+            //   PhosphorIconsRegular.caretLeft,
+            //   size: 24,
+            //   color: Colors.black,
+            // ),
+            // onLeftTap: () => Navigator.of(context).maybePop(),
           ),
         ),
         Expanded(

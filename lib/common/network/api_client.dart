@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 
+import 'api_config.dart';
 import '../auth/auth_models.dart';
 import '../auth/auth_store.dart';
 import '../../feed_comment/models/feed_comment_model.dart';
@@ -14,11 +15,8 @@ import '../../profile/models/profile_display_user.dart';
 class ApiClient {
   ApiClient._();
 
-  static const bool _isProd = bool.fromEnvironment('PROD', defaultValue: false);
-  static const String baseUrl =
-      _isProd ? 'https://ls-api.hence.events' : 'https://ls-api-dev.hence.events';
-  static const String authBaseUrl =
-      String.fromEnvironment('AUTH_BASE_URL', defaultValue: 'https://ls-api-dev.hence.events');
+  static const String baseUrl = ApiConfig.baseUrl;
+  static const String authBaseUrl = ApiConfig.baseUrl;
 
   static const String authRefreshPath = '/api/v1/auth/refresh';
   static const String _cdnBase = 'https://d8fw6zmrtkhsn.cloudfront.net/';
@@ -246,8 +244,8 @@ class ApiClient {
     }
   }
 
-  static Future<void> toggleFeedLike(String feedId) async {
-    final uri = Uri.parse('$baseUrl/api/v1/feed-likes/toggle/$feedId');
+  static Future<void> likeFeed(String feedId) async {
+    final uri = Uri.parse('$baseUrl/api/v1/feeds/$feedId/like');
     _logRequest('POST', uri);
     final response = await _sendWithAuthRetry(
       () => http.post(uri, headers: _headers()),
@@ -255,7 +253,20 @@ class ApiClient {
     );
     _logResponse(response);
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception('Feed like toggle failed: ${response.statusCode}');
+      throw Exception('Like feed failed: ${response.statusCode}');
+    }
+  }
+
+  static Future<void> unlikeFeed(String feedId) async {
+    final uri = Uri.parse('$baseUrl/api/v1/feeds/$feedId/like');
+    _logRequest('DELETE', uri);
+    final response = await _sendWithAuthRetry(
+      () => http.delete(uri, headers: _headers()),
+      retryRequest: () => http.delete(uri, headers: _headers()),
+    );
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Unlike feed failed: ${response.statusCode}');
     }
   }
 
@@ -441,6 +452,8 @@ class ApiClient {
     int limit = 20,
     String dir = 'next',
     String? cursor,
+    String? authorUserId,
+    String? type,
   }) async {
     final query = <String, String>{
       'dir': dir,
@@ -449,6 +462,12 @@ class ApiClient {
     };
     if (cursor != null && cursor.isNotEmpty) {
       query['cursor'] = cursor;
+    }
+    if (authorUserId != null && authorUserId.isNotEmpty) {
+      query['authorUserId'] = authorUserId;
+    }
+    if (type != null && type.isNotEmpty) {
+      query['type'] = type;
     }
     final uri = Uri.parse('$baseUrl/api/v1/feeds').replace(queryParameters: query);
     _logRequest('GET', uri);
@@ -517,7 +536,7 @@ class ApiClient {
   }
 
   static Future<void> followUser(String userId) async {
-    final uri = Uri.parse('$baseUrl/api/v1/user-follow/$userId');
+    final uri = Uri.parse('$baseUrl/api/v1/users/follow/$userId');
     _logRequest('POST', uri);
     final response = await _sendWithAuthRetry(
       () => http.post(uri, headers: _headers()),
@@ -530,7 +549,7 @@ class ApiClient {
   }
 
   static Future<void> unfollowUser(String userId) async {
-    final uri = Uri.parse('$baseUrl/api/v1/user-follow/$userId');
+    final uri = Uri.parse('$baseUrl/api/v1/users/follow/$userId');
     _logRequest('DELETE', uri);
     final response = await _sendWithAuthRetry(
       () => http.delete(uri, headers: _headers()),
@@ -556,9 +575,7 @@ class ApiClient {
       query['cursor'] = cursor;
     }
     final candidates = <Uri>[
-      Uri.parse('$baseUrl/api/v1/users/$userId/followers')
-          .replace(queryParameters: query),
-      Uri.parse('$baseUrl/api/v1/user-follow/followers/$userId')
+      Uri.parse('$baseUrl/api/v1/users/followers/$userId')
           .replace(queryParameters: query),
     ];
     http.Response? lastResponse;
@@ -591,9 +608,7 @@ class ApiClient {
       query['cursor'] = cursor;
     }
     final candidates = <Uri>[
-      Uri.parse('$baseUrl/api/v1/users/$userId/following')
-          .replace(queryParameters: query),
-      Uri.parse('$baseUrl/api/v1/user-follow/following/$userId')
+      Uri.parse('$baseUrl/api/v1/users/followings/$userId')
           .replace(queryParameters: query),
     ];
     http.Response? lastResponse;
@@ -617,14 +632,19 @@ class ApiClient {
     String dir = 'next',
     String? cursor,
   }) async {
+    final userId = AuthStore.instance.currentUser.value?.id ?? '';
     final query = <String, String>{
       'dir': dir,
       'limit': '$limit',
+      'type': 'LIVESPACE',
     };
     if (cursor != null && cursor.isNotEmpty) {
       query['cursor'] = cursor;
     }
-    final uri = Uri.parse('$baseUrl/api/v1/space-participants/mine')
+    if (userId.isNotEmpty) {
+      query['authorUserId'] = userId;
+    }
+    final uri = Uri.parse('$baseUrl/api/v1/feeds')
         .replace(queryParameters: query);
     _logRequest('GET', uri);
     final response = await _sendWithAuthRetry(
@@ -641,40 +661,26 @@ class ApiClient {
   static Future<List<Map<String, dynamic>>> fetchNearbySpaces({
     required double latitude,
     required double longitude,
-    bool? onlyMine,
     double radiusKm = 10,
     String? date,
     int limit = 30,
-    String? liveStatus,
-    String? purpose,
-    String? sortBy,
-    List<String>? tagNames,
-    String? hasCategory,
+    String? type,
+    List<String>? tags,
   }) async {
     final query = <String, String>{
-      'onlyMine': '${onlyMine ?? false}',
       'latitude': '$latitude',
       'longitude': '$longitude',
       'radius': '$radiusKm',
       if (date != null && date.isNotEmpty) 'date': date,
       'limit': '$limit',
     };
-    if (liveStatus != null && liveStatus.trim().isNotEmpty) {
-      query['liveStatus'] = liveStatus.trim();
+    if (type != null && type.trim().isNotEmpty) {
+      query['type'] = type.trim();
     }
-    if (purpose != null && purpose.trim().isNotEmpty) {
-      query['purpose'] = purpose.trim();
+    if (tags != null && tags.isNotEmpty) {
+      query['tags'] = tags.join(',');
     }
-    if (sortBy != null && sortBy.trim().isNotEmpty) {
-      query['sortBy'] = sortBy.trim();
-    }
-    if (hasCategory != null && hasCategory.trim().isNotEmpty) {
-      query['hasCategory'] = hasCategory.trim();
-    }
-    if (tagNames != null && tagNames.isNotEmpty) {
-      query['tagNames'] = tagNames.join(',');
-    }
-    final uri = Uri.parse('$baseUrl/api/v1/space/near').replace(queryParameters: query);
+    final uri = Uri.parse('$baseUrl/api/v1/map/near').replace(queryParameters: query);
     _logRequest('GET', uri);
     final response = await _sendWithAuthRetry(
       () => http.get(uri, headers: _headers()),
@@ -687,58 +693,34 @@ class ApiClient {
     final json = jsonDecode(response.body);
     final data = json is Map<String, dynamic> ? json['data'] : null;
 
-    // New format:
+    // Expected format:
     // {
     //   "data": {
-    //     "livespace": [],
-    //     "feed": []
+    //     "feeds": [ ... ],
+    //     "meta": { "feedCount": 0 }
     //   }
     // }
     if (data is Map<String, dynamic>) {
-      final livespaceRaw = data['livespace'];
-      final feedRaw = data['feed'];
-      if (livespaceRaw is List || feedRaw is List) {
-        final merged = <Map<String, dynamic>>[];
-        if (livespaceRaw is List) {
-          for (final item in livespaceRaw.whereType<Map<String, dynamic>>()) {
-            final next = Map<String, dynamic>.from(item);
-            next['purpose'] =
-                ((next['purpose'] as String?) ?? 'LIVE').toUpperCase();
-            merged.add(next);
-          }
-        }
-        if (feedRaw is List) {
-          for (final item in feedRaw.whereType<Map<String, dynamic>>()) {
-            final next = Map<String, dynamic>.from(item);
-            next['purpose'] =
-                ((next['purpose'] as String?) ?? 'FEED').toUpperCase();
-            final rawFeed = next['feed'];
-            if (rawFeed is! Map<String, dynamic>) {
-              // If feed item is provided directly, wrap it for current consumers.
-              if (next.containsKey('id') &&
-                  (next.containsKey('content') || next.containsKey('images'))) {
-                next['feed'] = Map<String, dynamic>.from(item);
+      final feeds = data['feeds'];
+      if (feeds is List) {
+        return feeds
+            .whereType<Map<String, dynamic>>()
+            .map((item) {
+              final next = Map<String, dynamic>.from(item);
+              final type = (next['type'] as String?)?.toUpperCase();
+              if (type == 'LIVESPACE') {
+                next['purpose'] = 'LIVESPACE';
+              } else if (type == 'FEED') {
+                next['purpose'] = 'FEED';
               }
-            }
-            merged.add(next);
-          }
-        }
-        return merged;
+              return next;
+            })
+            .toList();
       }
     }
 
     if (data is List) {
       return data.whereType<Map<String, dynamic>>().toList();
-    }
-    final root = data is Map<String, dynamic> ? data : json;
-    if (root is Map<String, dynamic>) {
-      final list = root['spaces'] ?? root['items'] ?? root['list'];
-      if (list is List) {
-        return list.whereType<Map<String, dynamic>>().toList();
-      }
-    }
-    if (root is List) {
-      return root.whereType<Map<String, dynamic>>().toList();
     }
     return const <Map<String, dynamic>>[];
   }
@@ -750,15 +732,16 @@ class ApiClient {
     String dir = 'next',
   }) async {
     final query = <String, String>{
-      'feedId': feedId,
+      'entityType': 'FEED',
+      'entityId': feedId,
       'limit': '$limit',
       'dir': dir,
     };
     if (cursor != null && cursor.isNotEmpty) {
       query['cursor'] = cursor;
     }
-    final uri = Uri.parse('$baseUrl/api/v1/feed-comments')
-        .replace(queryParameters: query);
+    final uri =
+        Uri.parse('$baseUrl/api/v1/comments').replace(queryParameters: query);
     _logRequest('GET', uri);
     final response = await _sendWithAuthRetry(
       () => http.get(uri, headers: _headers()),
@@ -834,14 +817,22 @@ class ApiClient {
 
   static Future<void> createCommentReply({
     required String commentId,
+    required String feedId,
     required String content,
     String? fileId,
   }) async {
-    final uri = Uri.parse('$baseUrl/api/v1/feed-comments/$commentId/replies');
+    final uri = Uri.parse('$baseUrl/api/v1/comments');
+    final userId = AuthStore.instance.currentUser.value?.id;
     final body = <String, dynamic>{
+      'entityType': 'FEED',
+      'entityId': feedId,
+      'parentId': commentId,
       'content': content,
       'fileId': fileId,
     };
+    if (userId != null && userId.isNotEmpty) {
+      body['userId'] = userId;
+    }
     _logJsonRequest('POST', uri, body);
     final response = await _sendWithAuthRetry(
       () => http.post(uri, headers: _headers(json: true), body: jsonEncode(body)),
@@ -858,12 +849,18 @@ class ApiClient {
     required String content,
     String? fileId,
   }) async {
-    final uri = Uri.parse('$baseUrl/api/v1/feed-comments');
+    final uri = Uri.parse('$baseUrl/api/v1/comments');
+    final userId = AuthStore.instance.currentUser.value?.id;
     final body = <String, dynamic>{
-      'feedId': feedId,
+      'entityType': 'FEED',
+      'entityId': feedId,
+      'parentId': null,
       'content': content,
       'fileId': fileId,
     };
+    if (userId != null && userId.isNotEmpty) {
+      body['userId'] = userId;
+    }
     _logJsonRequest('POST', uri, body);
     final response = await _sendWithAuthRetry(
       () => http.post(uri, headers: _headers(json: true), body: jsonEncode(body)),
@@ -892,8 +889,13 @@ class ApiClient {
   static Future<List<FeedCommentItem>> fetchCommentReplies({
     required String commentId,
   }) async {
-    final uri =
-        Uri.parse('$baseUrl/api/v1/feed-comments/$commentId/replies');
+    final uri = Uri.parse('$baseUrl/api/v1/comments/replies').replace(
+      queryParameters: {
+        'parentId': commentId,
+        'dir': 'next',
+        'limit': '20',
+      },
+    );
     _logRequest('GET', uri);
     final response = await _sendWithAuthRetry(
       () => http.get(uri, headers: _headers()),
@@ -930,7 +932,7 @@ class ApiClient {
     if (cursor != null && cursor.isNotEmpty) {
       query['cursor'] = cursor;
     }
-    final uri = Uri.parse('$baseUrl/api/v1/notifications/mine')
+    final uri = Uri.parse('$baseUrl/api/v1/notifications')
         .replace(queryParameters: query);
     _logRequest('GET', uri);
     final response = await _sendWithAuthRetry(
@@ -939,7 +941,7 @@ class ApiClient {
     );
     _logResponse(response);
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception('My notifications request failed: ${response.statusCode}');
+      throw Exception('Notifications request failed: ${response.statusCode}');
     }
     return jsonDecode(response.body) as Map<String, dynamic>;
   }

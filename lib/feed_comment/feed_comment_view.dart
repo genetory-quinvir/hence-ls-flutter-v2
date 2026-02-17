@@ -193,6 +193,7 @@ class _FeedCommentViewState extends State<FeedCommentView> {
       } else {
         await ApiClient.createCommentReply(
           commentId: target.id,
+          feedId: widget.feedId,
           content: content,
           fileId: null,
         );
@@ -253,7 +254,9 @@ class _FeedCommentViewState extends State<FeedCommentView> {
     if (_loadingReplies.contains(commentId)) return;
     setState(() => _loadingReplies.add(commentId));
     try {
-      final replies = await ApiClient.fetchCommentReplies(commentId: commentId);
+      final replies = await ApiClient.fetchCommentReplies(
+        commentId: commentId,
+      );
       if (!mounted) return;
       setState(() => _repliesByCommentId[commentId] = replies);
     } catch (_) {

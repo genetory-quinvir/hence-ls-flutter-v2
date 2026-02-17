@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import '../common/network/api_client.dart';
 import '../common/state/home_tab_controller.dart';
 import '../common/widgets/common_feed_item_view.dart';
+import '../notification/notification_view.dart';
 import 'models/feed_models.dart';
 import 'widgets/feed_list_navigation_view.dart';
 
@@ -27,7 +28,7 @@ class _FeedListViewState extends State<FeedListView> {
   bool _allowRefreshForCurrentDrag = false;
   late final VoidCallback _reloadListener;
 
-  String get _orderBy => _selectedIndex == 0 ? 'all' : 'popular';
+  String get _orderBy => _selectedIndex == 0 ? 'latest' : 'popular';
 
   @override
   void initState() {
@@ -80,13 +81,16 @@ class _FeedListViewState extends State<FeedListView> {
         orderBy: _orderBy,
         limit: 20,
       );
-      final data = (json['data'] as Map<String, dynamic>? ?? const {});
-      final feedsJson = (data['feeds'] as List<dynamic>? ?? []);
+      final data = json['data'];
+      final feedsJson = data is List
+          ? data
+          : (data is Map<String, dynamic> ? data['feeds'] as List<dynamic>? : null) ??
+              const [];
       final refreshedFeeds = feedsJson
           .whereType<Map<String, dynamic>>()
           .map(Feed.fromJson)
           .toList();
-      final meta = (data['meta'] as Map<String, dynamic>? ?? const {});
+      final meta = (json['meta'] as Map<String, dynamic>? ?? const {});
       setState(() {
         _feeds
           ..clear()
@@ -110,13 +114,16 @@ class _FeedListViewState extends State<FeedListView> {
         limit: 20,
         cursor: _nextCursor,
       );
-      final data = (json['data'] as Map<String, dynamic>? ?? const {});
-      final feedsJson = (data['feeds'] as List<dynamic>? ?? []);
+      final data = json['data'];
+      final feedsJson = data is List
+          ? data
+          : (data is Map<String, dynamic> ? data['feeds'] as List<dynamic>? : null) ??
+              const [];
       final newFeeds = feedsJson
           .whereType<Map<String, dynamic>>()
           .map(Feed.fromJson)
           .toList();
-      final meta = (data['meta'] as Map<String, dynamic>? ?? const {});
+      final meta = (json['meta'] as Map<String, dynamic>? ?? const {});
       setState(() {
         _feeds.addAll(newFeeds);
         _nextCursor = meta['nextCursor'] as String?;
@@ -213,6 +220,13 @@ class _FeedListViewState extends State<FeedListView> {
                   selectedIndex: _selectedIndex,
                   onLatestTap: () => _onTabSelected(0),
                   onPopularTap: () => _onTabSelected(1),
+                  onNotificationTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const NotificationView(),
+                      ),
+                    );
+                  },
                 ),
               ),
               if (_feeds.isEmpty && _isLoading)

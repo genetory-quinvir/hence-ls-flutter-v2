@@ -6,7 +6,9 @@ import '../common/auth/auth_store.dart';
 import '../common/network/api_client.dart';
 import '../common/state/home_tab_controller.dart';
 import '../common/widgets/common_navigation_view.dart';
+import '../common/widgets/common_inkwell.dart';
 import '../common/widgets/common_profile_view.dart';
+import '../notification/notification_view.dart';
 import '../settings/settings_view.dart';
 import 'widgets/profile_not_signed_view.dart';
 import 'widgets/profile_signed_view.dart';
@@ -97,16 +99,30 @@ class _ProfileViewState extends State<ProfileView> {
                         ),
                       ),
                     ),
-                    right: const Icon(
-                      PhosphorIconsRegular.gear,
-                      size: 24,
-                      color: Colors.black,
+                    right: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        CommonInkWell(
+                          onTap: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => const SettingsView(),
+                              ),
+                            );
+                          },
+                          child: const SizedBox(
+                            width: 44,
+                            height: 44,
+                            child: Icon(
+                              PhosphorIconsRegular.gear,
+                              size: 24,
+                              color: Colors.black,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                    onRightTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const SettingsView()),
-                      );
-                    },
+                    onRightTap: null,
                   );
                 },
               ),
