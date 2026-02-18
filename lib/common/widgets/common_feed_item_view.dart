@@ -193,6 +193,7 @@ class _CommonFeedItemViewState extends State<CommonFeedItemView> {
         ? widget.feed.placeName
         : (widget.feed.space?.placeName ?? '');
     final maxTextWidth = MediaQuery.of(context).size.width - 32;
+    final safeBottom = MediaQuery.of(context).padding.bottom;
     final textStyle = const TextStyle(
       fontSize: 14,
       fontWeight: FontWeight.w400,
@@ -288,6 +289,26 @@ class _CommonFeedItemViewState extends State<CommonFeedItemView> {
           Positioned(
             left: 0,
             right: 0,
+            top: 0,
+            child: IgnorePointer(
+              child: Container(
+                height: 120,
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Color(0xCC000000),
+                      Color(0x00000000),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            left: 0,
+            right: 0,
             bottom: 0,
             child: IgnorePointer(
               child: Container(
@@ -309,7 +330,7 @@ class _CommonFeedItemViewState extends State<CommonFeedItemView> {
             Positioned(
               left: 16,
               right: 64,
-              bottom: 24,
+              bottom: 24 + safeBottom,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -454,7 +475,7 @@ class _CommonFeedItemViewState extends State<CommonFeedItemView> {
             ),
           Positioned(
             right: 16,
-            bottom: 24,
+            bottom: 24 + safeBottom,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [

@@ -12,12 +12,16 @@ class ProfileFeedDetailView extends StatefulWidget {
     required this.initialIndex,
     this.onFeedUpdated,
     this.openCommentsOnAppear = false,
+    this.safeAreaBottom = false,
+    this.extraBottomPadding = 0,
   });
 
   final List<Feed> feeds;
   final int initialIndex;
   final void Function(Feed updated)? onFeedUpdated;
   final bool openCommentsOnAppear;
+  final bool safeAreaBottom;
+  final double extraBottomPadding;
 
   @override
   State<ProfileFeedDetailView> createState() => _ProfileFeedDetailViewState();
@@ -61,39 +65,50 @@ class _ProfileFeedDetailViewState extends State<ProfileFeedDetailView> {
       value: SystemUiOverlayStyle.light,
       child: Scaffold(
         backgroundColor: Colors.black,
-        body: Stack(
-          children: [
-            PageView.builder(
-              scrollDirection: Axis.vertical,
-              controller: PageController(initialPage: widget.initialIndex),
-              itemCount: _feeds.length,
-              itemBuilder: (context, index) {
-                return CommonFeedItemView(
-                  key: ValueKey(_feeds[index].id),
-                  feed: _feeds[index],
-                  padding: EdgeInsets.zero,
-                  autoOpenComments:
-                      widget.openCommentsOnAppear && index == widget.initialIndex,
-                  onLikeChanged: _applyFeedLikeUpdate,
-                  onCommentCountChanged: _applyFeedCommentCount,
-                );
-              },
+        body: SafeArea(
+          bottom: false,
+          child: Padding(
+            padding: EdgeInsets.only(
+              bottom: (widget.safeAreaBottom
+                      ? MediaQuery.of(context).padding.bottom
+                      : 0) +
+                  widget.extraBottomPadding,
             ),
-            SafeArea(
-              bottom: false,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: CommonInkWell(
-                  onTap: () => Navigator.of(context).maybePop(),
-                  child: const Icon(
-                    Icons.close,
-                    color: Colors.white,
-                    size: 24,
+            child: Stack(
+              children: [
+                PageView.builder(
+                  scrollDirection: Axis.vertical,
+                  controller: PageController(initialPage: widget.initialIndex),
+                  itemCount: _feeds.length,
+                  itemBuilder: (context, index) {
+                    return CommonFeedItemView(
+                      key: ValueKey(_feeds[index].id),
+                      feed: _feeds[index],
+                      padding: EdgeInsets.zero,
+                      autoOpenComments:
+                          widget.openCommentsOnAppear && index == widget.initialIndex,
+                      onLikeChanged: _applyFeedLikeUpdate,
+                      onCommentCountChanged: _applyFeedCommentCount,
+                    );
+                  },
+                ),
+                SafeArea(
+                  bottom: false,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: CommonInkWell(
+                      onTap: () => Navigator.of(context).maybePop(),
+                      child: const Icon(
+                        Icons.close,
+                        color: Colors.white,
+                        size: 24,
+                      ),
+                    ),
                   ),
                 ),
-              ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );

@@ -240,7 +240,11 @@ class _NotificationBodyState extends State<_NotificationBody> {
     }
   }
 
-  void _showFeedDetail(Feed feed, {bool openComments = false}) {
+  void _showFeedDetail(
+    Feed feed, {
+    bool openComments = false,
+    bool safeAreaBottom = false,
+  }) {
     showCupertinoModalPopup(
       context: context,
       builder: (_) => SizedBox.expand(
@@ -250,6 +254,8 @@ class _NotificationBodyState extends State<_NotificationBody> {
             feeds: [feed],
             initialIndex: 0,
             openCommentsOnAppear: openComments,
+            safeAreaBottom: safeAreaBottom,
+            extraBottomPadding: safeAreaBottom ? 16 : 0,
           ),
         ),
       ),
@@ -272,7 +278,7 @@ class _NotificationBodyState extends State<_NotificationBody> {
       final json = await ApiClient.fetchFeedDetail(feedId);
       final feed = Feed.fromJson(json);
       if (!mounted) return;
-      _showFeedDetail(feed, openComments: true);
+      _showFeedDetail(feed, openComments: true, safeAreaBottom: true);
     } catch (_) {
       // ignore detail open failures
     }
