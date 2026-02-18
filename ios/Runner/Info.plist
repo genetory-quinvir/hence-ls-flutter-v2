@@ -2,6 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>CADisableMinimumFrameDurationOnPhone</key>
+	<true/>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
@@ -47,8 +49,12 @@
 			</array>
 		</dict>
 	</array>
+	<key>CFBundleVersion</key>
+	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>GIDClientID</key>
 	<string>468574374791-e9fclus5u87cuf0qn59bbv9jjm9sga06.apps.googleusercontent.com</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
 		<string>kakaokompassauth</string>
@@ -56,16 +62,51 @@
 		<string>kakaoplus</string>
 		<string>kakaotalk</string>
 	</array>
-	<key>CFBundleVersion</key>
-	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
-	<key>UIRequiresFullScreen</key>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSExceptionDomains</key>
+		<dict>
+			<key>127.0.0.1</key>
+			<dict>
+				<key>NSIncludesSubdomains</key>
+				<true/>
+				<key>NSTemporaryExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+			</dict>
+			<key>localhost</key>
+			<dict>
+				<key>NSIncludesSubdomains</key>
+				<true/>
+				<key>NSTemporaryExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+			</dict>
+		</dict>
+	</dict>
+	<key>NSCameraUsageDescription</key>
+	<string>프로필 사진 촬영을 위해 카메라 접근이 필요합니다.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>정확한 위치 기반 서비스를 제공하기 위해 위치 접근 권한이 필요합니다.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>현재 위치를 기반으로 장소를 추천하기 위해 위치 접근 권한이 필요합니다.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>프로필 사진 저장을 위해 사진 라이브러리 접근이 필요합니다.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>프로필 사진 선택을 위해 사진 라이브러리 접근이 필요합니다.</string>
+	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+		<string>fetch</string>
+	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
 	<string>Main</string>
+	<key>UIRequiresFullScreen</key>
+	<true/>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
@@ -77,44 +118,5 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
-	<key>NSAppTransportSecurity</key>
-	<dict>
-		<key>NSExceptionDomains</key>
-		<dict>
-			<key>localhost</key>
-			<dict>
-				<key>NSIncludesSubdomains</key>
-				<true/>
-				<key>NSTemporaryExceptionAllowsInsecureHTTPLoads</key>
-				<true/>
-			</dict>
-			<key>127.0.0.1</key>
-			<dict>
-				<key>NSIncludesSubdomains</key>
-				<true/>
-				<key>NSTemporaryExceptionAllowsInsecureHTTPLoads</key>
-				<true/>
-			</dict>
-		</dict>
-	</dict>
-	<key>CADisableMinimumFrameDurationOnPhone</key>
-	<true/>
-	<key>UIApplicationSupportsIndirectInputEvents</key>
-	<true/>
-	<key>UIBackgroundModes</key>
-	<array>
-		<string>remote-notification</string>
-		<string>fetch</string>
-	</array>
-	<key>NSCameraUsageDescription</key>
-	<string>프로필 사진 촬영을 위해 카메라 접근이 필요합니다.</string>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>현재 위치를 기반으로 장소를 추천하기 위해 위치 접근 권한이 필요합니다.</string>
-	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>정확한 위치 기반 서비스를 제공하기 위해 위치 접근 권한이 필요합니다.</string>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>프로필 사진 선택을 위해 사진 라이브러리 접근이 필요합니다.</string>
-	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>프로필 사진 저장을 위해 사진 라이브러리 접근이 필요합니다.</string>
 </dict>
 </plist>
