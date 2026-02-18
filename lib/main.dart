@@ -55,6 +55,8 @@ Future<void> main() async {
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
+  static const Color primary200 = Color(0xff00ee7b);
+
   @override
   Widget build(BuildContext context) {
     final baseTheme = ThemeData();
@@ -62,6 +64,8 @@ class MyApp extends StatelessWidget {
       title: 'Empty App',
       scrollBehavior: const _BouncingScrollBehavior(),
       theme: baseTheme.copyWith(
+        primaryColor: primary200,
+        colorScheme: baseTheme.colorScheme.copyWith(primary: primary200),
         textTheme: baseTheme.textTheme.apply(fontFamily: 'Pretendard'),
         primaryTextTheme:
             baseTheme.primaryTextTheme.apply(fontFamily: 'Pretendard'),

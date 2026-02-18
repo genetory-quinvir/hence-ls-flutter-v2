@@ -10,7 +10,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../common/location/naver_location_service.dart';
 import '../common/auth/auth_store.dart';
 import '../sign/sign_view.dart';
-import '../livespace_create/livespace_create_view.dart';
+import '../feed_create_photo/feed_create_photo_view.dart';
 import '../common/network/api_client.dart';
 import '../common/widgets/common_calendar_view.dart';
 import '../common/widgets/common_dot_marker.dart';
@@ -51,6 +51,8 @@ class _MapViewState extends State<MapView> {
   Map<String, NPoint> _liveMarkerPoints = const {};
   bool _showLiveMarkers = true;
   bool _isCameraMoving = false;
+  bool _skipNextCameraIdleFetch = false;
+  bool _isProgrammaticMove = false;
   String? _selectedLiveMarkerId;
   NLatLng? _lastCenter;
   double? _lastZoom;
@@ -235,9 +237,13 @@ class _MapViewState extends State<MapView> {
     }
   }
 
-  Future<void> _fetchNearSpaces(NLatLng center, {double? zoom}) async {
+  Future<void> _fetchNearSpaces(
+    NLatLng center, {
+    double? zoom,
+    int? hotRankOverride,
+  }) async {
     final filter = _selectedFilter;
-    final isHotArea = _isHotArea;
+    final isHotArea = hotRankOverride != null ? true : _isHotArea;
     final isTagFilter = filter == '러닝' || filter == '카페' || filter == '전시';
     final type = switch (_selectedPurposeScope) {
       '라이브스페이스만' => 'LIVESPACE',
@@ -262,17 +268,59 @@ class _MapViewState extends State<MapView> {
     _updateRadiusOverlay(center: center, radiusKm: radiusKm);
     setState(() => _isLoadingNear = true);
     try {
-      final spaces = await ApiClient.fetchNearbySpaces(
-        latitude: center.latitude,
-        longitude: center.longitude,
-        radiusKm: radiusKm,
-        date: date,
-        type: type,
-        tags: isTagFilter ? <String>[filter] : null,
-        orderBy: _orderBy,
-      );
+      List<Map<String, dynamic>> spaces;
+      Map<String, dynamic>? movedCenter;
+      if (isHotArea) {
+        final res = await ApiClient.fetchNearbySpacesWithMeta(
+          latitude: center.latitude,
+          longitude: center.longitude,
+          radiusKm: radiusKm,
+          date: date,
+          type: type,
+          tags: isTagFilter ? <String>[filter] : null,
+          orderBy: _orderBy,
+          hotRank: hotRankOverride ?? 1,
+        );
+        spaces = res.feeds;
+        movedCenter = res.movedCenter;
+      } else {
+        spaces = await ApiClient.fetchNearbySpaces(
+          latitude: center.latitude,
+          longitude: center.longitude,
+          radiusKm: radiusKm,
+          date: date,
+          type: type,
+          tags: isTagFilter ? <String>[filter] : null,
+          orderBy: _orderBy,
+        );
+      }
       if (!mounted) return;
       setState(() => _nearSpaces = spaces);
+      if (movedCenter is Map<String, dynamic>) {
+        final lat = (movedCenter['latitude'] as num?)?.toDouble();
+        final lng = (movedCenter['longitude'] as num?)?.toDouble();
+        if (lat != null && lng != null) {
+          final target = NLatLng(lat, lng);
+          _lastCenter = target;
+          _onMapCenterChanged(target);
+          final controller = _mapController;
+          if (controller != null) {
+            try {
+              _skipNextCameraIdleFetch = true;
+              _isProgrammaticMove = true;
+              const nextZoom = 14.0;
+              await controller.updateCamera(
+                NCameraUpdate.withParams(
+                  target: target,
+                  zoom: nextZoom,
+                ),
+              );
+            } catch (_) {
+              // Ignore camera update errors.
+            }
+          }
+        }
+      }
       _updateLiveMarkerPoints();
     } catch (_) {
       if (!mounted) return;
@@ -634,12 +682,25 @@ class _MapViewState extends State<MapView> {
   void _onMapCameraMoving() {
     if (_isCameraMoving) return;
     _isCameraMoving = true;
+    if (!_isProgrammaticMove && _isHotArea) {
+      setState(() => _isHotArea = false);
+    }
     if (!_showLiveMarkers) return;
     setState(() => _showLiveMarkers = false);
   }
 
   Future<void> _onMapCameraIdle() async {
     _isCameraMoving = false;
+    if (_skipNextCameraIdleFetch) {
+      _skipNextCameraIdleFetch = false;
+      _isProgrammaticMove = false;
+      _updateLiveMarkerPoints().whenComplete(() {
+        if (!mounted) return;
+        if (_showLiveMarkers) return;
+        setState(() => _showLiveMarkers = true);
+      });
+      return;
+    }
     final controller = _mapController;
     if (controller != null) {
       try {
@@ -819,10 +880,14 @@ class _MapViewState extends State<MapView> {
                       child: GestureDetector(
                         onTap: () async {
                           if (label == '핫한 지역') {
-                            setState(() => _isHotArea = !_isHotArea);
+                            final nextHotArea = !_isHotArea;
+                            setState(() => _isHotArea = nextHotArea);
                             final center = _lastCenter;
                             if (center != null) {
-                              _fetchNearSpaces(center);
+                              _fetchNearSpaces(
+                                center,
+                                hotRankOverride: nextHotArea ? 1 : null,
+                              );
                             }
                             return;
                           }
@@ -1170,11 +1235,21 @@ class _MapViewState extends State<MapView> {
       );
       return;
     }
-    showCupertinoModalPopup(
+    showModalBottomSheet<void>(
       context: context,
-      builder: (_) => const SizedBox.expand(
-        child: LivespaceCreateView(),
+      isScrollControlled: true,
+      useSafeArea: false,
+      backgroundColor: Colors.black,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.zero,
       ),
+      builder: (_) {
+        final height = MediaQuery.of(context).size.height;
+        return SizedBox(
+          height: height,
+          child: const FeedCreatePhotoView(),
+        );
+      },
     );
   }
 }

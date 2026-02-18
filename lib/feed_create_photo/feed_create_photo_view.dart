@@ -312,7 +312,7 @@ class _FeedCreatePhotoViewState extends State<FeedCreatePhotoView> {
                                     ? segmentSelectedTextColor
                                     : segmentTextColor,
                               ),
-                              child: const Text('라이브스페이스'),
+                              child: const Text('라이브 스페이스'),
                             ),
                           ),
                         },

@@ -886,6 +886,76 @@ class ApiClient {
     return const <Map<String, dynamic>>[];
   }
 
+  static Future<({
+    List<Map<String, dynamic>> feeds,
+    Map<String, dynamic>? movedCenter,
+  })> fetchNearbySpacesWithMeta({
+    required double latitude,
+    required double longitude,
+    double radiusKm = 10,
+    String? date,
+    int limit = 30,
+    String? type,
+    List<String>? tags,
+    String orderBy = 'latest',
+    int? hotRank,
+  }) async {
+    final query = <String, String>{
+      'latitude': '$latitude',
+      'longitude': '$longitude',
+      'radius': '$radiusKm',
+      if (date != null && date.isNotEmpty) 'date': date,
+      'limit': '$limit',
+      'orderBy': orderBy,
+      if (hotRank != null) 'hotRank': '$hotRank',
+    };
+    if (type != null && type.trim().isNotEmpty) {
+      query['type'] = type.trim();
+    }
+    if (tags != null && tags.isNotEmpty) {
+      query['tags'] = tags.join(',');
+    }
+    final uri = Uri.parse('$baseUrl/api/v1/map/near').replace(queryParameters: query);
+    _logRequest('GET', uri);
+    final response = await _sendWithAuthRetry(
+      () => http.get(uri, headers: _headers()),
+      retryRequest: () => http.get(uri, headers: _headers()),
+    );
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Nearby spaces request failed: ${response.statusCode}');
+    }
+    final json = jsonDecode(response.body);
+    final data = json is Map<String, dynamic> ? json['data'] : null;
+    final root = data is Map<String, dynamic> ? data : (json as Map<String, dynamic>?);
+    final feedsRaw = root is Map<String, dynamic> ? root['feeds'] : null;
+    final meta = root is Map<String, dynamic> ? root['meta'] : null;
+    final movedCenter = meta is Map<String, dynamic> ? meta['movedCenter'] : null;
+
+    final feeds = <Map<String, dynamic>>[];
+    if (feedsRaw is List) {
+      feeds.addAll(
+        feedsRaw
+            .whereType<Map<String, dynamic>>()
+            .map((item) {
+              final next = Map<String, dynamic>.from(item);
+              final type = (next['type'] as String?)?.toUpperCase();
+              if (type == 'LIVESPACE') {
+                next['purpose'] = 'LIVESPACE';
+              } else if (type == 'FEED') {
+                next['purpose'] = 'FEED';
+              }
+              return next;
+            }),
+      );
+    }
+
+    return (
+      feeds: feeds,
+      movedCenter: movedCenter is Map<String, dynamic> ? movedCenter : null,
+    );
+  }
+
   static Future<FeedCommentPage> fetchFeedComments({
     required String feedId,
     int limit = 20,
