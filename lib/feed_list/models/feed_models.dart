@@ -63,6 +63,9 @@ class Feed {
     required this.images,
     this.space,
     required this.isLiked,
+    required this.hashtags,
+    this.placeName = '',
+    this.address = '',
   });
 
   final String id;
@@ -74,6 +77,39 @@ class Feed {
   final List<FeedImage> images;
   final FeedSpace? space;
   final bool isLiked;
+  final List<String> hashtags;
+  final String placeName;
+  final String address;
+
+  Feed copyWith({
+    String? id,
+    String? content,
+    String? createdAt,
+    int? likeCount,
+    int? commentCount,
+    FeedAuthor? author,
+    List<FeedImage>? images,
+    FeedSpace? space,
+    bool? isLiked,
+    List<String>? hashtags,
+    String? placeName,
+    String? address,
+  }) {
+    return Feed(
+      id: id ?? this.id,
+      content: content ?? this.content,
+      createdAt: createdAt ?? this.createdAt,
+      likeCount: likeCount ?? this.likeCount,
+      commentCount: commentCount ?? this.commentCount,
+      author: author ?? this.author,
+      images: images ?? this.images,
+      space: space ?? this.space,
+      isLiked: isLiked ?? this.isLiked,
+      hashtags: hashtags ?? this.hashtags,
+      placeName: placeName ?? this.placeName,
+      address: address ?? this.address,
+    );
+  }
 
   factory Feed.fromJson(Map<String, dynamic> json) {
     final images = (json['images'] as List<dynamic>? ?? [])
@@ -91,8 +127,28 @@ class Feed {
       space: json['space'] is Map<String, dynamic>
           ? FeedSpace.fromJson(json['space'] as Map<String, dynamic>)
           : null,
-      isLiked: (json['isLiked'] as bool?) ?? false,
+      isLiked: _parseIsLiked(json),
+      hashtags: (json['hashtags'] as List<dynamic>? ?? [])
+          .map((e) => e.toString())
+          .where((e) => e.trim().isNotEmpty)
+          .toList(),
+      placeName: json['placeName'] as String? ??
+          json['place_name'] as String? ??
+          '',
+      address: json['address'] as String? ??
+          json['addressName'] as String? ??
+          '',
     );
+  }
+
+  static bool _parseIsLiked(Map<String, dynamic> json) {
+    final direct = json['isLiked'];
+    if (direct is bool) return direct;
+    if (direct is num) return direct > 0;
+    final alt = json['liked'];
+    if (alt is bool) return alt;
+    if (alt is num) return alt > 0;
+    return false;
   }
 }
 

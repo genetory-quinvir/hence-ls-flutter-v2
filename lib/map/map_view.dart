@@ -96,6 +96,17 @@ class _MapViewState extends State<MapView> {
     return _purposeScopedSpaces.toList();
   }
 
+  String get _orderBy {
+    switch (_selectedListSort) {
+      case '인기순':
+        return 'popular';
+      case '거리순':
+        return 'distance';
+      default:
+        return 'latest';
+    }
+  }
+
   String _displayFilterLabel(String label) {
     if (label != '오늘') return label;
     final selected = _selectedFilterDate;
@@ -258,6 +269,7 @@ class _MapViewState extends State<MapView> {
         date: date,
         type: type,
         tags: isTagFilter ? <String>[filter] : null,
+        orderBy: _orderBy,
       );
       if (!mounted) return;
       setState(() => _nearSpaces = spaces);
@@ -308,7 +320,7 @@ class _MapViewState extends State<MapView> {
     final thumbnailMap = thumbnailRaw is Map<String, dynamic> ? thumbnailRaw : null;
     final feed = space['feed'];
     final feedMap = feed is Map<String, dynamic> ? feed : null;
-    final images = feedMap?['images'];
+    final images = (feedMap?['images'] ?? space['images']);
     final firstImage =
         images is List && images.isNotEmpty && images.first is Map<String, dynamic>
             ? images.first as Map<String, dynamic>
@@ -324,10 +336,19 @@ class _MapViewState extends State<MapView> {
 
   Feed? _feedFromSpace(Map<String, dynamic> space) {
     final raw = space['feed'];
-    if (raw is! Map<String, dynamic>) return null;
-    final feed = Feed.fromJson(raw);
-    if (feed.id.isEmpty) return null;
-    return feed;
+    if (raw is Map<String, dynamic>) {
+      final feed = Feed.fromJson(raw);
+      if (feed.id.isEmpty) return null;
+      return feed;
+    }
+    // /api/v1/map/near returns feed items directly (no wrapper).
+    if (space.containsKey('id') &&
+        (space.containsKey('content') || space.containsKey('images'))) {
+      final feed = Feed.fromJson(space);
+      if (feed.id.isEmpty) return null;
+      return feed;
+    }
+    return null;
   }
 
   Widget _buildLiveMarkerOverlay() {

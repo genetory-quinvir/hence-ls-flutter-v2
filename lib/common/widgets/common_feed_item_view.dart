@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -15,17 +17,25 @@ import 'common_image_view.dart';
 import 'common_profile_view.dart';
 import '../../profile/models/profile_display_user.dart';
 import '../../feed_comment/feed_comment_view.dart';
-import '../../profile_info/profile_info_view.dart';
+import '../../feed_tag/feed_tag_view.dart';
+import 'common_profile_modal.dart';
+import 'common_login_guard.dart';
 
 class CommonFeedItemView extends StatefulWidget {
   const CommonFeedItemView({
     super.key,
     required this.feed,
     this.padding = const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+    this.onLikeChanged,
+    this.onCommentCountChanged,
+    this.autoOpenComments = false,
   });
 
   final Feed feed;
   final EdgeInsetsGeometry padding;
+  final void Function(String feedId, bool isLiked, int likeCount)? onLikeChanged;
+  final void Function(String feedId, int commentCount)? onCommentCountChanged;
+  final bool autoOpenComments;
 
   @override
   State<CommonFeedItemView> createState() => _CommonFeedItemViewState();
@@ -39,10 +49,13 @@ class _CommonFeedItemViewState extends State<CommonFeedItemView> {
   late bool _liked;
   late int _likeCount;
   int _commentCount = 0;
+  bool _didAutoOpenComments = false;
+  final ValueNotifier<bool> _isOpen = ValueNotifier<bool>(false);
 
   @override
   void dispose() {
     _pageIndex.dispose();
+    _isOpen.dispose();
     super.dispose();
   }
 
@@ -52,6 +65,20 @@ class _CommonFeedItemViewState extends State<CommonFeedItemView> {
     _liked = widget.feed.isLiked;
     _likeCount = widget.feed.likeCount;
     _commentCount = widget.feed.commentCount;
+    if (widget.autoOpenComments) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _didAutoOpenComments) return;
+        _didAutoOpenComments = true;
+        _openComments(context);
+      });
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Mark as open once the route is visible.
+    _isOpen.value = ModalRoute.of(context)?.isCurrent ?? true;
   }
 
   @override
@@ -69,13 +96,23 @@ class _CommonFeedItemViewState extends State<CommonFeedItemView> {
 
   Future<void> _toggleLike() async {
     if (_isTogglingLike) return;
+    if (!await CommonLoginGuard.ensureSignedIn(
+      context,
+      title: '로그인이 필요합니다.',
+      subTitle: '좋아요를 누르려면 로그인해주세요.',
+    )) {
+      return;
+    }
     final nextLiked = !_liked;
     final nextCount = _likeCount + (nextLiked ? 1 : -1);
+    final previousLiked = _liked;
+    final previousCount = _likeCount;
     setState(() {
       _isTogglingLike = true;
       _liked = nextLiked;
       _likeCount = nextCount < 0 ? 0 : nextCount;
     });
+    widget.onLikeChanged?.call(widget.feed.id, _liked, _likeCount);
     try {
       if (nextLiked) {
         await ApiClient.likeFeed(widget.feed.id);
@@ -85,9 +122,10 @@ class _CommonFeedItemViewState extends State<CommonFeedItemView> {
     } catch (_) {
       if (mounted) {
         setState(() {
-          _liked = !_liked;
-          _likeCount = widget.feed.likeCount;
+          _liked = previousLiked;
+          _likeCount = previousCount;
         });
+        widget.onLikeChanged?.call(widget.feed.id, _liked, _likeCount);
       }
     } finally {
       if (mounted) setState(() => _isTogglingLike = false);
@@ -95,34 +133,65 @@ class _CommonFeedItemViewState extends State<CommonFeedItemView> {
   }
 
   void _openComments(BuildContext context) {
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (_) => FeedCommentView(
-        feedId: widget.feed.id,
-        spaceId: widget.feed.space?.spaceId,
-        comments: const [],
-        onCommentAdded: () {
-          if (!mounted) return;
-          setState(() => _commentCount += 1);
-        },
-      ),
-    );
+    _waitUntilRouteIsCurrent().then((_) {
+      if (!mounted) return;
+      showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.white,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        ),
+        builder: (_) => FeedCommentView(
+          feedId: widget.feed.id,
+          spaceId: widget.feed.space?.spaceId,
+          comments: const [],
+          initialTotalCount: widget.feed.commentCount,
+          onCommentAdded: () {
+            if (!mounted) return;
+            setState(() => _commentCount += 1);
+            widget.onCommentCountChanged
+                ?.call(widget.feed.id, _commentCount);
+          },
+        ),
+      );
+    });
   }
+
+  Future<void> _waitUntilRouteIsCurrent() async {
+    if (ModalRoute.of(context)?.isCurrent ?? true) return;
+    final completer = Completer<void>();
+    void check() {
+      if (!mounted) {
+        if (!completer.isCompleted) completer.complete();
+        return;
+      }
+      if (ModalRoute.of(context)?.isCurrent ?? true) {
+        if (!completer.isCompleted) completer.complete();
+      } else {
+        WidgetsBinding.instance.addPostFrameCallback((_) => check());
+      }
+    }
+    check();
+    return completer.future;
+  }
+
 
   @override
   Widget build(BuildContext context) {
     final double screenHeight = MediaQuery.of(context).size.height;
     final images = widget.feed.images;
     final content = widget.feed.content.trim();
+    final hashtags = widget.feed.hashtags;
+    final hashtagText = hashtags.isEmpty
+        ? ''
+        : hashtags.map((tag) => tag.startsWith('#') ? tag : '#$tag').join(' ');
     final author = widget.feed.author;
     final authorName = author.nickname.isNotEmpty ? author.nickname : author.name;
     final createdAt = formatRelativeTime(widget.feed.createdAt);
-    final placeName = widget.feed.space?.placeName ?? '';
+    final placeName = widget.feed.placeName.isNotEmpty
+        ? widget.feed.placeName
+        : (widget.feed.space?.placeName ?? '');
     final maxTextWidth = MediaQuery.of(context).size.width - 32;
     final textStyle = const TextStyle(
       fontSize: 14,
@@ -256,12 +325,7 @@ class _CommonFeedItemViewState extends State<CommonFeedItemView> {
                                 : author.name,
                             profileImageUrl: author.profileImageUrl,
                           );
-                          showCupertinoModalPopup(
-                            context: context,
-                            builder: (_) => SizedBox.expand(
-                              child: ProfileInfoView(user: displayUser),
-                            ),
-                          );
+                          showProfileModal(context, user: displayUser);
                         },
                         child: SizedBox(
                           width: 36,
@@ -344,6 +408,33 @@ class _CommonFeedItemViewState extends State<CommonFeedItemView> {
                     overflow: _expanded ? TextOverflow.visible : TextOverflow.ellipsis,
                     style: textStyle,
                   ),
+                  if (hashtagText.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: hashtags.map((tag) {
+                        final label = tag.startsWith('#') ? tag : '#$tag';
+                        return GestureDetector(
+                          onTap: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => FeedTagView(tag: label),
+                              ),
+                            );
+                          },
+                          child: Text(
+                            label,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                              color: Color(0xFFB3E5FC),
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ],
                   if (_isOverflowing) ...[
                     const SizedBox(height: 6),
                     GestureDetector(

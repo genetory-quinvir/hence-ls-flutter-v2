@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'dart:typed_data';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -8,10 +9,11 @@ import '../common/widgets/common_inkwell.dart';
 import '../common/widgets/common_image_view.dart';
 import '../common/widgets/common_title_actionsheet.dart';
 import '../common/widgets/common_rounded_button.dart';
+import '../common/widgets/common_activity.dart';
 import '../common/media/media_picker_service.dart';
 import '../common/permissions/media_permission_service.dart';
-import '../common/location/naver_location_service.dart';
 import '../feed_create_info/feed_create_info_view.dart';
+import '../livespace_create/livespace_create_view.dart';
 
 class FeedCreatePhotoView extends StatefulWidget {
   const FeedCreatePhotoView({super.key});
@@ -25,43 +27,44 @@ class _FeedCreatePhotoViewState extends State<FeedCreatePhotoView> {
   final List<AssetPathEntity> _albums = [];
   final Map<String, int> _albumCounts = {};
   final List<AssetEntity> _selected = [];
+  final Map<String, Uint8List> _thumbCache = {};
   final ScrollController _gridController = ScrollController();
   AssetPathEntity? _currentAlbum;
   bool _isLoading = true;
   bool _hasMore = true;
   int _page = 0;
   bool _permissionDenied = false;
+  _CreateMode _createMode = _CreateMode.feed;
+  bool _isNavigating = false;
 
   static const int _pageSize = 60;
   static const int _maxSelection = 5;
 
   Future<void> _goNext() async {
     if (_selected.isEmpty) return;
-    final place = await _resolveSelectedPlace();
-    if (!mounted) return;
-    Navigator.of(context).push(
-      MaterialPageRoute(
+    if (_isNavigating) return;
+    setState(() => _isNavigating = true);
+    await Future.delayed(const Duration(milliseconds: 16));
+    final initialThumbs = <String, Uint8List>{};
+    for (final asset in _selected) {
+      final bytes = _thumbCache[asset.id];
+      if (bytes != null) {
+        initialThumbs[asset.id] = bytes;
+      }
+    }
+    Navigator.of(context)
+        .push(
+      CupertinoPageRoute(
         builder: (_) => FeedCreateInfoView(
           selectedAssets: List.of(_selected),
-          initialPlaceName: place?.name,
-          initialLatitude: place?.lat,
-          initialLongitude: place?.lng,
+          isFeedMode: _createMode == _CreateMode.feed,
+          initialThumbnailBytes: initialThumbs,
         ),
       ),
-    );
-  }
-
-  Future<({String name, double lat, double lng})?> _resolveSelectedPlace() async {
-    if (_selected.isEmpty) return null;
-    final asset = _selected.first;
-    final latLng = await asset.latlngAsync();
-    if (latLng == null) return null;
-    final place = await NaverLocationService.reverseGeocode(
-      latitude: latLng.latitude,
-      longitude: latLng.longitude,
-    );
-    if (place == null || place.trim().isEmpty) return null;
-    return (name: place.trim(), lat: latLng.latitude, lng: latLng.longitude);
+    )
+        .whenComplete(() {
+      if (mounted) setState(() => _isNavigating = false);
+    });
   }
 
   @override
@@ -165,6 +168,16 @@ class _FeedCreatePhotoViewState extends State<FeedCreatePhotoView> {
       if (_selected.length >= _maxSelection) return;
       _selected.add(asset);
     });
+    _prefetchThumb(asset);
+  }
+
+  Future<void> _prefetchThumb(AssetEntity asset) async {
+    if (_thumbCache.containsKey(asset.id)) return;
+    final bytes = await asset.thumbnailDataWithSize(
+      const ThumbnailSize(400, 400),
+    );
+    if (!mounted || bytes == null) return;
+    _thumbCache[asset.id] = bytes;
   }
 
   Future<void> _loadMore() async {
@@ -219,12 +232,26 @@ class _FeedCreatePhotoViewState extends State<FeedCreatePhotoView> {
 
   @override
   Widget build(BuildContext context) {
+    final isFeed = _createMode == _CreateMode.feed;
+    final backgroundColor = isFeed ? Colors.black : Colors.white;
+    final primaryTextColor = isFeed ? Colors.white : Colors.black;
+    final secondaryTextColor =
+        isFeed ? const Color(0xFFBDBDBD) : const Color(0xFF8E8E8E);
+    final segmentBackground =
+        isFeed ? const Color(0xFF1E1E1E) : const Color(0xFFF2F2F2);
+    final segmentThumb = isFeed ? Colors.white : Colors.black;
+    final segmentTextColor = isFeed ? Colors.white : Colors.black;
+    final segmentSelectedTextColor = isFeed ? Colors.black : Colors.white;
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle.light,
+      value: isFeed ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
       child: Scaffold(
-        backgroundColor: Colors.black,
-        body: Column(
-          children: [
+        backgroundColor: backgroundColor,
+        body: AnimatedContainer(
+          duration: const Duration(milliseconds: 240),
+          curve: Curves.easeOutCubic,
+          color: backgroundColor,
+          child: Column(
+            children: [
           Padding(
             padding: EdgeInsets.only(
               top: MediaQuery.of(context).padding.top + 44,
@@ -236,13 +263,59 @@ class _FeedCreatePhotoViewState extends State<FeedCreatePhotoView> {
               child: Stack(
                 alignment: Alignment.center,
                 children: [
-                  const Center(
-                    child: Text(
-                      '사진 선택',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
+                  Center(
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 220),
+                      curve: Curves.easeOutCubic,
+                      decoration: BoxDecoration(
+                        color: segmentBackground,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                      child: CupertinoSlidingSegmentedControl<_CreateMode>(
+                        groupValue: _createMode,
+                        backgroundColor: Colors.transparent,
+                        thumbColor: segmentThumb,
+                        onValueChanged: (value) {
+                          if (value == null) return;
+                          setState(() => _createMode = value);
+                        },
+                        children: {
+                          _CreateMode.feed: Padding(
+                            padding: EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 8,
+                            ),
+                            child: AnimatedDefaultTextStyle(
+                              duration: const Duration(milliseconds: 200),
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: _createMode == _CreateMode.feed
+                                    ? segmentSelectedTextColor
+                                    : segmentTextColor,
+                              ),
+                              child: const Text('피드'),
+                            ),
+                          ),
+                          _CreateMode.livespace: Padding(
+                            padding: EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 8,
+                            ),
+                            child: AnimatedDefaultTextStyle(
+                              duration: const Duration(milliseconds: 200),
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: _createMode == _CreateMode.livespace
+                                    ? segmentSelectedTextColor
+                                    : segmentTextColor,
+                              ),
+                              child: const Text('라이브스페이스'),
+                            ),
+                          ),
+                        },
                       ),
                     ),
                   ),
@@ -250,10 +323,14 @@ class _FeedCreatePhotoViewState extends State<FeedCreatePhotoView> {
                     alignment: Alignment.centerLeft,
                     child: CommonInkWell(
                       onTap: () => Navigator.of(context).maybePop(),
-                      child: const Icon(
-                        Icons.close,
-                        color: Colors.white,
-                        size: 24,
+                      child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 200),
+                        child: Icon(
+                          Icons.close,
+                          key: ValueKey(primaryTextColor),
+                          color: primaryTextColor,
+                          size: 24,
+                        ),
                       ),
                     ),
                   ),
@@ -273,19 +350,24 @@ class _FeedCreatePhotoViewState extends State<FeedCreatePhotoView> {
                   onTap: _openAlbumSheet,
                   child: Row(
                     children: [
-                      Text(
-                        _currentAlbum?.name ?? 'Recents',
-                        style: const TextStyle(
+                      AnimatedDefaultTextStyle(
+                        duration: const Duration(milliseconds: 200),
+                        style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w600,
-                          color: Colors.white,
+                          color: primaryTextColor,
                         ),
+                        child: Text(_currentAlbum?.name ?? 'Recents'),
                       ),
                       const SizedBox(width: 6),
-                      const Icon(
-                        Icons.keyboard_arrow_down,
-                        color: Colors.white,
-                        size: 20,
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 200),
+                        child: Icon(
+                          Icons.keyboard_arrow_down,
+                          key: ValueKey(primaryTextColor),
+                          color: primaryTextColor,
+                          size: 20,
+                        ),
                       ),
                     ],
                   ),
@@ -298,6 +380,7 @@ class _FeedCreatePhotoViewState extends State<FeedCreatePhotoView> {
                 ? _PermissionDeniedView(
                     onOpenSettings: PhotoManager.openSetting,
                     onRetry: _loadAlbum,
+                    isFeedMode: isFeed,
                   )
                 : NotificationListener<ScrollNotification>(
                     onNotification: (notification) {
@@ -311,6 +394,9 @@ class _FeedCreatePhotoViewState extends State<FeedCreatePhotoView> {
                     child: GridView.builder(
                       controller: _gridController,
                       padding: EdgeInsets.zero,
+                      cacheExtent: 600,
+                      keyboardDismissBehavior:
+                          ScrollViewKeyboardDismissBehavior.onDrag,
                       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                         crossAxisCount: 3,
                         crossAxisSpacing: 1,
@@ -323,11 +409,13 @@ class _FeedCreatePhotoViewState extends State<FeedCreatePhotoView> {
                           return CommonInkWell(
                             onTap: _openCamera,
                             child: Container(
-                              color: const Color(0xFF1E1E1E),
+                              color: isFeed
+                                  ? const Color(0xFF1E1E1E)
+                                  : const Color(0xFFF2F2F2),
                               child: Center(
                                 child: Icon(
                                   PhosphorIconsFill.camera,
-                                  color: const Color(0xFFBDBDBD),
+                                  color: secondaryTextColor,
                                   size: 28,
                                 ),
                               ),
@@ -366,7 +454,8 @@ class _FeedCreatePhotoViewState extends State<FeedCreatePhotoView> {
             top: false,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-              child: Opacity(
+              child: AnimatedOpacity(
+                duration: const Duration(milliseconds: 200),
                 opacity: _selected.isNotEmpty ? 1 : 0.5,
                 child: CommonRoundedButton(
                   title: _selected.isNotEmpty
@@ -375,8 +464,10 @@ class _FeedCreatePhotoViewState extends State<FeedCreatePhotoView> {
                   onTap: _selected.isNotEmpty ? _goNext : null,
                   height: 50,
                   radius: 12,
-                  backgroundColor: Colors.white,
-                  textColor: Colors.black,
+                  backgroundColor:
+                      isFeed ? Colors.white : Colors.black,
+                  textColor:
+                      isFeed ? Colors.black : Colors.white,
                 ),
               ),
             ),
@@ -384,18 +475,23 @@ class _FeedCreatePhotoViewState extends State<FeedCreatePhotoView> {
           ],
         ),
       ),
+    ),
     );
   }
 }
+
+enum _CreateMode { feed, livespace }
 
 class _PermissionDeniedView extends StatelessWidget {
   const _PermissionDeniedView({
     required this.onOpenSettings,
     required this.onRetry,
+    required this.isFeedMode,
   });
 
   final VoidCallback onOpenSettings;
   final VoidCallback onRetry;
+  final bool isFeedMode;
 
   @override
   Widget build(BuildContext context) {
@@ -403,12 +499,12 @@ class _PermissionDeniedView extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Text(
+          Text(
             '사진 접근 권한이 필요합니다.',
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w500,
-              color: Colors.white,
+              color: isFeedMode ? Colors.white : Colors.black,
             ),
           ),
           const SizedBox(height: 12),
@@ -418,7 +514,7 @@ class _PermissionDeniedView extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: isFeedMode ? Colors.white : Colors.black,
                 borderRadius: BorderRadius.circular(8),
               ),
               child: const Text(
@@ -426,7 +522,7 @@ class _PermissionDeniedView extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
-                  color: Colors.black,
+                  color: Colors.white,
                 ),
               ),
             ),
@@ -434,12 +530,14 @@ class _PermissionDeniedView extends StatelessWidget {
           const SizedBox(height: 8),
           CommonInkWell(
             onTap: onRetry,
-            child: const Text(
+            child: Text(
               '다시 시도',
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
-                color: Color(0xFFBDBDBD),
+                color: isFeedMode
+                    ? const Color(0xFFBDBDBD)
+                    : const Color(0xFF8E8E8E),
               ),
             ),
           ),

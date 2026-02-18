@@ -25,7 +25,7 @@ class _ProfileNotSignedViewState extends State<ProfileNotSignedView> {
   Widget build(BuildContext context) {
     final images = List.generate(
       4,
-      (index) => 'lib/assets/images/walkthrough/walkthrough_image_$index.webp',
+      (index) => 'assets/images/walkthrough/walkthrough_image_$index.webp',
     );
     const titles = [
       '내 주변에서 벌어지는 일들을\n실시간으로 확인하세요',

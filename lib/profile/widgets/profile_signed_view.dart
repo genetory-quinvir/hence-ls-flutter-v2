@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:flutter/foundation.dart';
 
 import '../../common/auth/auth_store.dart';
 import '../../common/widgets/common_inkwell.dart';
@@ -14,6 +15,7 @@ import '../../common/widgets/common_activity.dart';
 import '../../common/widgets/common_image_view.dart';
 import '../../common/widgets/common_livespace_list_item_view.dart';
 import '../../common/widgets/common_empty_view.dart';
+import '../../common/widgets/common_refresh_view.dart';
 import '../profile_feed_detail_view.dart';
 import '../models/profile_display_user.dart';
 import '../../following_list/following_list_view.dart';
@@ -34,8 +36,12 @@ class ProfileSignedView extends StatefulWidget {
 class _ProfileSignedViewState extends State<ProfileSignedView> {
   final ScrollController _scrollController = ScrollController();
   final GlobalKey _headerKey = GlobalKey();
+  final ValueNotifier<int> _headerRefreshSignal = ValueNotifier<int>(0);
   double _collapseOffset = 120;
   bool _isHeaderCollapsed = false;
+  Future<void>? _profileRefreshInFlight;
+  DateTime? _lastHeaderRefreshAt;
+  static const Duration _headerRefreshInterval = Duration(minutes: 3);
 
   @override
   void initState() {
@@ -51,6 +57,7 @@ class _ProfileSignedViewState extends State<ProfileSignedView> {
   void dispose() {
     _scrollController.removeListener(_handleScroll);
     _scrollController.dispose();
+    _headerRefreshSignal.dispose();
     super.dispose();
   }
 
@@ -73,6 +80,32 @@ class _ProfileSignedViewState extends State<ProfileSignedView> {
     widget.onHeaderCollapsedChanged?.call(next);
   }
 
+  Future<void> _refreshProfileInfo({bool force = false}) {
+    if (!AuthStore.instance.isSignedIn.value) return Future.value();
+    final now = DateTime.now();
+    if (!force && _lastHeaderRefreshAt != null) {
+      final elapsed = now.difference(_lastHeaderRefreshAt!);
+      if (elapsed < _headerRefreshInterval) return Future.value();
+    }
+    if (_profileRefreshInFlight != null) return _profileRefreshInFlight!;
+    final future = _doRefreshProfileInfo();
+    _profileRefreshInFlight = future.whenComplete(() {
+      _profileRefreshInFlight = null;
+    });
+    return _profileRefreshInFlight!;
+  }
+
+  Future<void> _doRefreshProfileInfo() async {
+    try {
+      final me = await ApiClient.fetchMe();
+      await AuthStore.instance.setUser(me);
+      _headerRefreshSignal.value += 1;
+      _lastHeaderRefreshAt = DateTime.now();
+    } catch (_) {
+      // Ignore refresh failures; existing cached user remains visible.
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -89,7 +122,9 @@ class _ProfileSignedViewState extends State<ProfileSignedView> {
             SliverToBoxAdapter(
               child: KeyedSubtree(
                 key: _headerKey,
-                child: const _ProfileHeaderUserSection(),
+                child: _ProfileHeaderUserSection(
+                  refreshSignal: _headerRefreshSignal,
+                ),
               ),
             ),
             const SliverToBoxAdapter(child: SizedBox(height: 24)),
@@ -128,11 +163,16 @@ class _ProfileSignedViewState extends State<ProfileSignedView> {
         },
         body: TabBarView(
           children: [
-            const _ProfileFeedGrid(
+            _ProfileFeedGrid(
               emptyMessage: '현재 피드가 없습니다.',
               emptyButtonText: '피드 작성하기',
+              onRefreshTab: _refreshProfileInfo,
+              refreshProfileOnTabRefresh: false,
             ),
-            const _ProfileParticipantList(),
+            _ProfileParticipantList(
+              onRefreshTab: _refreshProfileInfo,
+              refreshProfileOnTabRefresh: false,
+            ),
           ],
         ),
       ),
@@ -141,7 +181,11 @@ class _ProfileSignedViewState extends State<ProfileSignedView> {
 }
 
 class _ProfileHeaderUserSection extends StatefulWidget {
-  const _ProfileHeaderUserSection();
+  const _ProfileHeaderUserSection({
+    required this.refreshSignal,
+  });
+
+  final ValueListenable<int> refreshSignal;
 
   @override
   State<_ProfileHeaderUserSection> createState() =>
@@ -150,7 +194,36 @@ class _ProfileHeaderUserSection extends StatefulWidget {
 
 class _ProfileHeaderUserSectionState extends State<_ProfileHeaderUserSection> {
   String? _userId;
+  String? _userSignature;
+  bool _forceReload = false;
   Future<ProfileDisplayUser>? _detailFuture;
+  late final VoidCallback _refreshListener;
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshListener = _reloadDetail;
+    widget.refreshSignal.addListener(_refreshListener);
+  }
+
+  @override
+  void didUpdateWidget(covariant _ProfileHeaderUserSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.refreshSignal == widget.refreshSignal) return;
+    oldWidget.refreshSignal.removeListener(_refreshListener);
+    widget.refreshSignal.addListener(_refreshListener);
+  }
+
+  @override
+  void dispose() {
+    widget.refreshSignal.removeListener(_refreshListener);
+    super.dispose();
+  }
+
+  void _reloadDetail() {
+    _forceReload = true;
+    if (mounted) setState(() {});
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -158,8 +231,23 @@ class _ProfileHeaderUserSectionState extends State<_ProfileHeaderUserSection> {
       valueListenable: AuthStore.instance.currentUser,
       builder: (context, user, _) {
         final id = user?.id;
-        if (id != null && id.isNotEmpty && id != _userId) {
+        final signature = id == null
+            ? null
+            : [
+                id,
+                user?.nickname ?? '',
+                user?.profileImageUrl ?? '',
+                user?.activityLevel?.toString() ?? '',
+                user?.feedCount?.toString() ?? '',
+                user?.followerCount?.toString() ?? '',
+                user?.followingCount?.toString() ?? '',
+              ].join('|');
+        if (id != null &&
+            id.isNotEmpty &&
+            (id != _userId || _forceReload || signature != _userSignature)) {
           _userId = id;
+          _userSignature = signature;
+          _forceReload = false;
           _detailFuture = ApiClient.fetchUserDetail(id);
         }
 
@@ -355,7 +443,13 @@ class _ActivityListPlaceholder extends StatelessWidget {
 }
 
 class _ProfileParticipantList extends StatefulWidget {
-  const _ProfileParticipantList();
+  const _ProfileParticipantList({
+    required this.onRefreshTab,
+    required this.refreshProfileOnTabRefresh,
+  });
+
+  final Future<void> Function({bool force}) onRefreshTab;
+  final bool refreshProfileOnTabRefresh;
 
   @override
   State<_ProfileParticipantList> createState() => _ProfileParticipantListState();
@@ -366,6 +460,7 @@ class _ProfileParticipantListState extends State<_ProfileParticipantList> {
   bool _isLoading = false;
   bool _hasNext = true;
   String? _nextCursor;
+  Future<void>? _refreshInFlight;
 
   @override
   void initState() {
@@ -380,6 +475,22 @@ class _ProfileParticipantListState extends State<_ProfileParticipantList> {
       _nextCursor = null;
     });
     await _loadMore();
+  }
+
+  Future<void> _handleRefresh() {
+    if (_refreshInFlight != null) return _refreshInFlight!;
+    final future = _doRefresh();
+    _refreshInFlight = future.whenComplete(() {
+      _refreshInFlight = null;
+    });
+    return _refreshInFlight!;
+  }
+
+  Future<void> _doRefresh() async {
+    if (widget.refreshProfileOnTabRefresh) {
+      await widget.onRefreshTab(force: true);
+    }
+    await _loadInitial();
   }
 
   Future<void> _loadMore() async {
@@ -408,110 +519,133 @@ class _ProfileParticipantListState extends State<_ProfileParticipantList> {
 
   @override
   Widget build(BuildContext context) {
-    if (_items.isEmpty && _isLoading) {
-      return const Center(
-        child: SizedBox(
-          width: 24,
-          height: 24,
-          child: CommonActivityIndicator(size: 24),
-        ),
-      );
-    }
-    if (_items.isEmpty) {
-      return const CommonEmptyView(
-        message: '참여한 스페이스가 없습니다.',
-        buttonText: '스페이스 둘러보기',
-      );
-    }
-    return NotificationListener<ScrollNotification>(
-      onNotification: (notification) {
-        if (!_isLoading && _hasNext && notification.metrics.extentAfter == 0) {
-          _loadMore();
-        }
-        return false;
-      },
-      child: CustomScrollView(
-        physics: const BouncingScrollPhysics(),
-        slivers: [
-          SliverOverlapInjector(
-            handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context),
-          ),
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-            sliver: SliverList(
-              delegate: SliverChildBuilderDelegate(
-                (context, index) {
-                  final item = _items[index];
-                  final title = (item['title'] as String?) ??
-                      (item['spaceTitle'] as String?) ??
-                      (item['name'] as String?) ??
-                      '라이브 스페이스';
-                  final placeName = (item['placeName'] as String?) ??
-                      (item['address'] as String?) ??
-                      (item['location'] as String?) ??
-                      '';
-                  final dateText = (item['date'] as String?) ??
-                      (item['startAt'] as String?) ??
-                      (item['createdAt'] as String?) ??
-                      '오늘';
-                  final thumbnailRaw = item['thumbnail'];
-                  final thumbnailMap =
-                      thumbnailRaw is Map<String, dynamic> ? thumbnailRaw : null;
-                  final thumbnail = (thumbnailRaw is String ? thumbnailRaw : null) ??
-                      thumbnailMap?['cdnUrl'] as String? ??
-                      thumbnailMap?['fileUrl'] as String? ??
-                      (item['thumbnailUrl'] as String?) ??
-                      (item['imageUrl'] as String?) ??
-                      '';
-                  final fallbackUrl = (item['fileUrl'] as String?) ??
-                      (item['image'] as String?) ??
-                      '';
-                  final commentCount = (item['commentCount'] as num?)?.toInt() ??
-                      (item['comments'] as num?)?.toInt() ??
-                      0;
-                  final likeCount = (item['likeCount'] as num?)?.toInt() ??
-                      (item['likes'] as num?)?.toInt() ??
-                      0;
-                  String? distanceText;
-                  final distanceRaw = item['distance'];
-                  if (distanceRaw is String && distanceRaw.trim().isNotEmpty) {
-                    distanceText = distanceRaw.trim();
-                  } else if (distanceRaw is num) {
-                    final km = distanceRaw.toDouble();
-                    distanceText = '${km.toStringAsFixed(1)}km';
-                  } else if (item['distanceKm'] is num) {
-                    final km = (item['distanceKm'] as num).toDouble();
-                    distanceText = '${km.toStringAsFixed(1)}km';
-                  }
-                  return CommonLivespaceListItemView(
-                    title: title,
-                    thumbnailUrl: thumbnail.isNotEmpty ? thumbnail : fallbackUrl,
-                    dateText: dateText,
-                    placeName: placeName,
-                    commentCount: commentCount,
-                    likeCount: likeCount,
-                    distanceText: distanceText,
-                  );
-                },
-                childCount: _items.length,
-              ),
+    final scrollView = _items.isEmpty
+        ? CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(
+              parent: BouncingScrollPhysics(),
             ),
-          ),
-          if (_isLoading)
-            const SliverToBoxAdapter(
-              child: Padding(
-                padding: EdgeInsets.symmetric(vertical: 16),
+            slivers: [
+              SliverOverlapInjector(
+                handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context),
+              ),
+              SliverFillRemaining(
+                hasScrollBody: false,
                 child: Center(
-                  child: CommonActivityIndicator(
-                    size: 24,
-                    color: Colors.black,
-                  ),
+                  child: _isLoading
+                      ? const SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CommonActivityIndicator(size: 24),
+                        )
+                      : const CommonEmptyView(
+                          message: '참여한 스페이스가 없습니다.',
+                          showButton: false,
+                        ),
                 ),
               ),
+            ],
+          )
+        : NotificationListener<ScrollNotification>(
+            onNotification: (notification) {
+              if (!_isLoading && _hasNext && notification.metrics.extentAfter == 0) {
+                _loadMore();
+              }
+              return false;
+            },
+            child: CustomScrollView(
+              physics: const AlwaysScrollableScrollPhysics(
+                parent: BouncingScrollPhysics(),
+              ),
+              slivers: [
+                SliverOverlapInjector(
+                  handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context),
+                ),
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                  sliver: SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) {
+                        final item = _items[index];
+                        final title = (item['title'] as String?) ??
+                            (item['spaceTitle'] as String?) ??
+                            (item['name'] as String?) ??
+                            '라이브 스페이스';
+                        final placeName = (item['placeName'] as String?) ??
+                            (item['address'] as String?) ??
+                            (item['location'] as String?) ??
+                            '';
+                        final dateText = (item['date'] as String?) ??
+                            (item['startAt'] as String?) ??
+                            (item['createdAt'] as String?) ??
+                            '오늘';
+                        final thumbnailRaw = item['thumbnail'];
+                        final thumbnailMap =
+                            thumbnailRaw is Map<String, dynamic> ? thumbnailRaw : null;
+                        final thumbnail =
+                            (thumbnailRaw is String ? thumbnailRaw : null) ??
+                                thumbnailMap?['cdnUrl'] as String? ??
+                                thumbnailMap?['fileUrl'] as String? ??
+                                (item['thumbnailUrl'] as String?) ??
+                                (item['imageUrl'] as String?) ??
+                                '';
+                        final fallbackUrl = (item['fileUrl'] as String?) ??
+                            (item['image'] as String?) ??
+                            '';
+                        final commentCount =
+                            (item['commentCount'] as num?)?.toInt() ??
+                                (item['comments'] as num?)?.toInt() ??
+                                0;
+                        final likeCount = (item['likeCount'] as num?)?.toInt() ??
+                            (item['likes'] as num?)?.toInt() ??
+                            0;
+                        String? distanceText;
+                        final distanceRaw = item['distance'];
+                        if (distanceRaw is String && distanceRaw.trim().isNotEmpty) {
+                          distanceText = distanceRaw.trim();
+                        } else if (distanceRaw is num) {
+                          final km = distanceRaw.toDouble();
+                          distanceText = '${km.toStringAsFixed(1)}km';
+                        } else if (item['distanceKm'] is num) {
+                          final km = (item['distanceKm'] as num).toDouble();
+                          distanceText = '${km.toStringAsFixed(1)}km';
+                        }
+                        return CommonLivespaceListItemView(
+                          title: title,
+                          thumbnailUrl: thumbnail.isNotEmpty ? thumbnail : fallbackUrl,
+                          dateText: dateText,
+                          placeName: placeName,
+                          commentCount: commentCount,
+                          likeCount: likeCount,
+                          distanceText: distanceText,
+                        );
+                      },
+                      childCount: _items.length,
+                    ),
+                  ),
+                ),
+                if (_isLoading)
+                  const SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(vertical: 16),
+                      child: Center(
+                        child: CommonActivityIndicator(
+                          size: 24,
+                          color: Colors.black,
+                        ),
+                      ),
+                    ),
+                  ),
+                const SliverToBoxAdapter(child: SizedBox(height: 24)),
+              ],
             ),
-          const SliverToBoxAdapter(child: SizedBox(height: 24)),
-        ],
-      ),
+          );
+
+    return CommonRefreshView(
+      onRefresh: _handleRefresh,
+      topPadding: 12,
+      notificationPredicate: (notification) =>
+          notification.depth == 0 && notification.metrics.extentBefore == 0,
+      child: scrollView,
     );
   }
 }
@@ -520,10 +654,14 @@ class _ProfileFeedGrid extends StatefulWidget {
     super.key,
     required this.emptyMessage,
     required this.emptyButtonText,
+    required this.onRefreshTab,
+    required this.refreshProfileOnTabRefresh,
   });
 
   final String emptyMessage;
   final String emptyButtonText;
+  final Future<void> Function({bool force}) onRefreshTab;
+  final bool refreshProfileOnTabRefresh;
 
   @override
   State<_ProfileFeedGrid> createState() => _ProfileFeedGridState();
@@ -534,6 +672,7 @@ class _ProfileFeedGridState extends State<_ProfileFeedGrid> {
   bool _isLoading = false;
   bool _hasNext = true;
   String? _nextCursor;
+  Future<void>? _refreshInFlight;
 
   @override
   void initState() {
@@ -548,6 +687,22 @@ class _ProfileFeedGridState extends State<_ProfileFeedGrid> {
       _nextCursor = null;
     });
     await _loadMore();
+  }
+
+  Future<void> _handleRefresh() {
+    if (_refreshInFlight != null) return _refreshInFlight!;
+    final future = _doRefresh();
+    _refreshInFlight = future.whenComplete(() {
+      _refreshInFlight = null;
+    });
+    return _refreshInFlight!;
+  }
+
+  Future<void> _doRefresh() async {
+    if (widget.refreshProfileOnTabRefresh) {
+      await widget.onRefreshTab(force: true);
+    }
+    await _loadInitial();
   }
 
   Future<void> _loadMore() async {
@@ -593,87 +748,112 @@ class _ProfileFeedGridState extends State<_ProfileFeedGrid> {
 
   @override
   Widget build(BuildContext context) {
-    if (_feeds.isEmpty && _isLoading) {
-      return const Center(
-        child: SizedBox(
-          width: 24,
-          height: 24,
-          child: CircularProgressIndicator(strokeWidth: 2),
-        ),
-      );
-    }
-    if (_feeds.isEmpty) {
-      return CommonEmptyView(
-        message: widget.emptyMessage,
-        buttonText: widget.emptyButtonText,
-        onTap: () {},
-      );
-    }
-    final itemCount = _feeds.length + (_isLoading && _feeds.isNotEmpty ? 1 : 0);
-    return NotificationListener<ScrollNotification>(
-      onNotification: (notification) {
-        if (!_isLoading &&
-            _hasNext &&
-            notification.metrics.extentAfter == 0) {
-          _loadMore();
-        }
-        return false;
-      },
-      child: CustomScrollView(
-        slivers: [
-          SliverOverlapInjector(
-            handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context),
-          ),
-          SliverPadding(
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            sliver: SliverGrid(
-              delegate: SliverChildBuilderDelegate(
-                (context, index) {
-                  final feed = _feeds[index];
-                  final url = feed.images.isNotEmpty ? feed.images.first.cdnUrl : null;
-                  return CommonInkWell(
-                    onTap: () {
-                      showCupertinoModalPopup(
-                        context: context,
-                        builder: (_) => SizedBox.expand(
-                          child: ProfileFeedListView(
-                            feeds: _feeds,
-                            initialIndex: index,
-                          ),
-                        ),
-                      );
-                    },
-                    child: ProfileFeedListItemView(
-                      imageUrl: url ?? '',
-                      imageCount: feed.images.length,
-                    ),
-                  );
-                },
-                childCount: _feeds.length,
-              ),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3,
-                mainAxisSpacing: 2,
-                crossAxisSpacing: 2,
-                childAspectRatio: 4 / 5,
-              ),
+    final scrollView = _feeds.isEmpty
+        ? CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(
+              parent: BouncingScrollPhysics(),
             ),
-          ),
-          if (_isLoading && _feeds.isNotEmpty)
-            const SliverToBoxAdapter(
-              child: Padding(
-                padding: EdgeInsets.symmetric(vertical: 16),
+            slivers: [
+              SliverOverlapInjector(
+                handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context),
+              ),
+              SliverFillRemaining(
+                hasScrollBody: false,
                 child: Center(
-                  child: CommonActivityIndicator(
-                    size: 24,
-                    color: Colors.black,
-                  ),
+                  child: _isLoading
+                      ? const SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CommonActivityIndicator(size: 24),
+                        )
+                      : CommonEmptyView(
+                          message: widget.emptyMessage,
+                          showButton: false,
+                        ),
                 ),
               ),
+            ],
+          )
+        : NotificationListener<ScrollNotification>(
+            onNotification: (notification) {
+              if (!_isLoading && _hasNext && notification.metrics.extentAfter == 0) {
+                _loadMore();
+              }
+              return false;
+            },
+            child: CustomScrollView(
+              physics: const AlwaysScrollableScrollPhysics(
+                parent: BouncingScrollPhysics(),
+              ),
+              slivers: [
+                SliverOverlapInjector(
+                  handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context),
+                ),
+                SliverPadding(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  sliver: SliverGrid(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) {
+                        final feed = _feeds[index];
+                        final url =
+                            feed.images.isNotEmpty ? feed.images.first.cdnUrl : null;
+                        return CommonInkWell(
+                          onTap: () {
+                            showCupertinoModalPopup(
+                              context: context,
+                              builder: (_) => SizedBox.expand(
+                                child: ProfileFeedListView(
+                                  feeds: _feeds,
+                                  initialIndex: index,
+                                  onFeedUpdated: (updated) {
+                                    final i =
+                                        _feeds.indexWhere((f) => f.id == updated.id);
+                                    if (i < 0) return;
+                                    setState(() => _feeds[i] = updated);
+                                  },
+                                ),
+                              ),
+                            );
+                          },
+                          child: ProfileFeedListItemView(
+                            imageUrl: url ?? '',
+                            imageCount: feed.images.length,
+                          ),
+                        );
+                      },
+                      childCount: _feeds.length,
+                    ),
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 3,
+                      mainAxisSpacing: 2,
+                      crossAxisSpacing: 2,
+                      childAspectRatio: 4 / 5,
+                    ),
+                  ),
+                ),
+                if (_isLoading && _feeds.isNotEmpty)
+                  const SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(vertical: 16),
+                      child: Center(
+                        child: CommonActivityIndicator(
+                          size: 24,
+                          color: Colors.black,
+                        ),
+                      ),
+                    ),
+                  ),
+                const SliverToBoxAdapter(child: SizedBox(height: 24)),
+              ],
             ),
-          const SliverToBoxAdapter(child: SizedBox(height: 24)),
-        ],
-      ),
+          );
+
+    return CommonRefreshView(
+      onRefresh: _handleRefresh,
+      topPadding: 12,
+      notificationPredicate: (notification) =>
+          notification.depth == 0 && notification.metrics.extentBefore == 0,
+      child: scrollView,
     );
   }
 }

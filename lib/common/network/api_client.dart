@@ -201,16 +201,15 @@ class ApiClient {
   static Future<void> registerPushToken({
     required String fcmToken,
     required String platform,
-    required String deviceModel,
   }) async {
-    final uri = Uri.parse('$baseUrl/api/v1/push/register-token');
+    // Push token register: POST /api/v1/push/tokens
+    final uri = Uri.parse('$baseUrl/api/v1/push/tokens');
     final body = <String, dynamic>{
-      'fcmToken': fcmToken,
+      'token': fcmToken,
       'platform': platform,
-      'deviceModel': deviceModel,
     };
 
-    _logJsonRequest('POST', uri, body);
+    _logJsonRequest('POST', uri, body, redactKeys: const {'token'});
     final response = await _sendWithAuthRetry(
       () => http.post(uri, headers: _headers(json: true), body: jsonEncode(body)),
       retryRequest: () => http.post(uri, headers: _headers(json: true), body: jsonEncode(body)),
@@ -224,23 +223,57 @@ class ApiClient {
   static Future<void> expirePushToken({
     required String fcmToken,
     required String platform,
-    required String deviceModel,
   }) async {
-    final uri = Uri.parse('$baseUrl/api/v1/push/expire-token');
-    final body = <String, dynamic>{
-      'fcmToken': fcmToken,
-      'platform': platform,
-      'deviceModel': deviceModel,
-    };
+    // Push token delete: DELETE /api/v1/push/tokens
+    final uri = Uri.parse('$baseUrl/api/v1/push/tokens').replace(
+      queryParameters: <String, String>{
+        'token': fcmToken,
+        'platform': platform,
+      },
+    );
 
-    _logJsonRequest('POST', uri, body);
+    final redactedUri = uri.replace(
+      queryParameters: <String, String>{
+        'token': '<redacted>',
+        'platform': platform,
+      },
+    );
+    _logRequest('DELETE', redactedUri);
     final response = await _sendWithAuthRetry(
-      () => http.post(uri, headers: _headers(json: true), body: jsonEncode(body)),
-      retryRequest: () => http.post(uri, headers: _headers(json: true), body: jsonEncode(body)),
+      () => http.delete(uri, headers: _headers()),
+      retryRequest: () => http.delete(uri, headers: _headers()),
+    );
+    _logResponse(response);
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      return;
+    }
+
+    // Fallback: some servers expect DELETE with JSON body.
+    final fallbackBody = <String, dynamic>{
+      'token': fcmToken,
+      'platform': platform,
+    };
+    _logJsonRequest('DELETE', uri, fallbackBody, redactKeys: const {'token'});
+    final fallbackResponse = await _sendWithAuthRetry(
+      () => http.delete(uri, headers: _headers(json: true), body: jsonEncode(fallbackBody)),
+      retryRequest: () => http.delete(uri, headers: _headers(json: true), body: jsonEncode(fallbackBody)),
+    );
+    _logResponse(fallbackResponse);
+    if (fallbackResponse.statusCode < 200 || fallbackResponse.statusCode >= 300) {
+      throw Exception('Push token delete failed: ${fallbackResponse.statusCode}');
+    }
+  }
+
+  static Future<void> withdrawAccount() async {
+    final uri = Uri.parse('$authBaseUrl/api/v1/auth/withdrawal');
+    _logRequest('POST', uri);
+    final response = await _sendWithAuthRetry(
+      () => http.post(uri, headers: _headers()),
+      retryRequest: () => http.post(uri, headers: _headers()),
     );
     _logResponse(response);
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception('Push token expire failed: ${response.statusCode}');
+      throw Exception('Withdrawal failed: ${response.statusCode}');
     }
   }
 
@@ -267,6 +300,19 @@ class ApiClient {
     _logResponse(response);
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception('Unlike feed failed: ${response.statusCode}');
+    }
+  }
+
+  static Future<void> checkinFeed(String feedId) async {
+    final uri = Uri.parse('$baseUrl/api/v1/feeds/$feedId/checkin');
+    _logRequest('POST', uri);
+    final response = await _sendWithAuthRetry(
+      () => http.post(uri, headers: _headers()),
+      retryRequest: () => http.post(uri, headers: _headers()),
+    );
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Checkin feed failed: ${response.statusCode}');
     }
   }
 
@@ -313,21 +359,80 @@ class ApiClient {
     return uploaded;
   }
 
+  static Future<String> uploadCommentImage(File file) async {
+    final uri = Uri.parse('$baseUrl/api/v1/comments/images');
+
+    Future<http.Response> send() async {
+      final request = http.MultipartRequest('POST', uri);
+      request.headers.addAll(_headers());
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          'files',
+          file.path,
+          contentType: MediaType('image', 'webp'),
+          filename: 'comment_${DateTime.now().microsecondsSinceEpoch}.webp',
+        ),
+      );
+      final streamed = await request.send();
+      return http.Response.fromStream(streamed);
+    }
+
+    _logRequest('POST', uri);
+    final response = await _sendWithAuthRetry(send, retryRequest: send);
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Comment image upload failed: ${response.statusCode}');
+    }
+    if (response.body.isEmpty) {
+      throw Exception('Comment image upload failed: empty response');
+    }
+    final json = jsonDecode(response.body);
+    final ids = _extractFileIds(json);
+    if (ids.isEmpty) {
+      throw Exception('Comment image upload failed: no imageId returned');
+    }
+    return ids.first;
+  }
+
   static Future<void> createPersonalFeed({
     required String content,
     required List<String> fileIds,
     required String placeName,
     required double longitude,
     required double latitude,
+    String? title,
+    String? address,
+    List<String>? tags,
+    List<String>? hashtags,
+    String? type,
+    String? expiresAt,
   }) async {
-    final uri = Uri.parse('$baseUrl/api/v1/personal-feed');
+    final uri = Uri.parse('$baseUrl/api/v1/feeds');
     final body = <String, dynamic>{
       'content': content,
-      'fileIds': fileIds,
       'placeName': placeName,
+      'fileIds': fileIds,
       'longitude': longitude,
       'latitude': latitude,
     };
+    if (title != null) {
+      body['title'] = title;
+    }
+    if (address != null) {
+      body['address'] = address;
+    }
+    if (tags != null) {
+      body['tags'] = tags;
+    }
+    if (hashtags != null) {
+      body['hashtags'] = hashtags;
+    }
+    if (type != null) {
+      body['type'] = type;
+    }
+    if (expiresAt != null) {
+      body['expiresAt'] = expiresAt;
+    }
 
     _logJsonRequest('POST', uri, body);
     final response = await _sendWithAuthRetry(
@@ -347,8 +452,14 @@ class ApiClient {
     double? longitude,
     double? latitude,
     List<String>? fileIds,
+    String? title,
+    String? address,
+    List<String>? tags,
+    List<String>? hashtags,
+    String? type,
+    String? expiresAt,
   }) async {
-    final uri = Uri.parse('$baseUrl/api/v1/personal-feed/$feedId');
+    final uri = Uri.parse('$baseUrl/api/v1/feeds/$feedId');
     final body = <String, dynamic>{
       'content': content,
     };
@@ -363,6 +474,24 @@ class ApiClient {
     }
     if (fileIds != null) {
       body['fileIds'] = fileIds;
+    }
+    if (title != null) {
+      body['title'] = title;
+    }
+    if (address != null) {
+      body['address'] = address;
+    }
+    if (tags != null) {
+      body['tags'] = tags;
+    }
+    if (hashtags != null) {
+      body['hashtags'] = hashtags;
+    }
+    if (type != null) {
+      body['type'] = type;
+    }
+    if (expiresAt != null) {
+      body['expiresAt'] = expiresAt;
     }
 
     _logJsonRequest('PATCH', uri, body);
@@ -379,7 +508,7 @@ class ApiClient {
   static Future<void> deletePersonalFeed({
     required String feedId,
   }) async {
-    final uri = Uri.parse('$baseUrl/api/v1/personal-feed/$feedId');
+    final uri = Uri.parse('$baseUrl/api/v1/feeds/$feedId');
     _logRequest('DELETE', uri);
     final response = await _sendWithAuthRetry(
       () => http.delete(uri, headers: _headers()),
@@ -454,6 +583,8 @@ class ApiClient {
     String? cursor,
     String? authorUserId,
     String? type,
+    List<String>? tags,
+    List<String>? hashtags,
   }) async {
     final query = <String, String>{
       'dir': dir,
@@ -469,6 +600,12 @@ class ApiClient {
     if (type != null && type.isNotEmpty) {
       query['type'] = type;
     }
+    if (tags != null && tags.isNotEmpty) {
+      query['tags'] = tags.join(',');
+    }
+    if (hashtags != null && hashtags.isNotEmpty) {
+      query['hashtags'] = hashtags.join(',');
+    }
     final uri = Uri.parse('$baseUrl/api/v1/feeds').replace(queryParameters: query);
     _logRequest('GET', uri);
     final response = await _sendWithAuthRetry(
@@ -480,6 +617,28 @@ class ApiClient {
       throw Exception('Feeds request failed: ${response.statusCode}');
     }
     return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  static Future<Map<String, dynamic>> fetchFeedDetail(String feedId) async {
+    final uri = Uri.parse('$baseUrl/api/v1/feeds/$feedId');
+    _logRequest('GET', uri);
+    final response = await _sendWithAuthRetry(
+      () => http.get(uri, headers: _headers()),
+      retryRequest: () => http.get(uri, headers: _headers()),
+    );
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Feed detail request failed: ${response.statusCode}');
+    }
+    final json = jsonDecode(response.body) as Map<String, dynamic>;
+    final data = json['data'];
+    if (data is Map<String, dynamic>) return data;
+    if (data is List &&
+        data.isNotEmpty &&
+        data.first is Map<String, dynamic>) {
+      return data.first as Map<String, dynamic>;
+    }
+    return json;
   }
 
   static Future<Map<String, dynamic>> fetchMyFeeds({
@@ -666,6 +825,7 @@ class ApiClient {
     int limit = 30,
     String? type,
     List<String>? tags,
+    String orderBy = 'latest',
   }) async {
     final query = <String, String>{
       'latitude': '$latitude',
@@ -673,6 +833,7 @@ class ApiClient {
       'radius': '$radiusKm',
       if (date != null && date.isNotEmpty) 'date': date,
       'limit': '$limit',
+      'orderBy': orderBy,
     };
     if (type != null && type.trim().isNotEmpty) {
       query['type'] = type.trim();
@@ -730,12 +891,14 @@ class ApiClient {
     int limit = 20,
     String? cursor,
     String dir = 'next',
+    String orderBy = 'latest',
   }) async {
     final query = <String, String>{
       'entityType': 'FEED',
       'entityId': feedId,
       'limit': '$limit',
       'dir': dir,
+      'orderBy': orderBy,
     };
     if (cursor != null && cursor.isNotEmpty) {
       query['cursor'] = cursor;
@@ -757,6 +920,8 @@ class ApiClient {
     final meta = root is Map<String, dynamic> ? root['meta'] : null;
     final metaMap = meta is Map<String, dynamic> ? meta : const <String, dynamic>{};
     final hasNext = (metaMap['hasNext'] as bool?) ?? false;
+    final totalCount = (metaMap['totalCount'] as num?)?.toInt() ??
+        (metaMap['count'] as num?)?.toInt();
     final nextCursor =
         metaMap['nextCursor'] as String? ?? metaMap['cursor'] as String?;
     if (root is Map<String, dynamic>) {
@@ -770,10 +935,16 @@ class ApiClient {
           comments: items,
           hasNext: hasNext,
           nextCursor: nextCursor,
+          totalCount: totalCount,
         );
       }
     }
-    return FeedCommentPage(comments: const [], hasNext: false, nextCursor: null);
+    return FeedCommentPage(
+      comments: const [],
+      hasNext: false,
+      nextCursor: null,
+      totalCount: totalCount,
+    );
   }
 
   static Future<List<MentionUser>> fetchSpaceParticipants({
@@ -819,7 +990,7 @@ class ApiClient {
     required String commentId,
     required String feedId,
     required String content,
-    String? fileId,
+    String? imageId,
   }) async {
     final uri = Uri.parse('$baseUrl/api/v1/comments');
     final userId = AuthStore.instance.currentUser.value?.id;
@@ -828,7 +999,7 @@ class ApiClient {
       'entityId': feedId,
       'parentId': commentId,
       'content': content,
-      'fileId': fileId,
+      'imageId': imageId,
     };
     if (userId != null && userId.isNotEmpty) {
       body['userId'] = userId;
@@ -847,7 +1018,7 @@ class ApiClient {
   static Future<void> createFeedComment({
     required String feedId,
     required String content,
-    String? fileId,
+    String? imageId,
   }) async {
     final uri = Uri.parse('$baseUrl/api/v1/comments');
     final userId = AuthStore.instance.currentUser.value?.id;
@@ -856,7 +1027,7 @@ class ApiClient {
       'entityId': feedId,
       'parentId': null,
       'content': content,
-      'fileId': fileId,
+      'imageId': imageId,
     };
     if (userId != null && userId.isNotEmpty) {
       body['userId'] = userId;
@@ -872,17 +1043,23 @@ class ApiClient {
     }
   }
 
-  static Future<void> toggleFeedCommentLike(String feedCommentId) async {
-    final uri =
-        Uri.parse('$baseUrl/api/v1/feed-comment-likes/toggle/$feedCommentId');
-    _logRequest('POST', uri);
+  static Future<void> setCommentLike({
+    required String commentId,
+    required bool isLiked,
+  }) async {
+    final uri = Uri.parse('$baseUrl/api/v1/comments/$commentId/like');
+    _logRequest(isLiked ? 'POST' : 'DELETE', uri);
     final response = await _sendWithAuthRetry(
-      () => http.post(uri, headers: _headers()),
-      retryRequest: () => http.post(uri, headers: _headers()),
+      () => isLiked
+          ? http.post(uri, headers: _headers())
+          : http.delete(uri, headers: _headers()),
+      retryRequest: () => isLiked
+          ? http.post(uri, headers: _headers())
+          : http.delete(uri, headers: _headers()),
     );
     _logResponse(response);
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception('Feed comment like toggle failed: ${response.statusCode}');
+      throw Exception('Comment like request failed: ${response.statusCode}');
     }
   }
 
@@ -1026,7 +1203,20 @@ class ApiClient {
   static void _logResponse(http.Response response) {
     final body = response.body;
     final preview = body.length > 800 ? '${body.substring(0, 800)}…' : body;
-    debugPrint('[API][RES] ${response.statusCode} ${response.request?.url}');
+    final rawUrl = response.request?.url;
+    final safeUrl = rawUrl == null ? null : _redactSensitiveQuery(rawUrl);
+    debugPrint('[API][RES] ${response.statusCode} $safeUrl');
     debugPrint('[API][RES] $preview');
+  }
+
+  static Uri _redactSensitiveQuery(Uri uri) {
+    if (uri.queryParameters.isEmpty) return uri;
+    const sensitiveKeys = {'token', 'accessToken', 'refreshToken', 'fcmToken'};
+    final redacted = <String, String>{};
+    for (final entry in uri.queryParameters.entries) {
+      redacted[entry.key] =
+          sensitiveKeys.contains(entry.key) ? '<redacted>' : entry.value;
+    }
+    return uri.replace(queryParameters: redacted);
   }
 }

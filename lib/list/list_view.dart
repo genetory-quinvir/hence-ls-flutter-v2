@@ -2,16 +2,15 @@ import 'dart:math' as math;
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:custom_refresh_indicator/custom_refresh_indicator.dart';
-
 import '../common/widgets/common_empty_view.dart';
+import '../common/widgets/common_refresh_view.dart';
 import '../common/widgets/common_livespace_list_item_view.dart';
 import '../common/widgets/common_feed_list_item_view.dart';
 import '../feed_list/models/feed_models.dart';
 import '../livespace_detail/livespace_detail_view.dart';
 import '../profile/profile_feed_detail_view.dart';
 
-class MapListView extends StatelessWidget {
+class MapListView extends StatefulWidget {
   const MapListView({
     super.key,
     this.topPadding = 0,
@@ -26,6 +25,13 @@ class MapListView extends StatelessWidget {
   final bool isLoading;
   final ({double lat, double lng})? currentCenter;
   final Future<void> Function()? onRefresh;
+
+  @override
+  State<MapListView> createState() => _MapListViewState();
+}
+
+class _MapListViewState extends State<MapListView> {
+  final Map<String, Feed> _feedOverrides = {};
 
   double _distanceMeters({
     required double lat1,
@@ -51,7 +57,7 @@ class MapListView extends StatelessWidget {
     required double? lat,
     required double? lng,
   }) {
-    final center = currentCenter;
+    final center = widget.currentCenter;
     if (center == null || lat == null || lng == null) return null;
     final meters = _distanceMeters(
       lat1: center.lat,
@@ -77,14 +83,16 @@ class MapListView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final feeds = <Feed>[];
-    for (final item in items) {
+    for (final item in widget.items) {
       final purpose = (item['purpose'] as String?)?.toUpperCase();
       if (purpose != 'FEED') continue;
       final rawFeed = item['feed'];
       final feedMap = rawFeed is Map<String, dynamic> ? rawFeed : item;
-      feeds.add(Feed.fromJson(feedMap));
+      final base = Feed.fromJson(feedMap);
+      final override = _feedOverrides[base.id];
+      feeds.add(override ?? base);
     }
-    final content = isLoading && items.isEmpty
+    final content = widget.isLoading && widget.items.isEmpty
         ? Container(
             color: Colors.white,
             alignment: Alignment.center,
@@ -94,28 +102,29 @@ class MapListView extends StatelessWidget {
               child: CircularProgressIndicator(strokeWidth: 2),
             ),
           )
-        : items.isEmpty
+        : widget.items.isEmpty
             ? const CommonEmptyView(
                 message: '표시할 항목이 없습니다.',
                 showButton: false,
               )
             : ListView.separated(
                 padding: EdgeInsets.only(
-                  top: topPadding + 8,
+                  top: widget.topPadding + 8,
                   left: 16,
                   right: 16,
                   bottom: 24,
                 ),
-                itemCount: items.length,
+                itemCount: widget.items.length,
                 separatorBuilder: (_, _) => const SizedBox.shrink(),
                 itemBuilder: (context, index) {
-                  final item = items[index];
+                  final item = widget.items[index];
                   final purpose = (item['purpose'] as String?)?.toUpperCase();
           if (purpose == 'FEED') {
             final rawFeed = item['feed'];
             final feedMap =
                 rawFeed is Map<String, dynamic> ? rawFeed : item;
-            final feed = Feed.fromJson(feedMap);
+            final base = Feed.fromJson(feedMap);
+            final feed = _feedOverrides[base.id] ?? base;
             final lat = (item['latitude'] as num?)?.toDouble() ??
                 (feedMap['latitude'] as num?)?.toDouble();
             final lng = (item['longitude'] as num?)?.toDouble() ??
@@ -134,6 +143,9 @@ class MapListView extends StatelessWidget {
                     child: ProfileFeedDetailView(
                       feeds: feeds,
                       initialIndex: initialIndex,
+                      onFeedUpdated: (updated) {
+                        setState(() => _feedOverrides[updated.id] = updated);
+                      },
                     ),
                   ),
                 );
@@ -188,29 +200,11 @@ class MapListView extends StatelessWidget {
               );
     return Container(
       color: Colors.white,
-      child: onRefresh == null
+      child: widget.onRefresh == null
           ? content
-          : CustomRefreshIndicator(
-              onRefresh: onRefresh!,
-              builder: (context, child, controller) {
-                return Stack(
-                  alignment: Alignment.topCenter,
-                  children: [
-                    child,
-                    Positioned(
-                      top: 12 + topPadding,
-                      child: Opacity(
-                        opacity: controller.value.clamp(0.0, 1.0),
-                        child: const SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                      ),
-                    ),
-                  ],
-                );
-              },
+          : CommonRefreshView(
+              onRefresh: widget.onRefresh!,
+              topPadding: 12 + widget.topPadding,
               child: content is ListView
                   ? content
                   : ListView(

@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:typed_data';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -27,21 +28,27 @@ class FeedCreateInfoView extends StatefulWidget {
   const FeedCreateInfoView({
     super.key,
     required this.selectedAssets,
+    this.isFeedMode = true,
     this.editFeedId,
     this.initialContent,
     this.initialPlaceName,
     this.initialLatitude,
     this.initialLongitude,
     this.initialImageUrls = const <String>[],
+    this.initialThumbnailBytes = const <String, Uint8List>{},
+    this.prefillFromAssetLocation = true,
   });
 
   final List<AssetEntity> selectedAssets;
+  final bool isFeedMode;
   final String? editFeedId;
   final String? initialContent;
   final String? initialPlaceName;
   final double? initialLatitude;
   final double? initialLongitude;
   final List<String> initialImageUrls;
+  final Map<String, Uint8List> initialThumbnailBytes;
+  final bool prefillFromAssetLocation;
 
   @override
   State<FeedCreateInfoView> createState() => _FeedCreateInfoViewState();
@@ -49,20 +56,33 @@ class FeedCreateInfoView extends StatefulWidget {
 
 class _FeedCreateInfoViewState extends State<FeedCreateInfoView> {
   late final PageController _pageController;
+  final Completer<void> _heavyLoadGate = Completer<void>();
   int _pageIndex = 0;
   final Map<String, Future<Uint8List?>> _imageFutures = {};
   final TextEditingController _placeController = TextEditingController();
+  final TextEditingController _titleController = TextEditingController();
   final TextEditingController _contentController = TextEditingController();
+  final TextEditingController _hashtagController = TextEditingController();
+  final List<String> _hashtagTags = [];
   bool _isUploading = false;
   bool _isPrefillingLocation = false;
+  bool _isPrefillingAssetLocation = false;
   bool _didPromptLocationPermission = false;
   double? _selectedLongitude;
   double? _selectedLatitude;
+  late String _defaultTitle;
 
   @override
   void initState() {
     super.initState();
     _pageController = PageController();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _waitForRouteAnimation();
+      if (!_heavyLoadGate.isCompleted) {
+        _heavyLoadGate.complete();
+      }
+      await _deferredInit();
+    });
     if (widget.initialPlaceName != null &&
         widget.initialPlaceName!.trim().isNotEmpty) {
       _placeController.text = widget.initialPlaceName!.trim();
@@ -71,29 +91,86 @@ class _FeedCreateInfoViewState extends State<FeedCreateInfoView> {
         widget.initialContent!.trim().isNotEmpty) {
       _contentController.text = widget.initialContent!.trim();
     }
+    final nickname = AuthStore.instance.currentUser.value?.nickname ?? '';
+    _defaultTitle = nickname.isNotEmpty ? '$nickname의 라이브스페이스' : '라이브스페이스';
+    if (!widget.isFeedMode) {
+      _titleController.text = widget.initialContent?.trim() ?? '';
+    }
     _selectedLatitude = widget.initialLatitude;
     _selectedLongitude = widget.initialLongitude;
-    _prefillLocation();
   }
 
   @override
   void dispose() {
     _pageController.dispose();
     _placeController.dispose();
+    _titleController.dispose();
     _contentController.dispose();
+    _hashtagController.dispose();
     super.dispose();
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _prefillLocation();
+  }
+
+  Future<void> _waitForRouteAnimation() async {
+    final route = ModalRoute.of(context);
+    final animation = route?.animation;
+    if (animation == null) return;
+    if (animation.status == AnimationStatus.completed) return;
+    final completer = Completer<void>();
+    late final AnimationStatusListener listener;
+    listener = (status) {
+      if (status == AnimationStatus.completed) {
+        animation.removeStatusListener(listener);
+        completer.complete();
+      }
+    };
+    animation.addStatusListener(listener);
+    await completer.future;
+  }
+
+  Future<void> _deferredInit() async {
+    if (!mounted) return;
+    await _prefillFromSelectedAsset();
+    await _prefillLocation();
+  }
+
+  Future<void> _prefillFromSelectedAsset() async {
+    if (!widget.prefillFromAssetLocation) return;
+    if (_isPrefillingAssetLocation) return;
+    if (_placeController.text.trim().isNotEmpty) return;
+    if (widget.selectedAssets.isEmpty) return;
+    _isPrefillingAssetLocation = true;
+    try {
+      final asset = widget.selectedAssets.first;
+      final latLng = await asset.latlngAsync();
+      if (!mounted || latLng == null) return;
+      final place = await NaverLocationService.reverseGeocode(
+        latitude: latLng.latitude,
+        longitude: latLng.longitude,
+      );
+      if (!mounted) return;
+      if (place == null || place.trim().isEmpty) return;
+      _placeController.text = place.trim();
+      _selectedLatitude = latLng.latitude;
+      _selectedLongitude = latLng.longitude;
+    } finally {
+      _isPrefillingAssetLocation = false;
+    }
   }
 
   Future<Uint8List?> _imageFuture(AssetEntity asset) {
     return _imageFutures.putIfAbsent(
       asset.id,
-      () => asset.thumbnailDataWithSize(const ThumbnailSize(1600, 1600)),
+      () async {
+        if (!_heavyLoadGate.isCompleted) {
+          await _heavyLoadGate.future;
+        }
+        return asset.thumbnailDataWithSize(const ThumbnailSize(1600, 1600));
+      },
     );
   }
 
@@ -223,6 +300,9 @@ class _FeedCreateInfoViewState extends State<FeedCreateInfoView> {
       );
       return;
     }
+    final title = widget.isFeedMode ? null : _titleController.text.trim();
+    _commitHashtagInput();
+    final hashtags = List<String>.from(_hashtagTags);
     setState(() => _isUploading = true);
     try {
       final placeName = _placeController.text.trim();
@@ -233,6 +313,8 @@ class _FeedCreateInfoViewState extends State<FeedCreateInfoView> {
           placeName: placeName,
           longitude: _selectedLongitude,
           latitude: _selectedLatitude,
+          hashtags: hashtags,
+          type: widget.isFeedMode ? 'FEED' : 'LIVESPACE',
         );
       } else {
         final files = <File>[];
@@ -252,6 +334,13 @@ class _FeedCreateInfoViewState extends State<FeedCreateInfoView> {
           placeName: placeName,
           longitude: _selectedLongitude ?? 0,
           latitude: _selectedLatitude ?? 0,
+          title: widget.isFeedMode
+              ? null
+              : (title != null && title.isNotEmpty
+                  ? title
+                  : _defaultTitle),
+          hashtags: hashtags,
+          type: widget.isFeedMode ? 'FEED' : 'LIVESPACE',
         );
       }
 
@@ -281,13 +370,56 @@ class _FeedCreateInfoViewState extends State<FeedCreateInfoView> {
     }
   }
 
+
+  List<String> _parseHashtags(String input) {
+    if (input.trim().isEmpty) return [];
+    final raw = input
+        .split(RegExp(r'[\s,]+'))
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .map((e) => e.startsWith('#') ? e.substring(1) : e)
+        .where((e) => e.isNotEmpty)
+        .toList();
+    return raw;
+  }
+
+  void _commitHashtagInput() {
+    final raw = _hashtagController.text.trim();
+    if (raw.isEmpty) return;
+    final tags = _parseHashtags(raw);
+    if (tags.isEmpty) {
+      _hashtagController.clear();
+      return;
+    }
+    for (final tag in tags) {
+      if (!_hashtagTags.contains(tag)) {
+        _hashtagTags.add(tag);
+      }
+    }
+    _hashtagController.clear();
+    if (mounted) setState(() {});
+  }
+
+  void _removeHashtag(String tag) {
+    _hashtagTags.removeWhere((t) => t == tag);
+    if (mounted) setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
     final isEdit = widget.editFeedId != null && widget.editFeedId!.isNotEmpty;
+    final isFeedMode = widget.isFeedMode;
+    final backgroundColor = isFeedMode ? Colors.black : Colors.white;
+    final primaryTextColor = isFeedMode ? Colors.white : Colors.black;
+    final secondaryTextColor =
+        isFeedMode ? const Color(0xFFBDBDBD) : const Color(0xFF8E8E8E);
+    final panelColor = isFeedMode ? Colors.black : Colors.white;
+    final buttonBackground = isFeedMode ? Colors.white : Colors.black;
+    final buttonTextColor = isFeedMode ? Colors.black : Colors.white;
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle.light,
+      value: isFeedMode ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
       child: Scaffold(
-        backgroundColor: Colors.black,
+        backgroundColor: backgroundColor,
         body: Stack(
           children: [
           Column(
@@ -301,13 +433,13 @@ class _FeedCreateInfoViewState extends State<FeedCreateInfoView> {
                     child: Stack(
                       alignment: Alignment.center,
                       children: [
-                        const Center(
+                        Center(
                           child: Text(
-                            '정보 입력',
+                            isFeedMode ? '피드 올리기' : '라이브스페이스 만들기',
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w600,
-                              color: Colors.white,
+                              color: primaryTextColor,
                             ),
                           ),
                         ),
@@ -318,7 +450,7 @@ class _FeedCreateInfoViewState extends State<FeedCreateInfoView> {
                             child: Icon(
                               isEdit ? Icons.close : Icons.arrow_back_ios_new,
                               size: 20,
-                              color: Colors.white,
+                              color: primaryTextColor,
                             ),
                           ),
                         ),
@@ -347,50 +479,66 @@ class _FeedCreateInfoViewState extends State<FeedCreateInfoView> {
                       child: Column(
                         children: [
                           const SizedBox(height: 16),
-                          SizedBox(
-                            width: double.infinity,
-                            height: imageHeight,
-                            child: hasAssets
-                                ? (hasMultiple
-                                    ? PageView.builder(
-                                        controller: _pageController,
-                                        onPageChanged: (index) {
-                                          setState(() => _pageIndex = index);
-                                        },
-                                        itemCount: widget.selectedAssets.length,
-                                        itemBuilder: (context, index) {
-                                          return _SelectedImageCard(
-                                            future: _imageFuture(
-                                              widget.selectedAssets[index],
-                                            ),
-                                            cacheKey:
-                                                '${widget.selectedAssets[index].id}_1600',
-                                          );
-                                        },
-                                      )
-                                    : _SelectedImageCard(
-                                        future: _imageFuture(
-                                          widget.selectedAssets.first,
-                                        ),
-                                        cacheKey:
-                                            '${widget.selectedAssets.first.id}_1600',
-                                      ))
-                                : (hasMultiple
-                                    ? PageView.builder(
-                                        controller: _pageController,
-                                        onPageChanged: (index) {
-                                          setState(() => _pageIndex = index);
-                                        },
-                                        itemCount: widget.initialImageUrls.length,
-                                        itemBuilder: (context, index) {
-                                          return _NetworkImageCard(
-                                            url: widget.initialImageUrls[index],
-                                          );
-                                        },
-                                      )
-                                    : _NetworkImageCard(
-                                        url: widget.initialImageUrls.first,
-                                      )),
+                          RepaintBoundary(
+                            child: SizedBox(
+                              width: double.infinity,
+                              height: imageHeight,
+                              child: hasAssets
+                                  ? (hasMultiple
+                                      ? PageView.builder(
+                                          controller: _pageController,
+                                          onPageChanged: (index) {
+                                            setState(() => _pageIndex = index);
+                                          },
+                                          allowImplicitScrolling: true,
+                                          itemCount: widget.selectedAssets.length,
+                                          itemBuilder: (context, index) {
+                                            return _SelectedImageCard(
+                                              future: _imageFuture(
+                                                widget.selectedAssets[index],
+                                              ),
+                                              cacheKey:
+                                                  '${widget.selectedAssets[index].id}_1600',
+                                              placeholderBytes: widget
+                                                  .initialThumbnailBytes[
+                                                      widget
+                                                          .selectedAssets[index]
+                                                          .id],
+                                              backgroundColor: backgroundColor,
+                                            );
+                                          },
+                                        )
+                                      : _SelectedImageCard(
+                                          future: _imageFuture(
+                                            widget.selectedAssets.first,
+                                          ),
+                                          cacheKey:
+                                              '${widget.selectedAssets.first.id}_1600',
+                                          placeholderBytes: widget
+                                              .initialThumbnailBytes[
+                                                  widget.selectedAssets.first.id],
+                                          backgroundColor: backgroundColor,
+                                        ))
+                                  : (hasMultiple
+                                      ? PageView.builder(
+                                          controller: _pageController,
+                                          onPageChanged: (index) {
+                                            setState(() => _pageIndex = index);
+                                          },
+                                          allowImplicitScrolling: true,
+                                          itemCount: widget.initialImageUrls.length,
+                                          itemBuilder: (context, index) {
+                                            return _NetworkImageCard(
+                                              url: widget.initialImageUrls[index],
+                                              backgroundColor: backgroundColor,
+                                            );
+                                          },
+                                        )
+                                      : _NetworkImageCard(
+                                          url: widget.initialImageUrls.first,
+                                          backgroundColor: backgroundColor,
+                                        )),
+                            ),
                           ),
                           if (hasMultiple) ...[
                             const SizedBox(height: 12),
@@ -399,39 +547,90 @@ class _FeedCreateInfoViewState extends State<FeedCreateInfoView> {
                                   ? widget.selectedAssets.length
                                   : widget.initialImageUrls.length,
                               index: _pageIndex,
+                              activeColor:
+                                  isFeedMode ? Colors.white : Colors.black,
+                              inactiveColor: isFeedMode
+                                  ? const Color(0xFF666666)
+                                  : const Color(0xFFBDBDBD),
                             ),
                             const SizedBox(height: 12),
                           ],
                           const SizedBox(height: 16),
-                          Container(
-                            width: double.infinity,
-                            color: Colors.black,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 16,
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                CommonInkWell(
-                                  onTap: _selectPlace,
-                                  child: IgnorePointer(
-                                    child: CommonTextFieldView(
-                                      controller: _placeController,
-                                      title: '장소',
-                                      hintText: '장소 입력',
-                                      darkStyle: true,
+                          RepaintBoundary(
+                            child: Container(
+                              width: double.infinity,
+                              color: panelColor,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 16,
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  if (!isFeedMode) ...[
+                                    const SizedBox(height: 16),
+                                    CommonTextFieldView(
+                                      controller: _titleController,
+                                      title: '타이틀',
+                                      hintText: _defaultTitle,
+                                      darkStyle: isFeedMode,
+                                    ),
+                                  ],
+                                  const SizedBox(height: 16),
+                                  CommonTextViewView(
+                                    controller: _contentController,
+                                    title: '내용',
+                                    hintText: '내용 입력',
+                                    darkStyle: isFeedMode,
+                                  ),
+                                  const SizedBox(height: 16),
+                                  CommonInkWell(
+                                    onTap: _selectPlace,
+                                    child: IgnorePointer(
+                                      child: CommonTextFieldView(
+                                        controller: _placeController,
+                                        title: '장소',
+                                        hintText: '장소 입력',
+                                        darkStyle: isFeedMode,
+                                      ),
                                     ),
                                   ),
-                                ),
-                                const SizedBox(height: 16),
-                                CommonTextViewView(
-                                  controller: _contentController,
-                                  title: '내용',
-                                  hintText: '내용 입력',
-                                  darkStyle: true,
-                                ),
-                              ],
+                                  const SizedBox(height: 16),
+                                  CommonTextFieldView(
+                                    controller: _hashtagController,
+                                    title: '해시태그',
+                                    hintText: '#맛집 #친구',
+                                    textInputAction: TextInputAction.done,
+                                    onSubmitted: (_) => _commitHashtagInput(),
+                                    onChanged: (value) {
+                                      if (value.contains('\n')) {
+                                        _commitHashtagInput();
+                                      }
+                                    },
+                                    enableSuggestions: false,
+                                    autocorrect: false,
+                                    textCapitalization: TextCapitalization.none,
+                                    darkStyle: isFeedMode,
+                                  ),
+                                  if (_hashtagTags.isNotEmpty) ...[
+                                    const SizedBox(height: 10),
+                                    Wrap(
+                                      spacing: 8,
+                                      runSpacing: 8,
+                                      children: _hashtagTags
+                                          .map(
+                                            (tag) => _HashtagChip(
+                                              label: tag,
+                                              onRemove: () =>
+                                                  _removeHashtag(tag),
+                                              isDark: isFeedMode,
+                                            ),
+                                          )
+                                          .toList(),
+                                    ),
+                                  ],
+                                ],
+                              ),
                             ),
                           ),
                         ],
@@ -445,12 +644,12 @@ class _FeedCreateInfoViewState extends State<FeedCreateInfoView> {
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
                   child: CommonRoundedButton(
-                    title: '올리기',
+                    title: isFeedMode ? '피드 올리기' : '라이브스페이스 만들기',
                     onTap: _submitFeed,
                     height: 50,
                     radius: 12,
-                    backgroundColor: Colors.white,
-                    textColor: Colors.black,
+                    backgroundColor: buttonBackground,
+                    textColor: buttonTextColor,
                   ),
                 ),
               ),
@@ -459,9 +658,14 @@ class _FeedCreateInfoViewState extends State<FeedCreateInfoView> {
           if (_isUploading)
             Positioned.fill(
               child: Container(
-                color: Colors.black.withOpacity(0.45),
+                color: isFeedMode
+                    ? Colors.black.withOpacity(0.45)
+                    : Colors.white.withOpacity(0.6),
                 alignment: Alignment.center,
-                child: const CommonActivityIndicator(size: 36, color: Colors.white),
+                child: CommonActivityIndicator(
+                  size: 36,
+                  color: isFeedMode ? Colors.white : Colors.black,
+                ),
               ),
             ),
           ],
@@ -475,10 +679,14 @@ class _SelectedImageCard extends StatelessWidget {
   const _SelectedImageCard({
     required this.future,
     required this.cacheKey,
+    this.placeholderBytes,
+    required this.backgroundColor,
   });
 
   final Future<Uint8List?> future;
   final String cacheKey;
+  final Uint8List? placeholderBytes;
+  final Color backgroundColor;
 
   @override
   Widget build(BuildContext context) {
@@ -487,14 +695,24 @@ class _SelectedImageCard extends StatelessWidget {
       builder: (context, snapshot) {
         final bytes = snapshot.data;
         if (bytes == null) {
-          return const ColoredBox(color: Colors.black);
+          if (placeholderBytes == null) {
+            return ColoredBox(color: backgroundColor);
+          }
+          return RepaintBoundary(
+            child: CommonImageView(
+              memoryBytes: placeholderBytes!,
+              cacheKey: '${cacheKey}_thumb',
+              fit: BoxFit.contain,
+              backgroundColor: backgroundColor,
+            ),
+          );
         }
         return RepaintBoundary(
           child: CommonImageView(
             memoryBytes: bytes,
             cacheKey: cacheKey,
             fit: BoxFit.contain,
-            backgroundColor: Colors.black,
+            backgroundColor: backgroundColor,
           ),
         );
       },
@@ -506,10 +724,14 @@ class _PageIndicator extends StatelessWidget {
   const _PageIndicator({
     required this.count,
     required this.index,
+    required this.activeColor,
+    required this.inactiveColor,
   });
 
   final int count;
   final int index;
+  final Color activeColor;
+  final Color inactiveColor;
 
   @override
   Widget build(BuildContext context) {
@@ -523,7 +745,7 @@ class _PageIndicator extends StatelessWidget {
           margin: const EdgeInsets.symmetric(horizontal: 3),
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: i == index ? Colors.white : const Color(0xFF666666),
+            color: i == index ? activeColor : inactiveColor,
           ),
         ),
       ),
@@ -534,16 +756,70 @@ class _PageIndicator extends StatelessWidget {
 class _NetworkImageCard extends StatelessWidget {
   const _NetworkImageCard({
     required this.url,
+    required this.backgroundColor,
   });
 
   final String url;
+  final Color backgroundColor;
 
   @override
   Widget build(BuildContext context) {
     return CommonImageView(
       networkUrl: url,
       fit: BoxFit.contain,
-      backgroundColor: Colors.black,
+      backgroundColor: backgroundColor,
+    );
+  }
+}
+
+class _HashtagChip extends StatelessWidget {
+  const _HashtagChip({
+    required this.label,
+    required this.onRemove,
+    required this.isDark,
+  });
+
+  final String label;
+  final VoidCallback onRemove;
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context) {
+    final background = isDark ? const Color(0xFF1E1E1E) : const Color(0xFFF2F2F2);
+    final textColor = isDark ? Colors.white : Colors.black;
+    final iconColor = isDark ? Colors.white70 : Colors.black54;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isDark ? const Color(0xFF2A2A2A) : const Color(0xFFE0E0E0),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '#$label',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: textColor,
+            ),
+          ),
+          const SizedBox(width: 6),
+          CommonInkWell(
+            onTap: onRemove,
+            borderRadius: BorderRadius.circular(10),
+            child: Icon(
+              Icons.close,
+              size: 14,
+              color: iconColor,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

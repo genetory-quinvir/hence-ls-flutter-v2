@@ -495,10 +495,10 @@ class _IntroductionTextState extends State<_IntroductionText> {
                 onTap: () {
                   setState(() => _expanded = !_expanded);
                 },
-                child: const Padding(
+                child: Padding(
                   padding: EdgeInsets.only(top: 6),
                   child: Text(
-                    '더보기',
+                    _expanded ? '숨기기' : '더보기',
                     style: TextStyle(
                       fontFamily: 'Pretendard',
                       fontSize: 14,

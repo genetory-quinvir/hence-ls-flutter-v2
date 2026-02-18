@@ -5,6 +5,7 @@ import 'package:naver_login_sdk/naver_login_sdk.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../common/auth/auth_store.dart';
+import '../common/network/api_client.dart';
 import '../common/notifications/fcm_service.dart';
 import '../common/widgets/common_alert_view.dart';
 import '../common/widgets/common_navigation_view.dart';
@@ -97,8 +98,51 @@ class _SettingsViewState extends State<SettingsView> {
                             } catch (_) {
                               // Ignore SDK logout failures; local session clear is the source of truth.
                             }
+                            try {
+                              await FcmService.deleteTokenAndExpire();
+                            } catch (_) {
+                              // Ignore push token cleanup failures on logout.
+                            }
                             await AuthStore.instance.clear();
-                            if (context.mounted) Navigator.of(context).pop();
+                            if (!context.mounted) return;
+                            Navigator.of(context).pop(); // close dialog
+                            Navigator.of(context).maybePop(); // close settings
+                          },
+                          onSecondaryTap: () => Navigator.of(context).pop(),
+                        ),
+                      );
+                    },
+                  );
+                }
+
+                void showWithdrawAlert() {
+                  showDialog<void>(
+                    context: context,
+                    barrierDismissible: true,
+                    barrierColor: const Color(0x99000000),
+                    builder: (_) {
+                      return Material(
+                        type: MaterialType.transparency,
+                        child: CommonAlertView(
+                          title: '회원탈퇴',
+                          subTitle: '정말 회원탈퇴 하시겠어요?',
+                          primaryButtonTitle: '회원탈퇴',
+                          secondaryButtonTitle: '취소',
+                          onPrimaryTap: () async {
+                            try {
+                              await FcmService.deleteTokenAndExpire();
+                            } catch (_) {
+                              // Ignore push token cleanup failures on withdrawal.
+                            }
+                            try {
+                              await ApiClient.withdrawAccount();
+                            } catch (_) {
+                              // Ignore server withdrawal failures for now.
+                            }
+                            await AuthStore.instance.clear();
+                            if (!context.mounted) return;
+                            Navigator.of(context).pop(); // close dialog
+                            Navigator.of(context).maybePop(); // close settings
                           },
                           onSecondaryTap: () => Navigator.of(context).pop(),
                         ),
@@ -140,7 +184,7 @@ class _SettingsViewState extends State<SettingsView> {
                       title: '계정 관리',
                       rows: [
                         SettingsMenuRow.action(title: '로그아웃', onTap: showLogoutAlert),
-                        SettingsMenuRow.action(title: '회원탈퇴', onTap: () {}),
+                        SettingsMenuRow.action(title: '회원탈퇴', onTap: showWithdrawAlert),
                       ],
                     ),
                   (

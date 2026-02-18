@@ -5,8 +5,8 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import 'common_image_view.dart';
 
-class ProfileImageView extends StatelessWidget {
-  const ProfileImageView({
+class CommonProfileImageView extends StatelessWidget {
+  const CommonProfileImageView({
     super.key,
     this.imageFile,
     this.imageUrl,

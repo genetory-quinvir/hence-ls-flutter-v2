@@ -3,6 +3,9 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../common/utils/time_format.dart';
 import '../../common/widgets/common_image_view.dart';
+import '../../common/widgets/common_profile_view.dart';
+import '../../common/widgets/common_profile_modal.dart';
+import '../../profile/models/profile_display_user.dart';
 import '../../common/widgets/common_inkwell.dart';
 import '../models/feed_comment_model.dart';
 
@@ -52,17 +55,23 @@ class FeedCommentListItemView extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Container(
-          width: 32,
-          height: 32,
-          decoration: const BoxDecoration(
-            shape: BoxShape.circle,
-            color: Color(0xFFE0E0E0),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: CommonImageView(
+        CommonInkWell(
+          onTap: () {
+            if (comment.authorId.isEmpty) return;
+            final displayUser = ProfileDisplayUser(
+              id: comment.authorId,
+              nickname: comment.authorName,
+              profileImageUrl: comment.authorProfileUrl,
+            );
+            showProfileModal(context, user: displayUser);
+          },
+          borderRadius: BorderRadius.circular(12),
+          child: CommonProfileView(
+            size: 32,
             networkUrl: comment.authorProfileUrl,
-            fit: BoxFit.cover,
+            placeholder: const ColoredBox(
+              color: Color(0xFFE0E0E0),
+            ),
           ),
         ),
         const SizedBox(width: 10),
@@ -77,14 +86,25 @@ class FeedCommentListItemView extends StatelessWidget {
                     Row(
                       children: [
                         Flexible(
-                          child: Text(
-                            comment.authorName,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.black,
+                          child: CommonInkWell(
+                            onTap: () {
+                              if (comment.authorId.isEmpty) return;
+                              final displayUser = ProfileDisplayUser(
+                                id: comment.authorId,
+                                nickname: comment.authorName,
+                                profileImageUrl: comment.authorProfileUrl,
+                              );
+                              showProfileModal(context, user: displayUser);
+                            },
+                            child: Text(
+                              comment.authorName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.black,
+                              ),
                             ),
                           ),
                         ),
@@ -102,6 +122,37 @@ class FeedCommentListItemView extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 4),
+                    if (comment.imageUrl != null &&
+                        comment.imageUrl!.trim().isNotEmpty) ...[
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            final width = constraints.maxWidth;
+                            return ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: Image.network(
+                                comment.imageUrl!,
+                                width: width,
+                                fit: BoxFit.fitWidth,
+                                loadingBuilder: (context, child, progress) {
+                                  if (progress == null) return child;
+                                  return Container(
+                                    height: 140,
+                                    color: const Color(0xFFF2F2F2),
+                                  );
+                                },
+                                errorBuilder: (_, __, ___) => Container(
+                                  height: 140,
+                                  color: const Color(0xFFF2F2F2),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                    ],
                     RichText(
                       text: TextSpan(
                         style: const TextStyle(

@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:custom_refresh_indicator/custom_refresh_indicator.dart';
 import 'package:flutter/services.dart';
 
 import '../common/network/api_client.dart';
 import '../common/state/home_tab_controller.dart';
 import '../common/widgets/common_feed_item_view.dart';
+import '../common/widgets/common_refresh_view.dart';
 import '../notification/notification_view.dart';
 import 'models/feed_models.dart';
 import 'widgets/feed_list_navigation_view.dart';
@@ -136,6 +136,27 @@ class _FeedListViewState extends State<FeedListView> {
     }
   }
 
+  void _applyFeedLikeUpdate(String feedId, bool isLiked, int likeCount) {
+    final index = _feeds.indexWhere((f) => f.id == feedId);
+    if (index < 0) return;
+    setState(() {
+      _feeds[index] = _feeds[index].copyWith(
+        isLiked: isLiked,
+        likeCount: likeCount,
+      );
+    });
+  }
+
+  void _applyFeedCommentCount(String feedId, int commentCount) {
+    final index = _feeds.indexWhere((f) => f.id == feedId);
+    if (index < 0) return;
+    setState(() {
+      _feeds[index] = _feeds[index].copyWith(
+        commentCount: commentCount,
+      );
+    });
+  }
+
   void _onTabSelected(int index) {
     if (_selectedIndex == index) return;
     setState(() => _selectedIndex = index);
@@ -154,8 +175,9 @@ class _FeedListViewState extends State<FeedListView> {
           removeBottom: true,
           child: Stack(
             children: [
-              CustomRefreshIndicator(
+              CommonRefreshView(
                 onRefresh: _handleRefresh,
+                topPadding: MediaQuery.of(context).padding.top + 12,
                 notificationPredicate: (notification) {
                   if (notification is ScrollStartNotification) {
                     _allowRefreshForCurrentDrag =
@@ -167,28 +189,6 @@ class _FeedListViewState extends State<FeedListView> {
                   if (!_allowRefreshForCurrentDrag) return false;
                   return notification.depth == 0 &&
                       notification.metrics.extentBefore == 0;
-                },
-                builder: (context, child, controller) {
-                  return Stack(
-                    alignment: Alignment.topCenter,
-                    children: [
-                      child,
-                      Positioned(
-                        top: MediaQuery.of(context).padding.top + 12,
-                        child: Opacity(
-                          opacity: controller.value.clamp(0.0, 1.0),
-                          child: const SizedBox(
-                            width: 24,
-                            height: 24,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  );
                 },
                 child: PageView.builder(
                   scrollDirection: Axis.vertical,
@@ -208,6 +208,8 @@ class _FeedListViewState extends State<FeedListView> {
                       key: ValueKey(_feeds[index].id),
                       feed: _feeds[index],
                       padding: EdgeInsets.zero,
+                      onLikeChanged: _applyFeedLikeUpdate,
+                      onCommentCountChanged: _applyFeedCommentCount,
                     );
                   },
                 ),
@@ -229,7 +231,7 @@ class _FeedListViewState extends State<FeedListView> {
                   },
                 ),
               ),
-              if (_feeds.isEmpty && _isLoading)
+              if (_feeds.isEmpty && _isLoading && !_isRefreshing)
                 const Center(
                   child: SizedBox(
                     width: 50,
@@ -237,22 +239,6 @@ class _FeedListViewState extends State<FeedListView> {
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
                       color: Colors.white,
-                    ),
-                  ),
-                ),
-              if (_isRefreshing)
-                Positioned(
-                  top: MediaQuery.of(context).padding.top + 12,
-                  left: 0,
-                  right: 0,
-                  child: const Center(
-                    child: SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
                     ),
                   ),
                 ),

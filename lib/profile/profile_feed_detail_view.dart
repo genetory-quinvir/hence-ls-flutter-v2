@@ -5,15 +5,55 @@ import '../common/widgets/common_feed_item_view.dart';
 import '../common/widgets/common_inkwell.dart';
 import '../feed_list/models/feed_models.dart';
 
-class ProfileFeedDetailView extends StatelessWidget {
+class ProfileFeedDetailView extends StatefulWidget {
   const ProfileFeedDetailView({
     super.key,
     required this.feeds,
     required this.initialIndex,
+    this.onFeedUpdated,
+    this.openCommentsOnAppear = false,
   });
 
   final List<Feed> feeds;
   final int initialIndex;
+  final void Function(Feed updated)? onFeedUpdated;
+  final bool openCommentsOnAppear;
+
+  @override
+  State<ProfileFeedDetailView> createState() => _ProfileFeedDetailViewState();
+}
+
+class _ProfileFeedDetailViewState extends State<ProfileFeedDetailView> {
+  late final List<Feed> _feeds;
+
+  @override
+  void initState() {
+    super.initState();
+    _feeds = List.of(widget.feeds);
+  }
+
+  void _applyFeedLikeUpdate(String feedId, bool isLiked, int likeCount) {
+    final index = _feeds.indexWhere((f) => f.id == feedId);
+    if (index < 0) return;
+    setState(() {
+      _feeds[index] = _feeds[index].copyWith(
+        isLiked: isLiked,
+        likeCount: likeCount,
+      );
+    });
+    widget.onFeedUpdated?.call(_feeds[index]);
+  }
+
+  void _applyFeedCommentCount(String feedId, int commentCount) {
+    final index = _feeds.indexWhere((f) => f.id == feedId);
+    if (index < 0) return;
+    setState(() {
+      _feeds[index] = _feeds[index].copyWith(
+        commentCount: commentCount,
+      );
+    });
+    widget.onFeedUpdated?.call(_feeds[index]);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -25,13 +65,17 @@ class ProfileFeedDetailView extends StatelessWidget {
           children: [
             PageView.builder(
               scrollDirection: Axis.vertical,
-              controller: PageController(initialPage: initialIndex),
-              itemCount: feeds.length,
+              controller: PageController(initialPage: widget.initialIndex),
+              itemCount: _feeds.length,
               itemBuilder: (context, index) {
                 return CommonFeedItemView(
-                  key: ValueKey(feeds[index].id),
-                  feed: feeds[index],
+                  key: ValueKey(_feeds[index].id),
+                  feed: _feeds[index],
                   padding: EdgeInsets.zero,
+                  autoOpenComments:
+                      widget.openCommentsOnAppear && index == widget.initialIndex,
+                  onLikeChanged: _applyFeedLikeUpdate,
+                  onCommentCountChanged: _applyFeedCommentCount,
                 );
               },
             ),
@@ -61,10 +105,12 @@ class ProfileFeedListView extends StatefulWidget {
     super.key,
     required this.feeds,
     required this.initialIndex,
+    this.onFeedUpdated,
   });
 
   final List<Feed> feeds;
   final int initialIndex;
+  final void Function(Feed updated)? onFeedUpdated;
 
   @override
   State<ProfileFeedListView> createState() => _ProfileFeedListViewState();
@@ -72,11 +118,13 @@ class ProfileFeedListView extends StatefulWidget {
 
 class _ProfileFeedListViewState extends State<ProfileFeedListView> {
   late final PageController _pageController;
+  late final List<Feed> _feeds;
 
   @override
   void initState() {
     super.initState();
     _pageController = PageController(initialPage: widget.initialIndex);
+    _feeds = List.of(widget.feeds);
   }
 
   @override
@@ -96,14 +144,35 @@ class _ProfileFeedListViewState extends State<ProfileFeedListView> {
             PageView.builder(
               controller: _pageController,
               scrollDirection: Axis.vertical,
-              itemCount: widget.feeds.length,
+              itemCount: _feeds.length,
               itemBuilder: (context, index) {
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 16),
                   child: CommonFeedItemView(
-                    key: ValueKey(widget.feeds[index].id),
-                    feed: widget.feeds[index],
+                    key: ValueKey(_feeds[index].id),
+                    feed: _feeds[index],
                     padding: EdgeInsets.zero,
+                    onLikeChanged: (feedId, isLiked, likeCount) {
+                      final i = _feeds.indexWhere((f) => f.id == feedId);
+                      if (i < 0) return;
+                      setState(() {
+                        _feeds[i] = _feeds[i].copyWith(
+                          isLiked: isLiked,
+                          likeCount: likeCount,
+                        );
+                      });
+                      widget.onFeedUpdated?.call(_feeds[i]);
+                    },
+                    onCommentCountChanged: (feedId, commentCount) {
+                      final i = _feeds.indexWhere((f) => f.id == feedId);
+                      if (i < 0) return;
+                      setState(() {
+                        _feeds[i] = _feeds[i].copyWith(
+                          commentCount: commentCount,
+                        );
+                      });
+                      widget.onFeedUpdated?.call(_feeds[i]);
+                    },
                   ),
                 );
               },

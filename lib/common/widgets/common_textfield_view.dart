@@ -13,6 +13,10 @@ class CommonTextFieldView extends StatefulWidget {
     this.keyboardType,
     this.textInputAction,
     this.onChanged,
+    this.onSubmitted,
+    this.enableSuggestions = true,
+    this.autocorrect = true,
+    this.textCapitalization = TextCapitalization.sentences,
     this.enabled = true,
     this.darkStyle = false,
   });
@@ -26,6 +30,10 @@ class CommonTextFieldView extends StatefulWidget {
   final TextInputType? keyboardType;
   final TextInputAction? textInputAction;
   final ValueChanged<String>? onChanged;
+  final ValueChanged<String>? onSubmitted;
+  final bool enableSuggestions;
+  final bool autocorrect;
+  final TextCapitalization textCapitalization;
   final bool enabled;
   final bool darkStyle;
 
@@ -171,8 +179,12 @@ class _CommonTextFieldViewState extends State<CommonTextFieldView> {
                       maxLength: widget.maxLength,
                       keyboardType: widget.keyboardType,
                       textInputAction: widget.textInputAction,
+                      enableSuggestions: widget.enableSuggestions,
+                      autocorrect: widget.autocorrect,
+                      textCapitalization: widget.textCapitalization,
                       textAlignVertical: TextAlignVertical.center,
                       onChanged: widget.onChanged,
+                      onSubmitted: widget.onSubmitted,
                       enabled: widget.enabled,
                       decoration: InputDecoration(
                         hintText: widget.hintText,

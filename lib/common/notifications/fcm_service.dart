@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:device_info_plus/device_info_plus.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -17,6 +16,10 @@ class FcmService {
   static const int _apnsMaxRetries = 5;
   static const Duration _apnsRetryDelay = Duration(seconds: 2);
   static Timer? _apnsRetryTimer;
+  static Timer? _registerRetryTimer;
+  static int _registerRetryCount = 0;
+  static const int _registerRetryMax = 3;
+  static const Duration _registerRetryDelay = Duration(seconds: 5);
 
   static Future<void> init() async {
     final messaging = FirebaseMessaging.instance;
@@ -74,6 +77,7 @@ class FcmService {
     });
 
     AuthStore.instance.isSignedIn.addListener(() async {
+      // Register token on sign-in. Cleanup is handled on logout/withdrawal flows.
       if (!AuthStore.instance.isSignedIn.value) return;
       final prefs = await SharedPreferences.getInstance();
       final savedToken = prefs.getString('fcm_token') ?? '';
@@ -131,7 +135,7 @@ class FcmService {
       try {
         await _expireIfSignedIn(savedToken);
       } catch (_) {
-        // ignore expire errors
+        // ignore delete errors
       }
     }
     try {
@@ -191,50 +195,45 @@ class FcmService {
   static Future<void> _registerIfSignedIn(String token) async {
     if (!AuthStore.instance.isSignedIn.value) return;
     try {
-      final deviceInfo = DeviceInfoPlugin();
       String platform = 'etc';
-      String deviceModel = '';
       if (Platform.isAndroid) {
-        platform = 'android';
-        final info = await deviceInfo.androidInfo;
-        deviceModel = info.model;
+        platform = 'aos';
       } else if (Platform.isIOS) {
         platform = 'ios';
-        final info = await deviceInfo.iosInfo;
-        deviceModel = info.model ?? '';
       }
+      print(
+        '[FCM] register token start '
+        'platform=$platform '
+        'tokenLength=${token.length}',
+      );
       await ApiClient.registerPushToken(
         fcmToken: token,
         platform: platform,
-        deviceModel: deviceModel,
       );
+      _registerRetryTimer?.cancel();
+      _registerRetryTimer = null;
+      _registerRetryCount = 0;
       print('[FCM] register token success');
     } catch (_) {
       // ignore push token register errors
       print('[FCM] register token failed');
+      _scheduleRegisterRetry(token);
     }
   }
 
   static Future<void> _expireIfSignedIn(String token) async {
     if (!AuthStore.instance.isSignedIn.value) return;
-    final deviceInfo = DeviceInfoPlugin();
     String platform = 'etc';
-    String deviceModel = '';
     if (Platform.isAndroid) {
-      platform = 'android';
-      final info = await deviceInfo.androidInfo;
-      deviceModel = info.model;
+      platform = 'aos';
     } else if (Platform.isIOS) {
       platform = 'ios';
-      final info = await deviceInfo.iosInfo;
-      deviceModel = info.model ?? '';
     }
     await ApiClient.expirePushToken(
       fcmToken: token,
       platform: platform,
-      deviceModel: deviceModel,
     );
-    print('[FCM] expire token success');
+    print('[FCM] delete token success');
   }
 
   static Future<bool> _waitForApnsToken() async {
@@ -257,6 +256,17 @@ class FcmService {
     if (_apnsRetryTimer?.isActive ?? false) return;
     _apnsRetryTimer = Timer(const Duration(seconds: 5), () {
       refreshTokenAndRegister();
+    });
+  }
+
+  static void _scheduleRegisterRetry(String token) {
+    if (!AuthStore.instance.isSignedIn.value) return;
+    if (_registerRetryCount >= _registerRetryMax) return;
+    if (_registerRetryTimer?.isActive ?? false) return;
+    _registerRetryCount += 1;
+    _registerRetryTimer = Timer(_registerRetryDelay, () {
+      _registerRetryTimer = null;
+      _registerIfSignedIn(token);
     });
   }
 }

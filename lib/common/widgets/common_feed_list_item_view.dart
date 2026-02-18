@@ -6,6 +6,8 @@ import '../../feed_list/models/feed_models.dart';
 import '../utils/time_format.dart';
 import 'common_image_view.dart';
 import 'common_inkwell.dart';
+import 'common_profile_modal.dart';
+import '../../profile/models/profile_display_user.dart';
 
 class CommonFeedListItemView extends StatelessWidget {
   const CommonFeedListItemView({
@@ -59,7 +61,7 @@ class CommonFeedListItemView extends StatelessWidget {
                 children: [
                   Text(
                     content,
-                    maxLines: 2,
+                    maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       fontFamily: 'Pretendard',
@@ -71,33 +73,56 @@ class CommonFeedListItemView extends StatelessWidget {
                   const SizedBox(height: 4),
                   Row(
                     children: [
-                      ClipSmoothRect(
-                        radius: SmoothBorderRadius(
-                          cornerRadius: 5,
-                          cornerSmoothing: 1,
-                        ),
-                        child: SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CommonImageView(
-                            networkUrl: authorImageUrl,
-                            fit: BoxFit.cover,
-                            backgroundColor: const Color(0xFFF2F2F2),
-                            placeholderLogoSize: 8,
+                      CommonInkWell(
+                        onTap: () {
+                          if (feed.author.userId.isEmpty) return;
+                          final displayUser = ProfileDisplayUser(
+                            id: feed.author.userId,
+                            nickname: authorName,
+                            profileImageUrl: authorImageUrl,
+                          );
+                          showProfileModal(context, user: displayUser);
+                        },
+                        borderRadius: BorderRadius.circular(6),
+                        child: ClipSmoothRect(
+                          radius: SmoothBorderRadius(
+                            cornerRadius: 5,
+                            cornerSmoothing: 1,
+                          ),
+                          child: SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CommonImageView(
+                              networkUrl: authorImageUrl,
+                              fit: BoxFit.cover,
+                              backgroundColor: const Color(0xFFF2F2F2),
+                              placeholderLogoSize: 8,
+                            ),
                           ),
                         ),
                       ),
                       const SizedBox(width: 6),
                       Expanded(
-                        child: Text(
-                          authorName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontFamily: 'Pretendard',
-                            fontSize: 12,
-                            fontWeight: FontWeight.w400,
-                            color: Colors.black,
+                        child: CommonInkWell(
+                          onTap: () {
+                            if (feed.author.userId.isEmpty) return;
+                            final displayUser = ProfileDisplayUser(
+                              id: feed.author.userId,
+                              nickname: authorName,
+                              profileImageUrl: authorImageUrl,
+                            );
+                            showProfileModal(context, user: displayUser);
+                          },
+                          child: Text(
+                            authorName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontFamily: 'Pretendard',
+                              fontSize: 12,
+                              fontWeight: FontWeight.w400,
+                              color: Colors.black,
+                            ),
                           ),
                         ),
                       ),

@@ -18,18 +18,18 @@ class CommonInkWell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: borderRadius,
-      splashFactory: NoSplash.splashFactory,
-      splashColor: Colors.transparent,
-      highlightColor: Colors.transparent,
-      hoverColor: Colors.transparent,
-      focusColor: Colors.transparent,
-      child: Container(
-        color: backgroundColor,
+    return Material(
+      color: backgroundColor ?? Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: borderRadius,
+        splashFactory: NoSplash.splashFactory,
+        splashColor: Colors.transparent,
+        highlightColor: Colors.transparent,
+        hoverColor: Colors.transparent,
+        focusColor: Colors.transparent,
         child: Padding(
-        padding: padding ?? EdgeInsets.zero,
+          padding: padding ?? EdgeInsets.zero,
           child: child,
         ),
       ),

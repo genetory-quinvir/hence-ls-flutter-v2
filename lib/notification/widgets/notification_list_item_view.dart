@@ -7,9 +7,11 @@ class NotificationListItemView extends StatelessWidget {
   const NotificationListItemView({
     super.key,
     required this.item,
+    this.onTap,
   });
 
   final Map<String, dynamic> item;
+  final VoidCallback? onTap;
 
   String _formatCreatedAt(String? value) {
     if (value == null || value.isEmpty) return '';
@@ -61,78 +63,86 @@ class NotificationListItemView extends StatelessWidget {
     final iconPath = _notificationIconPath(template);
 
     final isUnread = readAt == null;
+    const pressedColor = Color(0xFFF2F2F2);
 
-    return Container(
-      color: isUnread ? const Color(0xFFF7F8FA) : Colors.transparent,
-      padding: const EdgeInsets.symmetric(
-        horizontal: 16,
-        vertical: 12,
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: SizedBox(
-              width: 48,
-              height: 48,
-              child: iconPath == null
-                  ? CommonImageView(
-                      networkUrl: imageUrl,
-                      fit: BoxFit.cover,
-                      backgroundColor: const Color(0xFFF2F2F2),
-                    )
-                  : Container(
-                      color: const Color(0xFFF2F2F2),
-                      alignment: Alignment.center,
-                      child: SvgPicture.asset(
-                        iconPath,
-                        width: 24,
-                        height: 24,
+    return Material(
+      color: isUnread ? const Color(0xFFF7F8FA) : pressedColor,
+      child: InkWell(
+        onTap: onTap,
+        splashColor: pressedColor,
+        highlightColor: pressedColor,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 12,
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: SizedBox(
+                  width: 48,
+                  height: 48,
+                  child: iconPath == null
+                      ? CommonImageView(
+                          networkUrl: imageUrl,
+                          fit: BoxFit.cover,
+                          backgroundColor: const Color(0xFFF2F2F2),
+                        )
+                      : Container(
+                          color: const Color(0xFFF2F2F2),
+                          alignment: Alignment.center,
+                          child: SvgPicture.asset(
+                            iconPath,
+                            width: 24,
+                            height: 24,
+                          ),
+                        ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      body,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: isUnread ? FontWeight.w500 : FontWeight.w500,
+                        color: isUnread
+                            ? const Color(0xFF111111)
+                            : const Color(0xFF7A7A7A),
                       ),
                     ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight:
-                        isUnread ? FontWeight.w500 : FontWeight.w500,
-                    color:
-                        isUnread ? const Color(0xFF111111) : const Color(0xFF7A7A7A),
-                  ),
+                    if (body.isNotEmpty) ...[
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w400,
+                          color: Color(0xFF8E8E8E),
+                        ),
+                      ),
+                    ],
+                    if (createdAt.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        createdAt,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w400,
+                          color: Color(0xFF9E9E9E),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
-                if (body.isNotEmpty) ...[
-                  Text(
-                    body,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w400,
-                      color: Color(0xFF8E8E8E),
-                    ),
-                  ),
-                ],
-                if (createdAt.isNotEmpty) ...[
-                  const SizedBox(height: 6),
-                  Text(
-                    createdAt,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w400,
-                      color: Color(0xFF9E9E9E),
-                    ),
-                  ),
-                ],
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }

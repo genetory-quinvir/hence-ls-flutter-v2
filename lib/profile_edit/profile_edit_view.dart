@@ -12,7 +12,7 @@ import '../common/widgets/common_textfield_view.dart';
 import '../common/widgets/common_textview_view.dart';
 import '../common/widgets/common_title_actionsheet.dart';
 import '../common/widgets/common_calendar_view.dart';
-import '../common/widgets/profile_image_view.dart';
+import '../common/widgets/common_profile_image_view.dart';
 import '../common/permissions/media_permission_service.dart';
 import '../common/media/media_picker_service.dart';
 import '../common/media/media_conversion_service.dart';
@@ -509,7 +509,7 @@ class _ProfilePhotoSection extends StatelessWidget {
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          ProfileImageView(
+          CommonProfileImageView(
             size: 120,
             imageFile: imageFile,
             imageUrl: imageUrl,

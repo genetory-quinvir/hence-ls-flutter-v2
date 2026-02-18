@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter/foundation.dart';
 
 import '../state/home_tab_controller.dart';
 import 'notification_router.dart';
@@ -47,20 +48,37 @@ class LocalNotificationService {
     await androidPlugin?.createNotificationChannel(_channel);
 
     FirebaseMessaging.onMessage.listen((RemoteMessage msg) async {
+      _logMessage('[FCM][FG]', msg);
       HomeTabController.setUnreadNotifications(true);
       await _showLocalNotification(msg);
     });
 
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage msg) async {
+      _logMessage('[FCM][OPEN]', msg);
       final link = msg.data['link']?.toString();
       await NotificationRouter.routeByLink(link);
     });
 
     final initial = await FirebaseMessaging.instance.getInitialMessage();
     if (initial != null) {
+      _logMessage('[FCM][INIT]', initial);
       final link = initial.data['link']?.toString();
       await NotificationRouter.routeByLink(link);
     }
+  }
+
+  void _logMessage(String tag, RemoteMessage msg) {
+    final title = msg.notification?.title ?? '';
+    final body = msg.notification?.body ?? '';
+    final dataKeys = msg.data.keys.toList();
+    // Avoid logging full data payload; keys are enough for debugging.
+    debugPrint(
+      '$tag messageId=${msg.messageId ?? ''} '
+      'from=${msg.from ?? ''} '
+      'dataKeys=$dataKeys '
+      'title=$title '
+      'body=$body',
+    );
   }
 
   Future<void> _showLocalNotification(RemoteMessage msg) async {

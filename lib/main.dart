@@ -16,6 +16,16 @@ import 'splash/splash_view.dart';
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  final title = message.notification?.title ?? '';
+  final body = message.notification?.body ?? '';
+  final dataKeys = message.data.keys.toList();
+  debugPrint(
+    '[FCM][BG] messageId=${message.messageId ?? ''} '
+    'from=${message.from ?? ''} '
+    'dataKeys=$dataKeys '
+    'title=$title '
+    'body=$body',
+  );
 }
 
 Future<void> main() async {
@@ -50,6 +60,7 @@ class MyApp extends StatelessWidget {
     final baseTheme = ThemeData();
     return MaterialApp(
       title: 'Empty App',
+      scrollBehavior: const _BouncingScrollBehavior(),
       theme: baseTheme.copyWith(
         textTheme: baseTheme.textTheme.apply(fontFamily: 'Pretendard'),
         primaryTextTheme:
@@ -67,6 +78,24 @@ class MyApp extends StatelessWidget {
       navigatorKey: rootNavigatorKey,
       home: const SplashView(),
     );
+  }
+}
+
+class _BouncingScrollBehavior extends ScrollBehavior {
+  const _BouncingScrollBehavior();
+
+  @override
+  ScrollPhysics getScrollPhysics(BuildContext context) {
+    return const BouncingScrollPhysics();
+  }
+
+  @override
+  Widget buildOverscrollIndicator(
+    BuildContext context,
+    Widget child,
+    ScrollableDetails details,
+  ) {
+    return child;
   }
 }
 

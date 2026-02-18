@@ -150,6 +150,7 @@ class _ProfileInfoBodyState extends State<_ProfileInfoBody> {
     return DefaultTabController(
       length: 1,
       child: NestedScrollView(
+        physics: const BouncingScrollPhysics(),
         headerSliverBuilder: (context, innerBoxIsScrolled) {
           return [
             const SliverToBoxAdapter(child: SizedBox(height: 16)),
@@ -285,7 +286,7 @@ class _ProfileInfoFeedGridState extends State<_ProfileInfoFeedGrid> {
     if (_feeds.isEmpty) {
       return const CommonEmptyView(
         message: '현재 피드가 없습니다.',
-        buttonText: '피드 작성하기',
+        showButton: false,
       );
     }
 
@@ -297,6 +298,7 @@ class _ProfileInfoFeedGridState extends State<_ProfileInfoFeedGrid> {
         return false;
       },
       child: CustomScrollView(
+        physics: const BouncingScrollPhysics(),
         slivers: [
           SliverOverlapInjector(
             handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context),
