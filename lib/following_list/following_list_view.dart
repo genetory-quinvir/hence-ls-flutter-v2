@@ -186,8 +186,15 @@ class _FollowingListViewState extends State<FollowingListView> {
                                   CommonProfileView(
                                     networkUrl: user.profileImageUrl,
                                     size: 40,
-                                    placeholder: Container(
-                                      color: const Color(0xFFF2F2F2),
+                                    placeholder: const ColoredBox(
+                                      color: Color(0xFFF2F2F2),
+                                      child: Center(
+                                        child: Icon(
+                                          PhosphorIconsRegular.user,
+                                          size: 18,
+                                          color: Color(0xFF9E9E9E),
+                                        ),
+                                      ),
                                     ),
                                   ),
                                   const SizedBox(width: 12),

@@ -3,8 +3,9 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../common/utils/time_format.dart';
 import '../../common/widgets/common_image_view.dart';
-import '../../common/widgets/common_profile_view.dart';
+import '../../common/widgets/common_profile_image_view.dart';
 import '../../common/widgets/common_profile_modal.dart';
+import '../../common/widgets/common_alert_view.dart';
 import '../../profile/models/profile_display_user.dart';
 import '../../common/widgets/common_inkwell.dart';
 import '../models/feed_comment_model.dart';
@@ -29,6 +30,50 @@ class FeedCommentListItemView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    const avatarSpacing = 12.0;
+    const headerBottomSpacing = 6.0;
+    const contentBottomSpacing = 8.0;
+    const actionsTopSpacing = 8.0;
+    const likeColumnSpacing = 14.0;
+    const likeCountTopSpacing = 6.0;
+
+    void showDeletedUserAlert() {
+      showDialog<void>(
+        context: context,
+        barrierDismissible: true,
+        barrierColor: const Color(0x99000000),
+        builder: (_) {
+          return Material(
+            type: MaterialType.transparency,
+            child: CommonAlertView(
+              title: '삭제된 사용자입니다.',
+              subTitle: '탈퇴한 사용자의 프로필은 확인할 수 없습니다.',
+              primaryButtonTitle: '확인',
+              onPrimaryTap: () => Navigator.of(context).pop(),
+            ),
+          );
+        },
+      );
+    }
+
+    void openProfile() {
+      if (comment.authorId.isEmpty) return;
+      if ((comment.authorDeletedAt ?? '').trim().isNotEmpty) {
+        showDeletedUserAlert();
+        return;
+      }
+      final displayUser = ProfileDisplayUser(
+        id: comment.authorId,
+        nickname: comment.authorName,
+        profileImageUrl: comment.authorProfileUrl,
+      );
+      showProfileModal(
+        context,
+        user: displayUser,
+        allowCurrentUser: true,
+      );
+    }
+
     final createdAt = formatRelativeTime(comment.createdAt);
     final isLiked = comment.isLiked;
     final mentionRegex = RegExp(r'@([a-zA-Z0-9_가-힣]{1,50})');
@@ -56,25 +101,16 @@ class FeedCommentListItemView extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         CommonInkWell(
-          onTap: () {
-            if (comment.authorId.isEmpty) return;
-            final displayUser = ProfileDisplayUser(
-              id: comment.authorId,
-              nickname: comment.authorName,
-              profileImageUrl: comment.authorProfileUrl,
-            );
-            showProfileModal(context, user: displayUser);
-          },
+          onTap: openProfile,
           borderRadius: BorderRadius.circular(12),
-          child: CommonProfileView(
+          child: CommonProfileImageView(
             size: 32,
-            networkUrl: comment.authorProfileUrl,
-            placeholder: const ColoredBox(
-              color: Color(0xFFE0E0E0),
-            ),
+            imageUrl: comment.authorProfileUrl,
+            useSquircle: true,
+            placeholderIconSize: 15,
           ),
         ),
-        const SizedBox(width: 10),
+        const SizedBox(width: avatarSpacing),
         Expanded(
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -87,15 +123,7 @@ class FeedCommentListItemView extends StatelessWidget {
                       children: [
                         Flexible(
                           child: CommonInkWell(
-                            onTap: () {
-                              if (comment.authorId.isEmpty) return;
-                              final displayUser = ProfileDisplayUser(
-                                id: comment.authorId,
-                                nickname: comment.authorName,
-                                profileImageUrl: comment.authorProfileUrl,
-                              );
-                              showProfileModal(context, user: displayUser);
-                            },
+                            onTap: openProfile,
                             child: Text(
                               comment.authorName,
                               maxLines: 1,
@@ -121,7 +149,7 @@ class FeedCommentListItemView extends StatelessWidget {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: headerBottomSpacing),
                     if (comment.imageUrl != null &&
                         comment.imageUrl!.trim().isNotEmpty) ...[
                       Padding(
@@ -151,19 +179,19 @@ class FeedCommentListItemView extends StatelessWidget {
                           },
                         ),
                       ),
-                      const SizedBox(height: 6),
+                      const SizedBox(height: contentBottomSpacing),
                     ],
                     RichText(
                       text: TextSpan(
                         style: const TextStyle(
-                          fontSize: 14,
+                          fontSize: 16,
                           fontWeight: FontWeight.w400,
                           color: Colors.black,
                         ),
                         children: spans,
                       ),
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: actionsTopSpacing),
                     Row(
                       children: [
                         if (hasReplies)
@@ -197,7 +225,7 @@ class FeedCommentListItemView extends StatelessWidget {
                   ],
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: likeColumnSpacing),
               Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -209,7 +237,7 @@ class FeedCommentListItemView extends StatelessWidget {
                       size: 18,
                     ),
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: likeCountTopSpacing),
                   Text(
                     '${comment.likeCount}',
                     style: const TextStyle(

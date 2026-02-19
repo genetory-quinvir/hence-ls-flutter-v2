@@ -69,10 +69,12 @@ class _SplashViewState extends State<SplashView>
   }
 
   Future<void> _start() async {
-    await Future.wait([
-      _loadFuture,
-      _logoController.forward().orCancel,
-    ]).catchError((_) {});
+    try {
+      await Future.wait([
+        _loadFuture,
+        _logoController.forward().orCancel,
+      ]);
+    } catch (_) {}
     if (!mounted || _navigated) return;
     _navigated = true;
     Navigator.of(context).pushReplacement(
@@ -108,27 +110,6 @@ class _SplashViewState extends State<SplashView>
                         colorFilter: ColorFilter.mode(
                           Theme.of(context).colorScheme.primary,
                           BlendMode.srcIn,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      const Text(
-                        'HENCE',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white,
-                          letterSpacing: 1.2,
-                        ),
-                      ),
-                      const Text(
-                        'Live Space',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w400,
-                          color: Colors.white,
-                          letterSpacing: 0.6,
                         ),
                       ),
                     ],

@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
@@ -44,6 +43,7 @@ class FeedCommentView extends StatefulWidget {
 }
 
 class _FeedCommentViewState extends State<FeedCommentView> {
+  static const double _sheetMinRatio = 0.6;
   final TextEditingController _controller = TextEditingController();
   final FocusNode _inputFocusNode = FocusNode();
   bool _isLoading = false;
@@ -599,51 +599,28 @@ class _FeedCommentViewState extends State<FeedCommentView> {
   @override
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context);
-    final maxHeight = media.size.height - (media.padding.top + 44 + 64);
-    const minHeight = 240.0;
-    const itemHeight = 88.0;
     const itemGap = 12.0;
     const inputHeight = 50.0;
-    const headerHeight = 32.0;
     const headerGap = 12.0;
     const inputGap = 12.0;
-    const mentionItemHeight = 40.0;
     const mentionMaxHeight = 160.0;
-    final mentionHeight = _showMentions
-        ? math.min(_filteredMentions.length * mentionItemHeight, mentionMaxHeight)
-        : 0.0;
-    final listHeight = _comments.isEmpty
-        ? 0.0
-        : (_comments.length * itemHeight) + ((_comments.length - 1) * itemGap);
-    final contentHeight = headerHeight +
-        headerGap +
-        listHeight +
-        mentionHeight +
-        (_showMentions ? 8.0 : 0.0) +
-        inputGap +
-        inputHeight +
-        44; // vertical padding (24 + 20)
     final bottomInset = media.viewInsets.bottom;
     final safeBottom = media.padding.bottom;
-    final effectiveMaxHeight = math.max(
-      minHeight,
-      maxHeight - bottomInset - safeBottom,
-    );
-    final height = contentHeight < minHeight
-        ? minHeight
-        : (contentHeight > effectiveMaxHeight ? effectiveMaxHeight : contentHeight);
-
-    return Padding(
-      padding: EdgeInsets.only(bottom: bottomInset + safeBottom),
-      child: SafeArea(
-        top: false,
-        bottom: false,
-        child: SizedBox(
-          height: height,
-          child: Stack(
-            children: [
+    final resolvedHeight = media.size.height * _sheetMinRatio;
+    return SafeArea(
+      top: false,
+      bottom: false,
+      child: SizedBox(
+        height: resolvedHeight,
+        child: Stack(
+              children: [
               Padding(
-                padding: const EdgeInsets.fromLTRB(20, 24, 16, 16),
+                padding: EdgeInsets.fromLTRB(
+                  20,
+                  24,
+                  16,
+                  16 + bottomInset + safeBottom,
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -679,9 +656,17 @@ class _FeedCommentViewState extends State<FeedCommentView> {
                   const SizedBox(height: 12),
                   Expanded(
                     child: _comments.isEmpty
-                        ? const CommonEmptyView(
-                            message: '댓글이 없습니다.',
-                            showButton: false,
+                        ? SizedBox(
+                            width: double.infinity,
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(minHeight: 200),
+                              child: const Center(
+                                child: CommonEmptyView(
+                                  message: '댓글이 없습니다.',
+                                  showButton: false,
+                                ),
+                              ),
+                            ),
                           )
                         : LayoutBuilder(
                             builder: (context, constraints) {
@@ -1035,14 +1020,13 @@ class _FeedCommentViewState extends State<FeedCommentView> {
                 ],
               ),
             ),
-            if (_isLoading)
-              const Positioned.fill(
-                child: Center(
-                  child: CommonActivityIndicator(size: 28),
+              if (_isLoading)
+                const Positioned.fill(
+                  child: Center(
+                    child: CommonActivityIndicator(size: 28),
+                  ),
                 ),
-              ),
             ],
-          ),
         ),
       ),
     );

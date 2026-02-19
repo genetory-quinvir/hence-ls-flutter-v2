@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/cupertino.dart';
@@ -9,17 +10,20 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../common/location/naver_location_service.dart';
 import '../common/auth/auth_store.dart';
+import '../common/state/home_tab_controller.dart';
 import '../sign/sign_view.dart';
 import '../feed_create_photo/feed_create_photo_view.dart';
 import '../common/network/api_client.dart';
 import '../common/widgets/common_calendar_view.dart';
 import '../common/widgets/common_dot_marker.dart';
-import '../common/widgets/common_cluster_marker.dart';
+import '../common/widgets/common_feed_cluster_marker.dart';
 import '../common/widgets/common_feed_marker.dart';
+import '../common/widgets/common_livespace_cluster_marker.dart';
 import '../common/widgets/common_map_view.dart';
 import '../common/widgets/common_livespace_marker.dart';
 import '../feed_list/models/feed_models.dart';
 import '../list/list_view.dart';
+import '../map_cluster/map_cluster_view.dart';
 import '../profile/profile_feed_detail_view.dart';
 import '../livespace_detail/livespace_detail_view.dart';
 import 'widgets/map_navigation_view.dart';
@@ -34,12 +38,14 @@ class MapView extends StatefulWidget {
 class _MapViewState extends State<MapView> {
   static const double _focusMarkerRadiusMeters = 1200;
   static const double _liveClusterDistancePx = 52;
+  static const double _clusterMaxZoom = 18.0;
+  static const double _clusterSelectionZoomThreshold = 17.8;
   int _selectedIndex = 0;
   String _selectedFilter = '오늘';
   bool _isHotArea = false;
   String _selectedListSort = '최신순';
   String _selectedListKind = 'LIVESPACE';
-  String _selectedPurposeScope = '전체';
+  String _selectedTypeScope = '전체';
   String _centerPlaceText = '';
   DateTime? _selectedFilterDate;
   final ScrollController _chipScrollController = ScrollController();
@@ -48,8 +54,11 @@ class _MapViewState extends State<MapView> {
   List<Map<String, dynamic>> _nearSpaces = const [];
   NaverMapController? _mapController;
   bool _isUpdatingMarkerPoints = false;
+  bool _pendingMarkerPointUpdate = false;
   Map<String, NPoint> _liveMarkerPoints = const {};
   bool _showLiveMarkers = true;
+  int _dongMarkerAppearTick = 0;
+  bool _isLoadingSeoulDongCenters = false;
   bool _isCameraMoving = false;
   bool _skipNextCameraIdleFetch = false;
   bool _isProgrammaticMove = false;
@@ -75,27 +84,33 @@ class _MapViewState extends State<MapView> {
     '인기순',
     '거리순',
   ];
-  static const List<String> _purposeScopes = <String>[
+  static const List<String> _typeScopes = <String>[
     '전체',
     '라이브스페이스만',
     '피드만',
   ];
   late final Map<String, GlobalKey> _chipKeys;
+  late final VoidCallback _mapFocusListener;
+  MapFocusRequest? _pendingMapFocusRequest;
+  Map<String, dynamic>? _optimisticCreatedSpace;
+  DateTime? _optimisticCreatedAt;
+  List<_DongMarkerData> _seoulDongCenters = const [];
+  Map<String, NPoint> _seoulDongScreenPoints = const {};
 
-  bool _isAllowedByPurposeScope(Map<String, dynamic> item) {
-    final purpose = (item['purpose'] as String?)?.toUpperCase();
-    if (purpose == null || purpose.isEmpty) return true;
-    if (purpose == 'LIVESPACE') return _selectedPurposeScope == '라이브스페이스만';
-    if (purpose == 'FEED') return _selectedPurposeScope == '피드만';
-    return _selectedPurposeScope == '전체';
+  bool _isAllowedByTypeScope(Map<String, dynamic> item) {
+    final type = _spaceType(item);
+    if (type == 'LIVESPACE') return _selectedTypeScope == '라이브스페이스만';
+    if (type == 'FEED') return _selectedTypeScope == '피드만';
+    return _selectedTypeScope == '전체';
   }
 
-  List<Map<String, dynamic>> get _purposeScopedSpaces {
-    return _nearSpaces;
+  List<Map<String, dynamic>> get _typeScopedSpaces {
+    if (_selectedTypeScope == '전체') return _nearSpaces;
+    return _nearSpaces.where(_isAllowedByTypeScope).toList();
   }
 
   List<Map<String, dynamic>> get _listItems {
-    return _purposeScopedSpaces.toList();
+    return _typeScopedSpaces.toList();
   }
 
   String get _orderBy {
@@ -125,6 +140,8 @@ class _MapViewState extends State<MapView> {
   @override
   void initState() {
     super.initState();
+    _mapFocusListener = _handleMapFocusRequest;
+    HomeTabController.mapFocusRequest.addListener(_mapFocusListener);
     _chipKeys = <String, GlobalKey>{
       for (final label in _filters) label: GlobalKey(),
     };
@@ -134,13 +151,316 @@ class _MapViewState extends State<MapView> {
       _lastCenter = initialCenter;
       _fetchNearSpaces(initialCenter);
     });
+    _loadSeoulDongCenters();
   }
 
   @override
   void dispose() {
+    HomeTabController.mapFocusRequest.removeListener(_mapFocusListener);
     _reverseGeocodeDebounce?.cancel();
     _chipScrollController.dispose();
     super.dispose();
+  }
+
+  void _resetMapFiltersToDefault() {
+    setState(() {
+      _selectedFilter = '오늘';
+      _selectedFilterDate = DateTime.now();
+      _isHotArea = false;
+      _selectedTypeScope = '전체';
+      _selectedListSort = '최신순';
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _centerChip(animated: false);
+    });
+  }
+
+  void _upsertCreatedSpaceForImmediateMarker(Map<String, dynamic> raw) {
+    final lat = (raw['latitude'] as num?)?.toDouble();
+    final lng = (raw['longitude'] as num?)?.toDouble();
+    if (lat == null || lng == null) return;
+    final normalized = <String, dynamic>{
+      ...raw,
+      'id': raw['id'] ?? 'created_${DateTime.now().microsecondsSinceEpoch}',
+      'type': 'LIVESPACE',
+      'latitude': lat,
+      'longitude': lng,
+    };
+    _optimisticCreatedSpace = normalized;
+    _optimisticCreatedAt = DateTime.now();
+    final createdId = normalized['id'];
+    setState(() {
+      final next = List<Map<String, dynamic>>.from(_nearSpaces)
+        ..removeWhere((item) => item['id'] == createdId)
+        ..insert(0, normalized);
+      _nearSpaces = _dedupeSpaces(next);
+    });
+    _updateLiveMarkerPoints();
+  }
+
+  String _spaceDedupeKey(Map<String, dynamic> space) {
+    final id = space['id']?.toString();
+    if (id != null && id.isNotEmpty) {
+      return 'id:$id';
+    }
+    final type = _spaceType(space);
+    final lat = (space['latitude'] as num?)?.toDouble() ?? 0;
+    final lng = (space['longitude'] as num?)?.toDouble() ?? 0;
+    final latKey = lat.toStringAsFixed(6);
+    final lngKey = lng.toStringAsFixed(6);
+    final title = (space['title'] as String?)?.trim() ?? '';
+    final place = (space['placeName'] as String?)?.trim() ?? '';
+    return 'geo:$type:$latKey:$lngKey:$title:$place';
+  }
+
+  List<Map<String, dynamic>> _dedupeSpaces(List<Map<String, dynamic>> spaces) {
+    final byId = <String, Map<String, dynamic>>{};
+    for (final space in spaces) {
+      final id = space['id']?.toString();
+      if (id == null || id.isEmpty) continue;
+      byId[id] = space;
+    }
+    final seen = <String>{};
+    final result = <Map<String, dynamic>>[];
+    for (final space in spaces) {
+      final id = space['id']?.toString();
+      if (id != null && id.isNotEmpty && byId[id] != space) {
+        continue;
+      }
+      final key = _spaceDedupeKey(space);
+      if (!seen.add(key)) continue;
+      result.add(space);
+    }
+    return result;
+  }
+
+  List<Map<String, dynamic>> _mergeOptimisticCreatedSpace(
+    List<Map<String, dynamic>> spaces,
+  ) {
+    final optimistic = _optimisticCreatedSpace;
+    if (optimistic == null) return spaces;
+    final insertedAt = _optimisticCreatedAt;
+    if (insertedAt != null &&
+        DateTime.now().difference(insertedAt) > const Duration(seconds: 45)) {
+      _optimisticCreatedSpace = null;
+      _optimisticCreatedAt = null;
+      return spaces;
+    }
+    final optimisticId = optimistic['id'];
+    final optimisticLat = (optimistic['latitude'] as num?)?.toDouble();
+    final optimisticLng = (optimistic['longitude'] as num?)?.toDouble();
+    final exists = spaces.any((item) {
+      if (item['id'] == optimisticId) return true;
+      final lat = (item['latitude'] as num?)?.toDouble();
+      final lng = (item['longitude'] as num?)?.toDouble();
+      if (optimisticLat == null || optimisticLng == null || lat == null || lng == null) {
+        return false;
+      }
+      return _spaceType(item) == _spaceType(optimistic) &&
+          (lat - optimisticLat).abs() < 0.00001 &&
+          (lng - optimisticLng).abs() < 0.00001;
+    });
+    if (exists) {
+      _optimisticCreatedSpace = null;
+      _optimisticCreatedAt = null;
+      return _dedupeSpaces(spaces);
+    }
+    return _dedupeSpaces(<Map<String, dynamic>>[optimistic, ...spaces]);
+  }
+
+  Future<void> _focusToCreatedLivespace(
+    MapFocusRequest request, {
+    bool consumeRequest = false,
+  }) async {
+    if (consumeRequest &&
+        identical(HomeTabController.mapFocusRequest.value, request)) {
+      HomeTabController.mapFocusRequest.value = null;
+    }
+    if (request.resetFilters) {
+      _resetMapFiltersToDefault();
+    }
+    final createdSpace = request.createdSpace;
+    if (createdSpace != null) {
+      _upsertCreatedSpaceForImmediateMarker(createdSpace);
+    }
+    final target = NLatLng(request.latitude, request.longitude);
+    _lastCenter = target;
+    _onMapCenterChanged(target);
+    final controller = _mapController;
+    if (controller == null) {
+      _pendingMapFocusRequest = request;
+      return;
+    }
+    _pendingMapFocusRequest = null;
+    try {
+      _skipNextCameraIdleFetch = true;
+      _isProgrammaticMove = true;
+      await controller.updateCamera(
+        NCameraUpdate.withParams(
+          target: target,
+          zoom: 16.0,
+        ),
+      );
+    } catch (_) {
+      // Ignore camera update errors.
+    }
+    await _forceRefreshLiveMarkers();
+    await _fetchNearSpaces(target);
+    await _forceRefreshLiveMarkers();
+  }
+
+  void _handleMapFocusRequest() {
+    final request = HomeTabController.mapFocusRequest.value;
+    if (request == null) return;
+    if (_selectedIndex != 0) {
+      setState(() => _selectedIndex = 0);
+    }
+    _focusToCreatedLivespace(request, consumeRequest: true);
+  }
+
+  Future<void> _forceRefreshLiveMarkers() async {
+    if (!mounted) return;
+    setState(() {
+      _showLiveMarkers = false;
+      _liveMarkerPoints = const {};
+    });
+    await Future<void>.delayed(const Duration(milliseconds: 60));
+    await _updateLiveMarkerPoints();
+    await Future<void>.delayed(const Duration(milliseconds: 120));
+    await _updateLiveMarkerPoints();
+    if (!mounted) return;
+    setState(() {
+      _showLiveMarkers = true;
+      _dongMarkerAppearTick += 1;
+    });
+  }
+
+  Future<void> _loadSeoulDongCenters() async {
+    if (_isLoadingSeoulDongCenters || _seoulDongCenters.isNotEmpty) return;
+    _isLoadingSeoulDongCenters = true;
+    try {
+      final raw = await rootBundle.loadString(
+        'assets/json/HangJeongDong_ver20260201.geojson',
+      );
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map<String, dynamic>) return;
+      final features = decoded['features'];
+      if (features is! List) return;
+      final grouped = <String, ({double latSum, double lngSum, int count})>{};
+      for (final feature in features) {
+        if (feature is! Map<String, dynamic>) continue;
+        final properties = feature['properties'];
+        final geometry = feature['geometry'];
+        if (properties is! Map<String, dynamic> ||
+            geometry is! Map<String, dynamic>) {
+          continue;
+        }
+        final sido = (properties['sidonm'] as String?)?.trim();
+        if (sido != '서울특별시') continue;
+        final center = _centroidForGeometry(geometry);
+        if (center == null) continue;
+        final id = (properties['adm_cd2'] as String?)?.trim();
+        final admName = (properties['adm_nm'] as String?)?.trim() ?? '';
+        final name = admName.contains(' ')
+            ? admName.split(' ').last.trim()
+            : admName;
+        if (id == null || id.isEmpty || name.isEmpty) continue;
+        if (!_isTargetDongName(admName: admName, name: name)) continue;
+        final mergedName = _mergeSubDongName(name);
+        final current = grouped[mergedName];
+        if (current == null) {
+          grouped[mergedName] = (latSum: center.$1, lngSum: center.$2, count: 1);
+        } else {
+          grouped[mergedName] = (
+            latSum: current.latSum + center.$1,
+            lngSum: current.lngSum + center.$2,
+            count: current.count + 1,
+          );
+        }
+      }
+      final centers = <_DongMarkerData>[];
+      for (final entry in grouped.entries) {
+        final value = entry.value;
+        centers.add(
+          _DongMarkerData(
+            id: entry.key,
+            name: entry.key,
+            lat: value.latSum / value.count,
+            lng: value.lngSum / value.count,
+          ),
+        );
+      }
+      if (!mounted) return;
+      setState(() => _seoulDongCenters = centers);
+      await _updateSeoulDongMarkerPoints();
+    } catch (_) {
+      // Ignore marker seed load failures.
+    } finally {
+      _isLoadingSeoulDongCenters = false;
+    }
+  }
+
+  (double, double)? _centroidForGeometry(Map<String, dynamic> geometry) {
+    final coordinates = geometry['coordinates'];
+    if (coordinates == null) return null;
+    final points = <(double lat, double lng)>[];
+    void walk(dynamic node) {
+      if (node is! List) return;
+      if (node.length >= 2 && node[0] is num && node[1] is num) {
+        final lng = (node[0] as num).toDouble();
+        final lat = (node[1] as num).toDouble();
+        points.add((lat, lng));
+        return;
+      }
+      for (final child in node) {
+        walk(child);
+      }
+    }
+
+    walk(coordinates);
+    if (points.isEmpty) return null;
+    var latSum = 0.0;
+    var lngSum = 0.0;
+    for (final point in points) {
+      latSum += point.$1;
+      lngSum += point.$2;
+    }
+    return (latSum / points.length, lngSum / points.length);
+  }
+
+  Future<void> _updateSeoulDongMarkerPoints() async {
+    final controller = _mapController;
+    if (controller == null || _seoulDongCenters.isEmpty) return;
+    final next = <String, NPoint>{};
+    for (final dong in _seoulDongCenters) {
+      final point = await controller.latLngToScreenLocation(
+        NLatLng(dong.lat, dong.lng),
+      );
+      next[dong.id] = point;
+    }
+    if (!mounted) return;
+    setState(() => _seoulDongScreenPoints = next);
+  }
+
+  bool _isTargetDongName({
+    required String admName,
+    required String name,
+  }) {
+    final full = admName.replaceAll(' ', '');
+    final simple = name.replaceAll(' ', '');
+    return full.contains('성수') ||
+        full.contains('논현') ||
+        full.contains('압구정') ||
+        simple.contains('성수') ||
+        simple.contains('논현') ||
+        simple.contains('압구정');
+  }
+
+  String _mergeSubDongName(String name) {
+    final normalized = name.replaceAll(' ', '');
+    if (normalized.contains('성수')) return '성수동';
+    // e.g. 성수1동, 성수2동 -> 성수동
+    return name.replaceFirst(RegExp(r'\d+동$'), '동');
   }
 
   void _onMapCenterChanged(NLatLng center) {
@@ -245,10 +565,10 @@ class _MapViewState extends State<MapView> {
     final filter = _selectedFilter;
     final isHotArea = hotRankOverride != null ? true : _isHotArea;
     final isTagFilter = filter == '러닝' || filter == '카페' || filter == '전시';
-    final type = switch (_selectedPurposeScope) {
+    final String? type = switch (_selectedTypeScope) {
       '라이브스페이스만' => 'LIVESPACE',
       '피드만' => 'FEED',
-      _ => 'ALL',
+      _ => null,
     };
     String formatDate(DateTime value) {
       final yyyy = value.year.toString().padLeft(4, '0');
@@ -295,7 +615,8 @@ class _MapViewState extends State<MapView> {
         );
       }
       if (!mounted) return;
-      setState(() => _nearSpaces = spaces);
+      final mergedSpaces = _dedupeSpaces(_mergeOptimisticCreatedSpace(spaces));
+      setState(() => _nearSpaces = mergedSpaces);
       if (movedCenter is Map<String, dynamic>) {
         final lat = (movedCenter['latitude'] as num?)?.toDouble();
         final lng = (movedCenter['longitude'] as num?)?.toDouble();
@@ -333,21 +654,25 @@ class _MapViewState extends State<MapView> {
 
   Future<void> _updateLiveMarkerPoints() async {
     final controller = _mapController;
-    if (controller == null || _isUpdatingMarkerPoints) return;
+    if (controller == null) return;
+    if (_isUpdatingMarkerPoints) {
+      _pendingMarkerPointUpdate = true;
+      return;
+    }
     _isUpdatingMarkerPoints = true;
     try {
-      if (_purposeScopedSpaces.isEmpty) {
+      if (_typeScopedSpaces.isEmpty) {
         if (mounted) setState(() => _liveMarkerPoints = const {});
         return;
       }
       final nextPoints = <String, NPoint>{};
-      for (var i = 0; i < _purposeScopedSpaces.length; i += 1) {
-        final space = _purposeScopedSpaces[i];
+      for (var i = 0; i < _typeScopedSpaces.length; i += 1) {
+        final space = _typeScopedSpaces[i];
         final lat = (space['latitude'] as num?)?.toDouble();
         final lng = (space['longitude'] as num?)?.toDouble();
         if (lat == null || lng == null) continue;
         final point = await controller.latLngToScreenLocation(NLatLng(lat, lng));
-        nextPoints['space_${space['id'] ?? i}'] = point;
+        nextPoints[_markerIdForSpace(space, i)] = point;
       }
       if (mounted) {
         setState(() {
@@ -360,6 +685,13 @@ class _MapViewState extends State<MapView> {
       }
     } finally {
       _isUpdatingMarkerPoints = false;
+      if (_pendingMarkerPointUpdate) {
+        _pendingMarkerPointUpdate = false;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          _updateLiveMarkerPoints();
+        });
+      }
     }
   }
 
@@ -382,6 +714,35 @@ class _MapViewState extends State<MapView> {
         firstImage?['fileUrl'] as String?;
   }
 
+  bool _looksLikeDirectFeed(Map<String, dynamic> space) {
+    return space.containsKey('id') &&
+        (space.containsKey('content') ||
+            space.containsKey('images') ||
+            space.containsKey('author'));
+  }
+
+  String _spaceType(Map<String, dynamic> space) {
+    final rawType = space['type'] as String?;
+    if (rawType != null) {
+      final type = rawType.toUpperCase();
+      if (type == 'FEED' || type == 'LIVESPACE') return type;
+    }
+
+    // map/near payload fallback:
+    // - direct feed item => FEED
+    // - wrapper with nested `feed` => LIVESPACE
+    if (_looksLikeDirectFeed(space)) return 'FEED';
+    if (space['feed'] is Map<String, dynamic>) return 'LIVESPACE';
+
+    return 'LIVESPACE';
+  }
+
+  String _markerIdForSpace(Map<String, dynamic> space, int index) {
+    final type = _spaceType(space);
+    final rawId = space['id'] ?? space['feedId'] ?? space['entityId'] ?? index;
+    return 'space_${type}_$rawId';
+  }
+
   Feed? _feedFromSpace(Map<String, dynamic> space) {
     final raw = space['feed'];
     if (raw is Map<String, dynamic>) {
@@ -390,8 +751,7 @@ class _MapViewState extends State<MapView> {
       return feed;
     }
     // /api/v1/map/near returns feed items directly (no wrapper).
-    if (space.containsKey('id') &&
-        (space.containsKey('content') || space.containsKey('images'))) {
+    if (_looksLikeDirectFeed(space)) {
       final feed = Feed.fromJson(space);
       if (feed.id.isEmpty) return null;
       return feed;
@@ -400,13 +760,13 @@ class _MapViewState extends State<MapView> {
   }
 
   Widget _buildLiveMarkerOverlay() {
-    if (_purposeScopedSpaces.isEmpty || _liveMarkerPoints.isEmpty) {
+    if (_typeScopedSpaces.isEmpty || _liveMarkerPoints.isEmpty) {
       return const SizedBox.shrink();
     }
     const markerSize = 44.0;
     final markerEntries = <({
       String markerId,
-      String purpose,
+      String type,
       NPoint point,
       String? thumbnailUrl,
       Feed? feed,
@@ -415,11 +775,10 @@ class _MapViewState extends State<MapView> {
       double lat,
       double lng,
     })>[];
-    for (var i = 0; i < _purposeScopedSpaces.length; i += 1) {
-      final space = _purposeScopedSpaces[i];
-      final purpose =
-          ((space['purpose'] as String?) ?? 'LIVESPACE').toUpperCase();
-      final markerId = 'space_${space['id'] ?? i}';
+    for (var i = 0; i < _typeScopedSpaces.length; i += 1) {
+      final space = _typeScopedSpaces[i];
+      final type = _spaceType(space);
+      final markerId = _markerIdForSpace(space, i);
       final point = _liveMarkerPoints[markerId];
       if (point == null) continue;
       final lat = (space['latitude'] as num?)?.toDouble();
@@ -428,7 +787,7 @@ class _MapViewState extends State<MapView> {
       final isFocused = _isWithinFocusRadius(lat: lat, lng: lng);
       markerEntries.add((
         markerId: markerId,
-        purpose: purpose,
+        type: type,
         point: point,
         thumbnailUrl: _thumbnailForSpace(space),
         feed: _feedFromSpace(space),
@@ -439,34 +798,52 @@ class _MapViewState extends State<MapView> {
       ));
     }
     final clusters = _buildLiveMarkerClusters(markerEntries);
+    final displayCenters = _buildDisplayCentersForOverlaps(clusters);
     final markerItems = <({String id, Widget child})>[];
     final clusterItems = <({String id, Widget child})>[];
     for (final cluster in clusters) {
+      final displayCenter = displayCenters[cluster.clusterId] ?? cluster.center;
       final single = cluster.members.length == 1 ? cluster.members.first : null;
       const feedWidth = 44.0;
       const feedHeight = feedWidth * 5 / 4;
-      final isSingleFeed = single != null && single.purpose == 'FEED';
-      final itemWidth = isSingleFeed ? feedWidth : markerSize;
-      final itemHeight = isSingleFeed ? feedHeight : markerSize;
+      final clusterType = cluster.members.first.type;
+      final clusterThumbnailUrl = cluster.members
+          .map((member) => member.thumbnailUrl)
+          .whereType<String>()
+          .firstWhere(
+            (url) => url.trim().isNotEmpty,
+            orElse: () => '',
+          );
+      final isSingleFeed = single != null && single.type == 'FEED';
+      final isFeedCluster = single == null && clusterType == 'FEED';
+      final itemWidth = (isSingleFeed || isFeedCluster) ? feedWidth : markerSize;
+      final itemHeight = (isSingleFeed || isFeedCluster) ? feedHeight : markerSize;
       final item = (
         id: cluster.clusterId,
         child: Positioned(
           key: ValueKey(cluster.clusterId),
-          left: cluster.center.x - itemWidth / 2,
-          top: cluster.center.y - itemHeight / 2,
+          left: displayCenter.x - itemWidth / 2,
+          top: displayCenter.y - itemHeight / 2,
           child: SizedBox(
             width: itemWidth,
             height: itemHeight,
             child: GestureDetector(
-              onTap: () {
+              onTap: () async {
                 if (!mounted) return;
                 setState(() => _selectedLiveMarkerId = cluster.clusterId);
                 if (cluster.members.length >= 2) {
-                  _zoomToCluster(cluster);
+                  if (await _shouldOpenClusterSelection(cluster)) {
+                    _openClusterSelection(cluster);
+                    return;
+                  }
+                  final didZoom = await _zoomToCluster(cluster);
+                  if (!didZoom) {
+                    _openClusterSelection(cluster);
+                  }
                   return;
                 }
                 if (single == null) return;
-                if (single.purpose == 'FEED') {
+                if (single.type == 'FEED') {
                   final tapped = single.feed;
                   if (tapped == null) return;
                   final feeds = markerEntries
@@ -504,15 +881,21 @@ class _MapViewState extends State<MapView> {
                       : Duration.zero,
                   curve: Curves.easeOutCubic,
                   alignment: Alignment.center,
-                  child: _AppearScaleIn(
+                    child: _AppearScaleIn(
                     key: ValueKey('appear_${cluster.clusterId}'),
                     child: single == null
                         ? Center(
-                            child: CommonClusterMarker(
-                              count: cluster.members.length,
-                              width: markerSize,
-                              borderRadius: 999,
-                            ),
+                            child: clusterType == 'FEED'
+                                ? CommonFeedClusterMarker(
+                                    count: cluster.members.length,
+                                    imageUrl: clusterThumbnailUrl,
+                                    width: feedWidth,
+                                  )
+                                : CommonLiveClusterMarker(
+                                    count: cluster.members.length,
+                                    imageUrl: clusterThumbnailUrl,
+                                    size: markerSize,
+                                  ),
                           )
                         : isSingleFeed
                             ? CommonFeedMarker(
@@ -570,7 +953,7 @@ class _MapViewState extends State<MapView> {
   List<_LiveMarkerCluster> _buildLiveMarkerClusters(
     List<({
       String markerId,
-      String purpose,
+      String type,
       NPoint point,
       String? thumbnailUrl,
       Feed? feed,
@@ -589,7 +972,7 @@ class _MapViewState extends State<MapView> {
       final seed = entries[i];
       final members = <({
       String markerId,
-      String purpose,
+      String type,
       NPoint point,
       String? thumbnailUrl,
       Feed? feed,
@@ -601,6 +984,7 @@ class _MapViewState extends State<MapView> {
       for (var j = i + 1; j < entries.length; j += 1) {
         if (visited.contains(j)) continue;
         final candidate = entries[j];
+        if (candidate.type != seed.type) continue;
         final dx = candidate.point.x - seed.point.x;
         final dy = candidate.point.y - seed.point.y;
         final distance = math.sqrt((dx * dx) + (dy * dy));
@@ -630,20 +1014,103 @@ class _MapViewState extends State<MapView> {
     return clusters;
   }
 
-  Future<void> _zoomToCluster(_LiveMarkerCluster cluster) async {
+  Map<String, NPoint> _buildDisplayCentersForOverlaps(
+    List<_LiveMarkerCluster> clusters,
+  ) {
+    if (clusters.length <= 1) {
+      return {for (final cluster in clusters) cluster.clusterId: cluster.center};
+    }
+    const overlapDistancePx = 2.0;
+    const spreadRadiusPx = 18.0;
+    final result = <String, NPoint>{};
+    final visited = <int>{};
+    for (var i = 0; i < clusters.length; i += 1) {
+      if (visited.contains(i)) continue;
+      visited.add(i);
+      final seed = clusters[i];
+      final group = <int>[i];
+      for (var j = i + 1; j < clusters.length; j += 1) {
+        if (visited.contains(j)) continue;
+        final candidate = clusters[j];
+        final dx = candidate.center.x - seed.center.x;
+        final dy = candidate.center.y - seed.center.y;
+        final distance = math.sqrt((dx * dx) + (dy * dy));
+        if (distance <= overlapDistancePx) {
+          visited.add(j);
+          group.add(j);
+        }
+      }
+      if (group.length == 1) {
+        result[seed.clusterId] = seed.center;
+        continue;
+      }
+      for (var index = 0; index < group.length; index += 1) {
+        final cluster = clusters[group[index]];
+        final angle = (2 * math.pi * index) / group.length;
+        final offsetX = math.cos(angle) * spreadRadiusPx;
+        final offsetY = math.sin(angle) * spreadRadiusPx;
+        result[cluster.clusterId] = NPoint(
+          seed.center.x + offsetX,
+          seed.center.y + offsetY,
+        );
+      }
+    }
+    return result;
+  }
+
+  bool _isOverlappedCluster(_LiveMarkerCluster cluster) {
+    if (cluster.members.length < 2) return false;
+    final seed = cluster.members.first;
+    const tolerance = 0.00001;
+    for (final member in cluster.members.skip(1)) {
+      if ((member.lat - seed.lat).abs() > tolerance ||
+          (member.lng - seed.lng).abs() > tolerance) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  Future<bool> _shouldOpenClusterSelection(_LiveMarkerCluster cluster) async {
+    if (_isOverlappedCluster(cluster)) return true;
     final controller = _mapController;
-    if (controller == null) return;
+    if (controller == null) return false;
     try {
       final camera = await controller.getCameraPosition();
-      final nextZoom = math.min(18.0, camera.zoom + 1.2);
+      return camera.zoom >= _clusterSelectionZoomThreshold;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  void _openClusterSelection(_LiveMarkerCluster cluster) {
+    MapClusterView.show(
+      context: context,
+      type: cluster.members.first.type,
+      items: cluster.members.map((member) => member.space).toList(),
+      currentCenter: _lastCenter == null
+          ? null
+          : (lat: _lastCenter!.latitude, lng: _lastCenter!.longitude),
+    );
+  }
+
+  Future<bool> _zoomToCluster(_LiveMarkerCluster cluster) async {
+    final controller = _mapController;
+    if (controller == null) return false;
+    try {
+      final camera = await controller.getCameraPosition();
+      final nextZoom = math.min(_clusterMaxZoom, camera.zoom + 1.2);
+      if ((nextZoom - camera.zoom).abs() < 0.01) return false;
       await controller.updateCamera(
         NCameraUpdate.withParams(
           target: cluster.centerLatLng,
           zoom: nextZoom,
         ),
       );
+      return true;
     } catch (_) {
       // Ignore transient map camera errors.
+      return false;
     }
   }
 
@@ -715,8 +1182,12 @@ class _MapViewState extends State<MapView> {
     _updateLiveMarkerPoints().whenComplete(() {
       if (!mounted) return;
       if (_showLiveMarkers) return;
-      setState(() => _showLiveMarkers = true);
+      setState(() {
+        _showLiveMarkers = true;
+        _dongMarkerAppearTick += 1;
+      });
     });
+    _updateSeoulDongMarkerPoints();
   }
 
   Future<void> _recenterToLastCenter() async {
@@ -756,8 +1227,12 @@ class _MapViewState extends State<MapView> {
       _centerChip(animated: false);
       if (index == 0) {
         _updateLiveMarkerPoints();
+        final center = _lastCenter;
+        if (center != null && !_isLoadingNear) {
+          _fetchNearSpaces(center);
+        }
       }
-      if (index == 1 && _nearSpaces.isEmpty && !_isLoadingNear) {
+      if (index == 1 && !_isLoadingNear) {
         _fetchNearSpaces(_lastCenter ?? const NLatLng(37.5665, 126.9780));
       }
     });
@@ -807,10 +1282,54 @@ class _MapViewState extends State<MapView> {
     );
   }
 
+  Widget _buildSeoulDongMarkerOverlay() {
+    if (_seoulDongScreenPoints.isEmpty) return const SizedBox.shrink();
+    if (!_showLiveMarkers) return const SizedBox.shrink();
+    return IgnorePointer(
+      child: Stack(
+        children: _seoulDongCenters.map((dong) {
+          final point = _seoulDongScreenPoints[dong.id];
+          if (point == null) return const SizedBox.shrink();
+          const size = 44.0;
+          return TweenAnimationBuilder<double>(
+            key: ValueKey('dong_${_dongMarkerAppearTick}_${dong.id}'),
+            tween: Tween<double>(begin: 0, end: 1),
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            builder: (context, t, _) {
+              return Positioned(
+                left: point.x - (size / 2),
+                top: point.y - (size / 2),
+                child: Opacity(
+                  opacity: t.clamp(0.0, 1.0),
+                  child: Transform.scale(
+                    scale: 0.92 + (0.08 * t),
+                    child: Container(
+                      width: size,
+                      height: size,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1E88E5),
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: Colors.white,
+                          width: 1,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          );
+        }).toList(),
+      ),
+    );
+  }
+
   Widget _buildFilterChips() {
     final labels = <String>[
       if (_filters.isNotEmpty) _filters.first,
-      '__purpose_scope__',
+      '__type_scope__',
       ..._filters.skip(1),
     ];
     return Padding(
@@ -824,17 +1343,17 @@ class _MapViewState extends State<MapView> {
               clipBehavior: Clip.none,
               child: Row(
                 children: labels.map((label) {
-                  if (label == '__purpose_scope__') {
+                  if (label == '__type_scope__') {
                     return Padding(
                       padding: const EdgeInsets.only(right: 8),
                       child: GestureDetector(
                         onTap: () {
                           final currentIndex =
-                              _purposeScopes.indexOf(_selectedPurposeScope);
+                              _typeScopes.indexOf(_selectedTypeScope);
                           final nextIndex =
-                              (currentIndex + 1) % _purposeScopes.length;
-                          final nextScope = _purposeScopes[nextIndex];
-                          setState(() => _selectedPurposeScope = nextScope);
+                              (currentIndex + 1) % _typeScopes.length;
+                          final nextScope = _typeScopes[nextIndex];
+                          setState(() => _selectedTypeScope = nextScope);
                           _updateLiveMarkerPoints();
                           _fetchNearSpaces(
                             _lastCenter ?? const NLatLng(37.5665, 126.9780),
@@ -856,7 +1375,7 @@ class _MapViewState extends State<MapView> {
                             ],
                           ),
                           child: Text(
-                            _selectedPurposeScope,
+                            _selectedTypeScope,
                             style: const TextStyle(
                               fontFamily: 'Pretendard',
                               fontSize: 13,
@@ -1100,11 +1619,27 @@ class _MapViewState extends State<MapView> {
                           onCreateLiveSpace: _handleCreateLiveSpace,
                           onMapReady: (controller) {
                             _mapController = controller;
+                            final pending = _pendingMapFocusRequest;
+                            if (pending != null) {
+                              _focusToCreatedLivespace(pending);
+                            }
                             _updateLiveMarkerPoints();
+                            _updateSeoulDongMarkerPoints();
                           },
                         );
                       },
                     ),
+                  ),
+                ),
+                Positioned(
+                  top: topSafe + navigationBottomOffset,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: _animatedLayer(
+                    visible: _selectedIndex == 0,
+                    hiddenOffset: const Offset(-0.04, 0),
+                    child: _buildSeoulDongMarkerOverlay(),
                   ),
                 ),
                 Positioned(
@@ -1245,13 +1780,31 @@ class _MapViewState extends State<MapView> {
       ),
       builder: (_) {
         final height = MediaQuery.of(context).size.height;
+        final center = _lastCenter ?? const NLatLng(37.5665, 126.9780);
         return SizedBox(
           height: height,
-          child: const FeedCreatePhotoView(),
+          child: FeedCreatePhotoView(
+            initialLatitude: center.latitude,
+            initialLongitude: center.longitude,
+          ),
         );
       },
     );
   }
+}
+
+class _DongMarkerData {
+  const _DongMarkerData({
+    required this.id,
+    required this.name,
+    required this.lat,
+    required this.lng,
+  });
+
+  final String id;
+  final String name;
+  final double lat;
+  final double lng;
 }
 
 class _LiveMarkerCluster {
@@ -1267,7 +1820,7 @@ class _LiveMarkerCluster {
   final NLatLng centerLatLng;
   final List<({
     String markerId,
-    String purpose,
+    String type,
     NPoint point,
     String? thumbnailUrl,
     Feed? feed,

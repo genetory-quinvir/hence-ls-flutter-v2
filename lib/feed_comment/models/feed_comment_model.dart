@@ -6,6 +6,7 @@ class FeedCommentItem {
     required this.authorName,
     required this.authorId,
     this.authorProfileUrl,
+    this.authorDeletedAt,
     this.imageId,
     this.imageUrl,
     this.isLiked = false,
@@ -19,6 +20,7 @@ class FeedCommentItem {
   final String authorName;
   final String authorId;
   final String? authorProfileUrl;
+  final String? authorDeletedAt;
   final String? imageId;
   final String? imageUrl;
   final bool isLiked;
@@ -30,6 +32,7 @@ class FeedCommentItem {
     String authorName = '';
     String authorId = '';
     String? profileUrl;
+    String? deletedAt;
     if (author is Map<String, dynamic>) {
       final id = author['userId'] ?? author['id'];
       if (id is String) authorId = id;
@@ -41,6 +44,7 @@ class FeedCommentItem {
         profileUrl =
             profileImage['cdnUrl'] as String? ?? profileImage['fileUrl'] as String?;
       }
+      deletedAt = author['deletedAt'] as String?;
     }
     final image = json['image'];
     String? imageId;
@@ -58,6 +62,7 @@ class FeedCommentItem {
       authorName: authorName,
       authorId: authorId,
       authorProfileUrl: profileUrl,
+      authorDeletedAt: deletedAt,
       imageId: imageId,
       imageUrl: imageUrl,
       isLiked: (json['isLiked'] as bool?) ?? false,

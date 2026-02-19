@@ -333,13 +333,19 @@ class _SignViewState extends State<SignView> {
                 color: Colors.black,
               ),
               onLeftTap: () => Navigator.of(context).maybePop(),
-              right: Text(
-                '둘러보기',
-                style: TextStyle(
-                  fontFamily: 'Pretendard',
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  color: Colors.grey[600],
+              right: SizedBox(
+                height: 44,
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: Text(
+                    '둘러보기',
+                    style: TextStyle(
+                      fontFamily: 'Pretendard',
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.grey[600],
+                    ),
+                  ),
                 ),
               ),
               onRightTap: () => Navigator.of(context).maybePop(),

@@ -33,6 +33,15 @@ class MapListView extends StatefulWidget {
 class _MapListViewState extends State<MapListView> {
   final Map<String, Feed> _feedOverrides = {};
 
+  String _itemType(Map<String, dynamic> item) {
+    final rawType = item['type'] as String?;
+    if (rawType != null) {
+      final type = rawType.toUpperCase();
+      if (type == 'FEED' || type == 'LIVESPACE') return type;
+    }
+    return 'LIVESPACE';
+  }
+
   double _distanceMeters({
     required double lat1,
     required double lng1,
@@ -73,19 +82,37 @@ class _MapListViewState extends State<MapListView> {
     return '${km.toStringAsFixed(1)}km';
   }
 
-  static const _thumbnails = <String>[
-    'https://images.unsplash.com/photo-1469474968028-56623f02e42e',
-    'https://images.unsplash.com/photo-1491553895911-0055eca6402d',
-    'https://images.unsplash.com/photo-1467269204594-9661b134dd2b',
-    'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4',
-  ];
+  String _thumbnailForItem(Map<String, dynamic> item) {
+    final thumbnailRaw = item['thumbnail'];
+    final thumbnailMap = thumbnailRaw is Map<String, dynamic> ? thumbnailRaw : null;
+    final feedRaw = item['feed'];
+    final feedMap = feedRaw is Map<String, dynamic> ? feedRaw : null;
+    final imagesRaw = (feedMap?['images'] ?? item['images']);
+    Map<String, dynamic>? firstImage;
+    if (imagesRaw is List) {
+      for (final entry in imagesRaw) {
+        if (entry is Map<String, dynamic>) {
+          firstImage = entry;
+          break;
+        }
+      }
+    }
+    return (thumbnailRaw is String ? thumbnailRaw : null) ??
+        thumbnailMap?['cdnUrl'] as String? ??
+        thumbnailMap?['fileUrl'] as String? ??
+        item['thumbnailUrl'] as String? ??
+        item['imageUrl'] as String? ??
+        firstImage?['thumbnailUrl'] as String? ??
+        firstImage?['cdnUrl'] as String? ??
+        firstImage?['fileUrl'] as String? ??
+        '';
+  }
 
   @override
   Widget build(BuildContext context) {
     final feeds = <Feed>[];
     for (final item in widget.items) {
-      final purpose = (item['purpose'] as String?)?.toUpperCase();
-      if (purpose != 'FEED') continue;
+      if (_itemType(item) != 'FEED') continue;
       final rawFeed = item['feed'];
       final feedMap = rawFeed is Map<String, dynamic> ? rawFeed : item;
       final base = Feed.fromJson(feedMap);
@@ -118,8 +145,7 @@ class _MapListViewState extends State<MapListView> {
                 separatorBuilder: (_, _) => const SizedBox.shrink(),
                 itemBuilder: (context, index) {
                   final item = widget.items[index];
-                  final purpose = (item['purpose'] as String?)?.toUpperCase();
-          if (purpose == 'FEED') {
+          if (_itemType(item) == 'FEED') {
             final rawFeed = item['feed'];
             final feedMap =
                 rawFeed is Map<String, dynamic> ? rawFeed : item;
@@ -152,15 +178,6 @@ class _MapListViewState extends State<MapListView> {
               },
             );
           }
-                  final thumbnailRaw = item['thumbnail'];
-                  final thumbnailMap =
-                      thumbnailRaw is Map<String, dynamic> ? thumbnailRaw : null;
-                  final thumbnail = (thumbnailRaw is String ? thumbnailRaw : null) ??
-                      thumbnailMap?['cdnUrl'] as String? ??
-                      thumbnailMap?['fileUrl'] as String? ??
-                      item['thumbnailUrl'] as String? ??
-                      item['imageUrl'] as String? ??
-                      '${_thumbnails[index % _thumbnails.length]}?w=800';
                   final title = item['title'] as String? ??
                       item['name'] as String? ??
                       '라이브 스페이스';
@@ -181,7 +198,7 @@ class _MapListViewState extends State<MapListView> {
                   final lat = (item['latitude'] as num?)?.toDouble();
                   final lng = (item['longitude'] as num?)?.toDouble();
                   return CommonLivespaceListItemView(
-                    thumbnailUrl: thumbnail,
+                    thumbnailUrl: _thumbnailForItem(item),
                     title: title,
                     dateText: dateText,
                     placeName: placeName,

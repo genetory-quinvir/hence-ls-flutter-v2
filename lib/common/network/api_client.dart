@@ -264,12 +264,13 @@ class ApiClient {
     }
   }
 
-  static Future<void> withdrawAccount() async {
+  static Future<void> withdrawAccount({required String withdrawalReason}) async {
     final uri = Uri.parse('$authBaseUrl/api/v1/auth/withdrawal');
-    _logRequest('POST', uri);
+    final body = <String, dynamic>{'withdrawalReason': withdrawalReason.trim()};
+    _logJsonRequest('POST', uri, body);
     final response = await _sendWithAuthRetry(
-      () => http.post(uri, headers: _headers()),
-      retryRequest: () => http.post(uri, headers: _headers()),
+      () => http.post(uri, headers: _headers(json: true), body: jsonEncode(body)),
+      retryRequest: () => http.post(uri, headers: _headers(json: true), body: jsonEncode(body)),
     );
     _logResponse(response);
     if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -394,7 +395,7 @@ class ApiClient {
     return ids.first;
   }
 
-  static Future<void> createPersonalFeed({
+  static Future<Map<String, dynamic>?> createPersonalFeed({
     required String content,
     required List<String> fileIds,
     required String placeName,
@@ -443,6 +444,10 @@ class ApiClient {
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception('Personal feed create failed: ${response.statusCode}');
     }
+    if (response.body.isEmpty) return null;
+    final decoded = jsonDecode(response.body);
+    if (decoded is Map<String, dynamic>) return decoded;
+    return null;
   }
 
   static Future<void> updatePersonalFeed({
@@ -868,11 +873,9 @@ class ApiClient {
             .whereType<Map<String, dynamic>>()
             .map((item) {
               final next = Map<String, dynamic>.from(item);
-              final type = (next['type'] as String?)?.toUpperCase();
-              if (type == 'LIVESPACE') {
-                next['purpose'] = 'LIVESPACE';
-              } else if (type == 'FEED') {
-                next['purpose'] = 'FEED';
+              final rawType = next['type'];
+              if (rawType is String && rawType.trim().isNotEmpty) {
+                next['type'] = rawType.trim().toUpperCase();
               }
               return next;
             })
@@ -881,7 +884,14 @@ class ApiClient {
     }
 
     if (data is List) {
-      return data.whereType<Map<String, dynamic>>().toList();
+      return data.whereType<Map<String, dynamic>>().map((item) {
+        final next = Map<String, dynamic>.from(item);
+        final rawType = next['type'];
+        if (rawType is String && rawType.trim().isNotEmpty) {
+          next['type'] = rawType.trim().toUpperCase();
+        }
+        return next;
+      }).toList();
     }
     return const <Map<String, dynamic>>[];
   }
@@ -926,10 +936,12 @@ class ApiClient {
       throw Exception('Nearby spaces request failed: ${response.statusCode}');
     }
     final json = jsonDecode(response.body);
-    final data = json is Map<String, dynamic> ? json['data'] : null;
-    final root = data is Map<String, dynamic> ? data : (json as Map<String, dynamic>?);
-    final feedsRaw = root is Map<String, dynamic> ? root['feeds'] : null;
-    final meta = root is Map<String, dynamic> ? root['meta'] : null;
+    final root = json is Map<String, dynamic> ? json : null;
+    final data = root?['data'];
+    final feedsRaw = data is List
+        ? data
+        : (data is Map<String, dynamic> ? data['feeds'] : root?['feeds']);
+    final meta = root?['meta'] ?? (data is Map<String, dynamic> ? data['meta'] : null);
     final movedCenter = meta is Map<String, dynamic> ? meta['movedCenter'] : null;
 
     final feeds = <Map<String, dynamic>>[];
@@ -939,11 +951,9 @@ class ApiClient {
             .whereType<Map<String, dynamic>>()
             .map((item) {
               final next = Map<String, dynamic>.from(item);
-              final type = (next['type'] as String?)?.toUpperCase();
-              if (type == 'LIVESPACE') {
-                next['purpose'] = 'LIVESPACE';
-              } else if (type == 'FEED') {
-                next['purpose'] = 'FEED';
+              final rawType = next['type'];
+              if (rawType is String && rawType.trim().isNotEmpty) {
+                next['type'] = rawType.trim().toUpperCase();
               }
               return next;
             }),

@@ -138,6 +138,9 @@ class _CommonFeedItemViewState extends State<CommonFeedItemView> {
       showModalBottomSheet<void>(
         context: context,
         isScrollControlled: true,
+        constraints: BoxConstraints(
+          minHeight: MediaQuery.of(context).size.height * 0.6,
+        ),
         backgroundColor: Colors.white,
         shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
@@ -174,6 +177,25 @@ class _CommonFeedItemViewState extends State<CommonFeedItemView> {
     }
     check();
     return completer.future;
+  }
+
+  void _showDeletedUserAlert() {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      barrierColor: const Color(0x99000000),
+      builder: (_) {
+        return Material(
+          type: MaterialType.transparency,
+          child: CommonAlertView(
+            title: '삭제된 사용자입니다.',
+            subTitle: '탈퇴한 사용자의 프로필은 확인할 수 없습니다.',
+            primaryButtonTitle: '확인',
+            onPrimaryTap: () => Navigator.of(context).pop(),
+          ),
+        );
+      },
+    );
   }
 
 
@@ -312,13 +334,13 @@ class _CommonFeedItemViewState extends State<CommonFeedItemView> {
             bottom: 0,
             child: IgnorePointer(
               child: Container(
-                height: 120,
+                height: 180,
                 decoration: const BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.bottomCenter,
                     end: Alignment.topCenter,
                     colors: [
-                      Color(0xCC000000),
+                      Color(0xF0000000),
                       Color(0x00000000),
                     ],
                   ),
@@ -339,6 +361,10 @@ class _CommonFeedItemViewState extends State<CommonFeedItemView> {
                     children: [
                       CommonInkWell(
                         onTap: () {
+                          if ((author.deletedAt ?? '').trim().isNotEmpty) {
+                            _showDeletedUserAlert();
+                            return;
+                          }
                           final displayUser = ProfileDisplayUser(
                             id: author.userId,
                             nickname: author.nickname.isNotEmpty
@@ -384,6 +410,12 @@ class _CommonFeedItemViewState extends State<CommonFeedItemView> {
                             const SizedBox(height: 1),
                             Row(
                               children: [
+                                const Icon(
+                                  PhosphorIconsFill.clock,
+                                  size: 12,
+                                  color: Color(0xCCFFFFFF),
+                                ),
+                                const SizedBox(width: 2),
                                 Text(
                                   createdAt,
                                   maxLines: 1,
@@ -828,6 +860,11 @@ class _ZoomableImageViewState extends State<_ZoomableImageView>
 
   @override
   Widget build(BuildContext context) {
+    final media = MediaQuery.of(context);
+    final removedTop = media.viewPadding.top - media.padding.top;
+    final removedBottom = media.viewPadding.bottom - media.padding.bottom;
+    final centerCorrectionY = -((removedTop - removedBottom) / 2);
+
     return GestureDetector(
       onScaleStart: (details) {
         _startFocal = details.focalPoint;
@@ -847,10 +884,21 @@ class _ZoomableImageViewState extends State<_ZoomableImageView>
       onScaleEnd: (_) => _animateReset(),
       child: Transform(
         transform: Matrix4.identity()
-          ..translate(_offset.dx, _offset.dy)
+          ..translate(_offset.dx, _offset.dy + centerCorrectionY)
           ..scale(_scale),
         alignment: Alignment.center,
-        child: CommonImageView(networkUrl: widget.url),
+        child: ClipRect(
+          child: SizedBox.expand(
+            child: Align(
+              alignment: Alignment.center,
+              child: CommonImageView(
+                networkUrl: widget.url,
+                fit: BoxFit.contain,
+                backgroundColor: Colors.black,
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

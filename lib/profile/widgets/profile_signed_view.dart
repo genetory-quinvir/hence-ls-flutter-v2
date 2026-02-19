@@ -16,6 +16,7 @@ import '../../common/widgets/common_image_view.dart';
 import '../../common/widgets/common_livespace_list_item_view.dart';
 import '../../common/widgets/common_empty_view.dart';
 import '../../common/widgets/common_refresh_view.dart';
+import '../../livespace_detail/livespace_detail_view.dart';
 import '../profile_feed_detail_view.dart';
 import '../models/profile_display_user.dart';
 import '../../following_list/following_list_view.dart';
@@ -153,7 +154,7 @@ class _ProfileSignedViewState extends State<ProfileSignedView> {
                     ),
                     tabs: [
                       Tab(text: '피드'),
-                      Tab(text: '참여 스페이스'),
+                      Tab(text: '라이브스페이스'),
                     ],
                   ),
                 ),
@@ -517,6 +518,36 @@ class _ProfileParticipantListState extends State<_ProfileParticipantList> {
     }
   }
 
+  String _thumbnailForItem(Map<String, dynamic> item) {
+    final thumbnailRaw = item['thumbnail'];
+    final thumbnailMap = thumbnailRaw is Map<String, dynamic> ? thumbnailRaw : null;
+    final feedRaw = item['feed'];
+    final feedMap = feedRaw is Map<String, dynamic> ? feedRaw : null;
+
+    Map<String, dynamic>? firstImage;
+    final imagesRaw = (feedMap?['images'] ?? item['images']);
+    if (imagesRaw is List) {
+      for (final entry in imagesRaw) {
+        if (entry is Map<String, dynamic>) {
+          firstImage = entry;
+          break;
+        }
+      }
+    }
+
+    return (thumbnailRaw is String ? thumbnailRaw : null) ??
+        thumbnailMap?['cdnUrl'] as String? ??
+        thumbnailMap?['fileUrl'] as String? ??
+        item['thumbnailUrl'] as String? ??
+        item['imageUrl'] as String? ??
+        firstImage?['thumbnailUrl'] as String? ??
+        firstImage?['cdnUrl'] as String? ??
+        firstImage?['fileUrl'] as String? ??
+        item['fileUrl'] as String? ??
+        item['image'] as String? ??
+        '';
+  }
+
   @override
   Widget build(BuildContext context) {
     final scrollView = _items.isEmpty
@@ -578,19 +609,7 @@ class _ProfileParticipantListState extends State<_ProfileParticipantList> {
                             (item['startAt'] as String?) ??
                             (item['createdAt'] as String?) ??
                             '오늘';
-                        final thumbnailRaw = item['thumbnail'];
-                        final thumbnailMap =
-                            thumbnailRaw is Map<String, dynamic> ? thumbnailRaw : null;
-                        final thumbnail =
-                            (thumbnailRaw is String ? thumbnailRaw : null) ??
-                                thumbnailMap?['cdnUrl'] as String? ??
-                                thumbnailMap?['fileUrl'] as String? ??
-                                (item['thumbnailUrl'] as String?) ??
-                                (item['imageUrl'] as String?) ??
-                                '';
-                        final fallbackUrl = (item['fileUrl'] as String?) ??
-                            (item['image'] as String?) ??
-                            '';
+                        final thumbnail = _thumbnailForItem(item);
                         final commentCount =
                             (item['commentCount'] as num?)?.toInt() ??
                                 (item['comments'] as num?)?.toInt() ??
@@ -611,12 +630,19 @@ class _ProfileParticipantListState extends State<_ProfileParticipantList> {
                         }
                         return CommonLivespaceListItemView(
                           title: title,
-                          thumbnailUrl: thumbnail.isNotEmpty ? thumbnail : fallbackUrl,
+                          thumbnailUrl: thumbnail,
                           dateText: dateText,
                           placeName: placeName,
                           commentCount: commentCount,
                           likeCount: likeCount,
                           distanceText: distanceText,
+                          onTap: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => LivespaceDetailView(space: item),
+                              ),
+                            );
+                          },
                         );
                       },
                       childCount: _items.length,
@@ -643,8 +669,6 @@ class _ProfileParticipantListState extends State<_ProfileParticipantList> {
     return CommonRefreshView(
       onRefresh: _handleRefresh,
       topPadding: 12,
-      notificationPredicate: (notification) =>
-          notification.depth == 0 && notification.metrics.extentBefore == 0,
       child: scrollView,
     );
   }
@@ -851,8 +875,6 @@ class _ProfileFeedGridState extends State<_ProfileFeedGrid> {
     return CommonRefreshView(
       onRefresh: _handleRefresh,
       topPadding: 12,
-      notificationPredicate: (notification) =>
-          notification.depth == 0 && notification.metrics.extentBefore == 0,
       child: scrollView,
     );
   }

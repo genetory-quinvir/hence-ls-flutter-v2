@@ -34,10 +34,8 @@ class CommonMapView extends StatefulWidget {
 }
 
 class _CommonMapViewState extends State<CommonMapView> {
-  static const String clientId = 'e2m4s9kqcr';
   static const String styleId = 'b55d5c20-f158-4e23-851c-55c7d348a2ef';
 
-  late final Future<void> _initFuture;
   NaverMapController? _controller;
   NOverlayImage? _myLocationIcon;
   bool _didAutoPromptLocationPermission = false;
@@ -46,9 +44,6 @@ class _CommonMapViewState extends State<CommonMapView> {
   @override
   void initState() {
     super.initState();
-    _initFuture = FlutterNaverMap.isInitialized
-        ? Future.value()
-        : FlutterNaverMap().init(clientId: clientId);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _ensureLocationPermission(autoPrompt: true);
     });
@@ -56,79 +51,70 @@ class _CommonMapViewState extends State<CommonMapView> {
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<void>(
-      future: _initFuture,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState != ConnectionState.done) {
-          return const SizedBox.shrink();
-        }
+    final initialPosition = (widget.initialLatitude != null &&
+            widget.initialLongitude != null)
+        ? NLatLng(widget.initialLatitude!, widget.initialLongitude!)
+        : null;
 
-        final initialPosition = (widget.initialLatitude != null &&
-                widget.initialLongitude != null)
-            ? NLatLng(widget.initialLatitude!, widget.initialLongitude!)
-            : null;
-
-        return Stack(
-          alignment: Alignment.center,
-          children: [
-            NaverMap(
-              options: NaverMapViewOptions(
-                customStyleId: styleId,
-                initialCameraPosition: initialPosition == null
-                    ? const NCameraPosition(
-                        target: NLatLng(37.5665, 126.9780),
-                        zoom: 14,
-                      )
-                    : NCameraPosition(target: initialPosition, zoom: 14),
-              ),
-              onMapReady: (controller) {
-                _controller = controller;
-                _configureLocationOverlay(context);
-                _syncMyLocationOverlay();
-                widget.onMapReady?.call(controller);
-              },
-              onCameraChange: (_, __) {
-                widget.onCameraMoving?.call();
-              },
-              onCameraIdle: () async {
-                widget.onCameraIdle?.call();
-                if (widget.onCenterChanged == null) return;
-                final controller = _controller;
-                if (controller == null) return;
-                final position = await controller.getCameraPosition();
-                widget.onCenterChanged?.call(position.target);
-              },
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        NaverMap(
+          options: NaverMapViewOptions(
+            customStyleId: styleId,
+            initialCameraPosition: initialPosition == null
+                ? const NCameraPosition(
+                    target: NLatLng(37.5665, 126.9780),
+                    zoom: 14,
+                  )
+                : NCameraPosition(target: initialPosition, zoom: 14),
+          ),
+          onMapReady: (controller) {
+            _controller = controller;
+            _configureLocationOverlay(context);
+            _syncMyLocationOverlay();
+            widget.onMapReady?.call(controller);
+          },
+          onCameraChange: (_, __) {
+            widget.onCameraMoving?.call();
+          },
+          onCameraIdle: () async {
+            widget.onCameraIdle?.call();
+            if (widget.onCenterChanged == null) return;
+            final controller = _controller;
+            if (controller == null) return;
+            final position = await controller.getCameraPosition();
+            widget.onCenterChanged?.call(position.target);
+          },
+        ),
+        if (widget.centerMarker != null)
+          IgnorePointer(
+            child: widget.centerMarker!,
+          ),
+        if (widget.showMyLocationButton || widget.onCreateLiveSpace != null)
+          Positioned(
+            right: 16,
+            bottom: 16,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (widget.onCreateLiveSpace != null)
+                  _buildFloatingButton(
+                    icon: Icons.add,
+                    onTap: widget.onCreateLiveSpace!,
+                  ),
+                if (widget.onCreateLiveSpace != null &&
+                    widget.showMyLocationButton)
+                  const SizedBox(height: 10),
+                if (widget.showMyLocationButton)
+                  _buildFloatingButton(
+                    icon: Icons.my_location,
+                    onTap: _moveToMyLocation,
+                  ),
+              ],
             ),
-            if (widget.centerMarker != null)
-              IgnorePointer(
-                child: widget.centerMarker!,
-              ),
-            if (widget.showMyLocationButton || widget.onCreateLiveSpace != null)
-              Positioned(
-                right: 16,
-                bottom: 16,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (widget.onCreateLiveSpace != null)
-                      _buildFloatingButton(
-                        icon: Icons.add,
-                        onTap: widget.onCreateLiveSpace!,
-                      ),
-                    if (widget.onCreateLiveSpace != null &&
-                        widget.showMyLocationButton)
-                      const SizedBox(height: 10),
-                    if (widget.showMyLocationButton)
-                      _buildFloatingButton(
-                        icon: Icons.my_location,
-                        onTap: _moveToMyLocation,
-                      ),
-                  ],
-                ),
-              ),
-          ],
-        );
-      },
+          ),
+      ],
     );
   }
 

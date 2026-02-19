@@ -211,6 +211,19 @@ class _FeedCreateInfoViewState extends State<FeedCreateInfoView> {
     if (_placeController.text.trim().isNotEmpty) return;
     _isPrefillingLocation = true;
     try {
+      final seededLat = _selectedLatitude;
+      final seededLng = _selectedLongitude;
+      if (seededLat != null && seededLng != null) {
+        final seededPlace = await NaverLocationService.reverseGeocode(
+          latitude: seededLat,
+          longitude: seededLng,
+        );
+        if (!mounted) return;
+        if (seededPlace != null && seededPlace.trim().isNotEmpty) {
+          _placeController.text = seededPlace.trim();
+        }
+        return;
+      }
       final granted = await _ensureLocationPermission();
       if (!mounted || !granted) return;
       final position = await _getCurrentPosition();
@@ -306,6 +319,7 @@ class _FeedCreateInfoViewState extends State<FeedCreateInfoView> {
     setState(() => _isUploading = true);
     try {
       final placeName = _placeController.text.trim();
+      Map<String, dynamic>? createdSpaceForMap;
       if (widget.editFeedId != null && widget.editFeedId!.isNotEmpty) {
         await ApiClient.updatePersonalFeed(
           feedId: widget.editFeedId!,
@@ -328,7 +342,7 @@ class _FeedCreateInfoViewState extends State<FeedCreateInfoView> {
         final fileIds =
             files.isEmpty ? <String>[] : await ApiClient.uploadFeedImages(files);
 
-        await ApiClient.createPersonalFeed(
+        final createdJson = await ApiClient.createPersonalFeed(
           content: content,
           fileIds: fileIds,
           placeName: placeName,
@@ -342,12 +356,41 @@ class _FeedCreateInfoViewState extends State<FeedCreateInfoView> {
           hashtags: hashtags,
           type: widget.isFeedMode ? 'FEED' : 'LIVESPACE',
         );
+        if (!widget.isFeedMode) {
+          final data = createdJson?['data'];
+          final created = data is Map<String, dynamic> ? data : createdJson;
+          createdSpaceForMap = <String, dynamic>{
+            if (created is Map<String, dynamic>) ...created,
+            'id': (created is Map<String, dynamic> ? created['id'] : null) ??
+                DateTime.now().microsecondsSinceEpoch.toString(),
+            'type': 'LIVESPACE',
+            'title': (title != null && title.isNotEmpty) ? title : _defaultTitle,
+            'content': content,
+            'placeName': placeName,
+            'latitude': _selectedLatitude,
+            'longitude': _selectedLongitude,
+          };
+        }
       }
 
       if (!mounted) return;
       Navigator.of(context).popUntil((route) => route.isFirst);
       if (widget.editFeedId == null || widget.editFeedId!.isEmpty) {
-        HomeTabController.switchTo(1);
+        if (widget.isFeedMode) {
+          HomeTabController.switchTo(1);
+        } else {
+          final lat = _selectedLatitude;
+          final lng = _selectedLongitude;
+          if (lat != null && lng != null) {
+            HomeTabController.requestMapFocus(
+              latitude: lat,
+              longitude: lng,
+              resetFilters: true,
+              createdSpace: createdSpaceForMap,
+            );
+          }
+          HomeTabController.switchTo(0);
+        }
       }
       HomeTabController.requestFeedReload();
     } catch (e) {

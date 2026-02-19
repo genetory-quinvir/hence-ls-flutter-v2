@@ -32,7 +32,7 @@ class LivespaceDetailContentView extends StatelessWidget {
             content,
             style: TextStyle(
               fontFamily: 'Pretendard',
-              fontSize: 13,
+              fontSize: 16,
               fontWeight: FontWeight.w400,
               color: Colors.grey.shade800,
             ),

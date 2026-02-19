@@ -16,7 +16,14 @@ import '../feed_create_info/feed_create_info_view.dart';
 import '../livespace_create/livespace_create_view.dart';
 
 class FeedCreatePhotoView extends StatefulWidget {
-  const FeedCreatePhotoView({super.key});
+  const FeedCreatePhotoView({
+    super.key,
+    this.initialLatitude,
+    this.initialLongitude,
+  });
+
+  final double? initialLatitude;
+  final double? initialLongitude;
 
   @override
   State<FeedCreatePhotoView> createState() => _FeedCreatePhotoViewState();
@@ -31,6 +38,7 @@ class _FeedCreatePhotoViewState extends State<FeedCreatePhotoView> {
   final ScrollController _gridController = ScrollController();
   AssetPathEntity? _currentAlbum;
   bool _isLoading = true;
+  bool _isPaging = false;
   bool _hasMore = true;
   int _page = 0;
   bool _permissionDenied = false;
@@ -59,6 +67,10 @@ class _FeedCreatePhotoViewState extends State<FeedCreatePhotoView> {
           selectedAssets: List.of(_selected),
           isFeedMode: _createMode == _CreateMode.feed,
           initialThumbnailBytes: initialThumbs,
+          initialLatitude: widget.initialLatitude,
+          initialLongitude: widget.initialLongitude,
+          prefillFromAssetLocation:
+              widget.initialLatitude == null || widget.initialLongitude == null,
         ),
       ),
     )
@@ -181,19 +193,34 @@ class _FeedCreatePhotoViewState extends State<FeedCreatePhotoView> {
   }
 
   Future<void> _loadMore() async {
-    if (_currentAlbum == null || !_hasMore) return;
-    final items = await _currentAlbum!.getAssetListPaged(
-      page: _page,
-      size: _pageSize,
-    );
-    if (items.isEmpty) {
-      _hasMore = false;
+    if (_currentAlbum == null || !_hasMore || _isPaging) return;
+    final showPagingIndicator = !_isLoading;
+    if (showPagingIndicator && mounted) {
+      setState(() => _isPaging = true);
     } else {
-      _assets.addAll(items);
-      _page += 1;
+      _isPaging = true;
     }
-    if (mounted) {
-      setState(() => _isLoading = false);
+    try {
+      final items = await _currentAlbum!.getAssetListPaged(
+        page: _page,
+        size: _pageSize,
+      );
+      if (items.isEmpty) {
+        _hasMore = false;
+      } else {
+        _assets.addAll(items);
+        _page += 1;
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _isPaging = false;
+        });
+      } else {
+        _isLoading = false;
+        _isPaging = false;
+      }
     }
   }
 
@@ -376,7 +403,9 @@ class _FeedCreatePhotoViewState extends State<FeedCreatePhotoView> {
             ),
           ),
           Expanded(
-            child: _permissionDenied
+            child: Stack(
+              children: [
+                _permissionDenied
                 ? _PermissionDeniedView(
                     onOpenSettings: PhotoManager.openSetting,
                     onRetry: _loadAlbum,
@@ -385,6 +414,7 @@ class _FeedCreatePhotoViewState extends State<FeedCreatePhotoView> {
                 : NotificationListener<ScrollNotification>(
                     onNotification: (notification) {
                       if (!_isLoading &&
+                          !_isPaging &&
                           _hasMore &&
                           notification.metrics.extentAfter == 0) {
                         _loadMore();
@@ -449,6 +479,29 @@ class _FeedCreatePhotoViewState extends State<FeedCreatePhotoView> {
                       },
                     ),
                   ),
+                if (_isPaging)
+                  Align(
+                    alignment: Alignment.bottomCenter,
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: CommonActivityIndicator(
+                        size: 24,
+                        color: isFeed ? Colors.white : Colors.black,
+                        strokeWidth: 3,
+                      ),
+                    ),
+                  ),
+                if (_isLoading && _assets.isEmpty && !_permissionDenied)
+                  Container(
+                    color: backgroundColor.withOpacity(0.35),
+                    alignment: Alignment.center,
+                    child: CommonActivityIndicator(
+                      size: 34,
+                      color: isFeed ? Colors.white : Colors.black,
+                    ),
+                  ),
+              ],
+            ),
           ),
           SafeArea(
             top: false,

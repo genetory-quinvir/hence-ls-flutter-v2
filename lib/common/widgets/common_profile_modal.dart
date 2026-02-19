@@ -7,9 +7,11 @@ import '../../profile_info/profile_info_view.dart';
 Future<void> showProfileModal(
   BuildContext context, {
   required ProfileDisplayUser user,
+  bool allowCurrentUser = false,
 }) {
   final currentUserId = AuthStore.instance.currentUser.value?.id;
-  if (currentUserId != null &&
+  if (!allowCurrentUser &&
+      currentUserId != null &&
       currentUserId.isNotEmpty &&
       currentUserId == user.id) {
     return Future.value();

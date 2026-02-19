@@ -4,9 +4,10 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../common/widgets/common_image_view.dart';
 import 'package:figma_squircle/figma_squircle.dart';
 
-import '../../common/widgets/common_profile_view.dart';
+import '../../common/widgets/common_profile_image_view.dart';
 import '../../common/widgets/common_inkwell.dart';
 import '../../common/widgets/common_profile_modal.dart';
+import '../../common/widgets/common_alert_view.dart';
 import '../../profile/models/profile_display_user.dart';
 
 class LivespaceDetailProfileView extends StatefulWidget {
@@ -17,6 +18,7 @@ class LivespaceDetailProfileView extends StatefulWidget {
     required this.profileImageUrl,
     required this.nickname,
     required this.userId,
+    this.isDeletedUser = false,
     required this.participantCount,
     required this.checkinUsers,
     this.isCheckedIn = false,
@@ -29,6 +31,7 @@ class LivespaceDetailProfileView extends StatefulWidget {
   final String? profileImageUrl;
   final String nickname;
   final String userId;
+  final bool isDeletedUser;
   final int participantCount;
   final List<dynamic> checkinUsers;
   final bool isCheckedIn;
@@ -51,6 +54,43 @@ class _LivespaceDetailProfileViewState extends State<LivespaceDetailProfileView>
 
   @override
   Widget build(BuildContext context) {
+    void showDeletedUserAlert() {
+      showDialog<void>(
+        context: context,
+        barrierDismissible: true,
+        barrierColor: const Color(0x99000000),
+        builder: (_) {
+          return Material(
+            type: MaterialType.transparency,
+            child: CommonAlertView(
+              title: '삭제된 사용자입니다.',
+              subTitle: '탈퇴한 사용자의 프로필은 확인할 수 없습니다.',
+              primaryButtonTitle: '확인',
+              onPrimaryTap: () => Navigator.of(context).pop(),
+            ),
+          );
+        },
+      );
+    }
+
+    void handleProfileTap() {
+      if (widget.userId.isEmpty) return;
+      if (widget.isDeletedUser) {
+        showDeletedUserAlert();
+        return;
+      }
+      final displayUser = ProfileDisplayUser(
+        id: widget.userId,
+        nickname: widget.nickname,
+        profileImageUrl: widget.profileImageUrl,
+      );
+      showProfileModal(
+        context,
+        user: displayUser,
+        allowCurrentUser: true,
+      );
+    }
+
     return LayoutBuilder(
       builder: (context, constraints) {
         final totalHeight = constraints.maxHeight.isFinite
@@ -105,43 +145,27 @@ class _LivespaceDetailProfileViewState extends State<LivespaceDetailProfileView>
                       Row(
                         children: [
                           CommonInkWell(
-                            onTap: () {
-                              if (widget.userId.isEmpty) return;
-                              final displayUser = ProfileDisplayUser(
-                                id: widget.userId,
-                                nickname: widget.nickname,
-                                profileImageUrl: widget.profileImageUrl,
-                              );
-                              showProfileModal(context, user: displayUser);
-                            },
+                            onTap: handleProfileTap,
                             borderRadius: BorderRadius.circular(12),
-                            child: CommonProfileView(
-                              size: 24,
-                              networkUrl: widget.profileImageUrl,
-                              placeholder: const ColoredBox(
-                                color: Color(0xFFF2F2F2),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          CommonInkWell(
-                            onTap: () {
-                              if (widget.userId.isEmpty) return;
-                              final displayUser = ProfileDisplayUser(
-                                id: widget.userId,
-                                nickname: widget.nickname,
-                                profileImageUrl: widget.profileImageUrl,
-                              );
-                              showProfileModal(context, user: displayUser);
-                            },
-                            child: Text(
-                              widget.nickname,
-                              style: const TextStyle(
-                                fontFamily: 'Pretendard',
-                                fontSize: 14,
-                                fontWeight: FontWeight.w400,
-                                color: Colors.black,
-                              ),
+                            child: Row(
+                              children: [
+                                CommonProfileImageView(
+                                  size: 24,
+                                  imageUrl: widget.profileImageUrl,
+                                  useSquircle: true,
+                                  placeholderIconSize: 12,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  widget.nickname,
+                                  style: const TextStyle(
+                                    fontFamily: 'Pretendard',
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w400,
+                                    color: Colors.black,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ],
@@ -288,8 +312,8 @@ class _HeaderSection extends StatelessWidget {
             ),
           Positioned(
             bottom: bottomPadding,
-            left: 64,
-            right: 64,
+            left: 40,
+            right: 40,
             child: Container(
               height: 50,
               padding: const EdgeInsets.only(left: 12, right: 12),
@@ -310,15 +334,15 @@ class _HeaderSection extends StatelessWidget {
                     Expanded(
                       child: Padding(
                         padding: const EdgeInsets.only(left: 4),
-                        child: const Text(
+                        child: Text(
                           '👋🏻 제일 먼저 체크인을 해보세요!',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
+                          style: const TextStyle(
                             fontFamily: 'Pretendard',
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: Color(0xFF616161),
+                            fontSize: 14,
+                            fontWeight: FontWeight.w400,
+                            color: Colors.black,
                           ),
                         ),
                       ),
@@ -363,7 +387,8 @@ class _HeaderSection extends StatelessWidget {
                       },
                     ),
                   ],
-                  const Spacer(),
+                  if (participantCount > 0) const Spacer(),
+                  if (participantCount <= 0) const SizedBox(width: 8),
                   if (isCheckedIn)
                     Container(
                       height: 30,
@@ -462,19 +487,11 @@ class _OverlayProfileDot extends StatelessWidget {
                   width: 1.5,
                 ),
               ),
-              child: CommonProfileView(
-                size: size - 4,
-                networkUrl: imageUrl,
-                placeholder: const ColoredBox(
-                  color: Color(0xFFF2F2F2),
-                  child: Center(
-                    child: Icon(
-                      Icons.person,
-                      size: 12,
-                      color: Color(0xFF9E9E9E),
-                    ),
-                  ),
-                ),
+              child: CommonProfileImageView(
+                size: size,
+                imageUrl: imageUrl,
+                useSquircle: true,
+                placeholderIconSize: 12,
               ),
             ),
           ),

@@ -336,26 +336,20 @@ class _ProfileUserContent extends StatelessWidget {
             Row(
               children: [
                 Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.only(left: 4),
-                    child: _StatItem(
-                      label: '피드',
-                      value: feedCount ?? 0,
-                      alignCenter: false,
-                    ),
+                  child: _StatItem(
+                    label: '피드',
+                    value: feedCount ?? 0,
+                    alignCenter: true,
                   ),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: CommonInkWell(
                     onTap: onFollowingTap,
-                    child: Padding(
-                      padding: const EdgeInsets.only(left: 4),
-                      child: _StatItem(
-                        label: followingLabel,
-                        value: followingCount ?? 0,
-                        alignCenter: false,
-                      ),
+                    child: _StatItem(
+                      label: followingLabel,
+                      value: followingCount ?? 0,
+                      alignCenter: true,
                     ),
                   ),
                 ),
@@ -363,13 +357,10 @@ class _ProfileUserContent extends StatelessWidget {
                 Expanded(
                   child: CommonInkWell(
                     onTap: onFollowerTap,
-                    child: Padding(
-                      padding: const EdgeInsets.only(left: 4),
-                      child: _StatItem(
-                        label: followerLabel,
-                        value: followerCount ?? 0,
-                        alignCenter: false,
-                      ),
+                    child: _StatItem(
+                      label: followerLabel,
+                      value: followerCount ?? 0,
+                      alignCenter: true,
                     ),
                   ),
                 ),
@@ -431,7 +422,7 @@ class _StatItem extends StatelessWidget {
           width: double.infinity,
           child: Text(
             '$value',
-            textAlign: TextAlign.left,
+            textAlign: alignCenter ? TextAlign.center : TextAlign.left,
             style: const TextStyle(
               fontFamily: 'Pretendard',
               fontSize: 16,

@@ -6,14 +6,14 @@ import '../common/network/api_client.dart';
 import '../common/auth/auth_store.dart';
 import '../common/widgets/common_empty_view.dart';
 import '../common/widgets/common_login_guard.dart';
-import '../common/widgets/common_profile_view.dart';
+import '../common/widgets/common_refresh_view.dart';
 import '../common/widgets/common_rounded_button.dart';
-import '../common/utils/time_format.dart';
 import 'widgets/livespace_detail_profile_view.dart';
 import 'widgets/livespace_detail_info_view.dart';
 import 'widgets/livespace_detail_content_view.dart';
 import '../feed_comment/feed_comment_view.dart';
 import '../feed_comment/models/feed_comment_model.dart';
+import '../feed_comment/widgets/feed_comment_list_item_view.dart';
 
 class LivespaceDetailView extends StatefulWidget {
   const LivespaceDetailView({
@@ -33,6 +33,7 @@ class _LivespaceDetailViewState extends State<LivespaceDetailView> {
   bool _isLoadingComments = false;
   bool _isCheckingIn = false;
   bool _hasCheckedIn = false;
+  bool _didInitialReveal = false;
   int _commentCount = 0;
   List<FeedCommentItem> _commentPreview = const [];
 
@@ -136,6 +137,13 @@ class _LivespaceDetailViewState extends State<LivespaceDetailView> {
   Widget build(BuildContext context) {
     final safeBottom = MediaQuery.of(context).padding.bottom;
     final isReady = !_isLoading && !_isLoadingComments;
+    final showContent = isReady || _didInitialReveal;
+    if (isReady && !_didInitialReveal) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _didInitialReveal) return;
+        setState(() => _didInitialReveal = true);
+      });
+    }
     final title = (_space['title'] as String?) ??
         (_space['spaceTitle'] as String?) ??
         (_space['name'] as String?) ??
@@ -160,6 +168,8 @@ class _LivespaceDetailViewState extends State<LivespaceDetailView> {
     final userId = _stringOrEmpty(user?['userId']) ??
         _stringOrEmpty(user?['id']) ??
         '';
+    final isDeletedUser =
+        _stringOrEmpty(user?['deletedAt'])?.trim().isNotEmpty == true;
     final place = _stringOrEmpty(_space['placeName']) ??
         '-';
     final time = _formatTime(
@@ -192,19 +202,28 @@ class _LivespaceDetailViewState extends State<LivespaceDetailView> {
 
     return Scaffold(
       backgroundColor: Colors.white,
-      body: Stack(
-        children: [
-          AnimatedOpacity(
-            opacity: isReady ? 1 : 0,
-            duration: const Duration(milliseconds: 220),
-            curve: Curves.easeOut,
-            child: IgnorePointer(
-              ignoring: !isReady,
-              child: Stack(
-                children: [
-                  CustomScrollView(
-                    slivers: [
-                      SliverAppBar(
+      body: CommonRefreshView(
+        onRefresh: _loadDetail,
+        topPadding: MediaQuery.of(context).padding.top + 8,
+        notificationPredicate: (notification) => notification.depth == 0,
+        child: Stack(
+          children: [
+            AnimatedOpacity(
+              opacity: showContent ? 1 : 0,
+              duration: _didInitialReveal
+                  ? Duration.zero
+                  : const Duration(milliseconds: 220),
+              curve: Curves.easeOut,
+              child: IgnorePointer(
+                ignoring: !showContent,
+                child: Stack(
+                  children: [
+                    CustomScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(
+                        parent: BouncingScrollPhysics(),
+                      ),
+                      slivers: [
+                        SliverAppBar(
                         automaticallyImplyLeading: false,
                         backgroundColor: Colors.transparent,
                         elevation: 0,
@@ -224,6 +243,7 @@ class _LivespaceDetailViewState extends State<LivespaceDetailView> {
                             profileImageUrl: profileImageUrl,
                             nickname: nickname,
                             userId: userId,
+                            isDeletedUser: isDeletedUser,
                             participantCount: participantCount,
                             checkinUsers: checkinUsers,
                             isCheckedIn: hasCheckedIn,
@@ -232,7 +252,7 @@ class _LivespaceDetailViewState extends State<LivespaceDetailView> {
                           ),
                         ),
                       ),
-                      SliverToBoxAdapter(
+                        SliverToBoxAdapter(
                         child: LivespaceDetailInfoView(
                           title: title,
                           place: place,
@@ -242,18 +262,18 @@ class _LivespaceDetailViewState extends State<LivespaceDetailView> {
                           nickname: nickname,
                         ),
                       ),
-                      const SliverToBoxAdapter(
+                        const SliverToBoxAdapter(
                         child: _SectionDivider(),
                       ),
-                      SliverToBoxAdapter(
+                        SliverToBoxAdapter(
                         child: LivespaceDetailContentView(
                           content: content,
                         ),
                       ),
-                      const SliverToBoxAdapter(
+                        const SliverToBoxAdapter(
                         child: _SectionDivider(),
                       ),
-                      SliverToBoxAdapter(
+                        SliverToBoxAdapter(
                         child: _LivespaceDetailCommentsSection(
                           commentCount: _commentCount,
                           comments: _commentPreview,
@@ -264,6 +284,9 @@ class _LivespaceDetailViewState extends State<LivespaceDetailView> {
                             showModalBottomSheet<void>(
                               context: context,
                               isScrollControlled: true,
+                              constraints: BoxConstraints(
+                                minHeight: MediaQuery.of(context).size.height * 0.6,
+                              ),
                               backgroundColor: Colors.white,
                               shape: const RoundedRectangleBorder(
                                 borderRadius:
@@ -276,67 +299,67 @@ class _LivespaceDetailViewState extends State<LivespaceDetailView> {
                                 initialTotalCount: _commentCount,
                                 onCommentAdded: () {
                                   if (!mounted) return;
-                                  setState(() => _commentCount += 1);
-                                  _loadCommentPreview(feedId);
+                                  _loadDetail();
                                 },
                               ),
                             );
                           },
                         ),
                       ),
-                      SliverToBoxAdapter(
+                        SliverToBoxAdapter(
                         child: SizedBox(
                           height:
                               (hasCheckedIn ? 24.0 : (24 + 50 + 16)) +
                                   safeBottom,
                         ),
                       ),
-                    ],
-                  ),
-                  SafeArea(
-                    bottom: false,
-                    child: CommonNavigationView(
-                      backgroundColor: Colors.transparent,
-                      left: const Icon(
-                        PhosphorIconsRegular.caretLeft,
-                        size: 24,
-                        color: Colors.white,
-                      ),
-                      onLeftTap: () => Navigator.of(context).maybePop(),
+                      ],
                     ),
-                  ),
-                  if (!hasCheckedIn)
-                    Positioned(
-                      left: 0,
-                      right: 0,
-                      bottom: 0,
-                      child: Container(
-                        color: Colors.white,
-                        padding: EdgeInsets.fromLTRB(16, 8, 16, 16 + safeBottom),
-                        child: CommonRoundedButton(
-                          title: '체크인하기',
-                          onTap: _isCheckingIn ? null : _handleCheckin,
+                    SafeArea(
+                      bottom: false,
+                      child: CommonNavigationView(
+                        backgroundColor: Colors.transparent,
+                        left: const Icon(
+                          PhosphorIconsRegular.caretLeft,
+                          size: 24,
+                          color: Colors.white,
+                        ),
+                        onLeftTap: () => Navigator.of(context).maybePop(),
+                      ),
+                    ),
+                    if (!hasCheckedIn)
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        child: Container(
+                          color: Colors.white,
+                          padding: EdgeInsets.fromLTRB(16, 8, 16, 16 + safeBottom),
+                          child: CommonRoundedButton(
+                            title: '체크인하기',
+                            onTap: _isCheckingIn ? null : _handleCheckin,
+                          ),
                         ),
                       ),
-                    ),
-                ],
-              ),
-            ),
-          ),
-          if (!isReady)
-            const Positioned.fill(
-              child: ColoredBox(
-                color: Colors.white,
-                child: Center(
-                  child: SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
+                  ],
                 ),
               ),
             ),
-        ],
+            if (!showContent)
+              const Positioned.fill(
+                child: ColoredBox(
+                  color: Colors.white,
+                  child: Center(
+                    child: SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -367,8 +390,10 @@ class _LivespaceDetailViewState extends State<LivespaceDetailView> {
       return raw;
     }
     final two = (int value) => value.toString().padLeft(2, '0');
-    return '${parsed.year}.${two(parsed.month)}.${two(parsed.day)} '
-        '${two(parsed.hour)}:${two(parsed.minute)}';
+    final hour12 = parsed.hour % 12 == 0 ? 12 : parsed.hour % 12;
+    final meridiem = parsed.hour < 12 ? 'AM' : 'PM';
+    return '${parsed.year}. ${two(parsed.month)}. ${two(parsed.day)} '
+        '$meridiem $hour12:${two(parsed.minute)}';
   }
 
   static String? _extractProfileImageUrl(dynamic raw) {
@@ -518,63 +543,10 @@ class _LivespaceDetailCommentsSection extends StatelessWidget {
                 return Column(
                   children: [
                     ...comments.map((comment) {
-                      final time = formatRelativeTime(comment.createdAt);
                       return Padding(
-                        padding: const EdgeInsets.only(bottom: 10),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            CommonProfileView(
-                              size: 26,
-                              networkUrl: comment.authorProfileUrl,
-                              placeholder: const ColoredBox(
-                                color: Color(0xFFF2F2F2),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Text(
-                                        comment.authorName.isNotEmpty
-                                            ? comment.authorName
-                                            : '익명',
-                                        style: const TextStyle(
-                                          fontFamily: 'Pretendard',
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w600,
-                                          color: Colors.black,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 6),
-                                      Text(
-                                        time,
-                                        style: const TextStyle(
-                                          fontFamily: 'Pretendard',
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w400,
-                                          color: Color(0xFF9E9E9E),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    comment.content,
-                                    style: const TextStyle(
-                                      fontFamily: 'Pretendard',
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w400,
-                                      color: Colors.black,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
+                        padding: const EdgeInsets.only(bottom: 16),
+                        child: FeedCommentListItemView(
+                          comment: comment,
                         ),
                       );
                     }).toList(),

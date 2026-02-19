@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:figma_squircle/figma_squircle.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import 'common_image_view.dart';
@@ -11,13 +12,19 @@ class CommonProfileImageView extends StatelessWidget {
     this.imageFile,
     this.imageUrl,
     this.size = 120,
-    this.backgroundColor = const Color(0xFFF2F2F2),
+    this.backgroundColor = const Color(0xFFFAFAFA),
+    this.useSquircle = false,
+    this.squircleCornerRadius,
+    this.placeholderIconSize,
   });
 
   final File? imageFile;
   final String? imageUrl;
   final double size;
   final Color backgroundColor;
+  final bool useSquircle;
+  final double? squircleCornerRadius;
+  final double? placeholderIconSize;
 
   @override
   Widget build(BuildContext context) {
@@ -41,9 +48,9 @@ class CommonProfileImageView extends StatelessWidget {
             : Container(
                 color: backgroundColor,
                 alignment: Alignment.center,
-                child: const Icon(
+                child: Icon(
                   PhosphorIconsRegular.user,
-                  size: 52,
+                  size: placeholderIconSize ?? (size * 0.45),
                   color: Color(0xFF9E9E9E),
                 ),
               );
@@ -57,21 +64,41 @@ class CommonProfileImageView extends StatelessWidget {
     return SizedBox(
       width: size,
       height: size,
-      child: ClipOval(
-        child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 200),
-          switchInCurve: Curves.easeOut,
-          switchOutCurve: Curves.easeIn,
-          transitionBuilder: (widget, animation) => FadeTransition(
-            opacity: animation,
-            child: widget,
-          ),
-          child: KeyedSubtree(
-            key: ValueKey<String>(keyValue),
-            child: SizedBox.expand(child: child),
-          ),
-        ),
-      ),
+      child: (useSquircle
+          ? ClipSmoothRect(
+              radius: SmoothBorderRadius(
+                cornerRadius: squircleCornerRadius ?? (size * 0.34),
+                cornerSmoothing: 1,
+              ),
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 200),
+                switchInCurve: Curves.easeOut,
+                switchOutCurve: Curves.easeIn,
+                transitionBuilder: (widget, animation) => FadeTransition(
+                  opacity: animation,
+                  child: widget,
+                ),
+                child: KeyedSubtree(
+                  key: ValueKey<String>(keyValue),
+                  child: SizedBox.expand(child: child),
+                ),
+              ),
+            )
+          : ClipOval(
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 200),
+                switchInCurve: Curves.easeOut,
+                switchOutCurve: Curves.easeIn,
+                transitionBuilder: (widget, animation) => FadeTransition(
+                  opacity: animation,
+                  child: widget,
+                ),
+                child: KeyedSubtree(
+                  key: ValueKey<String>(keyValue),
+                  child: SizedBox.expand(child: child),
+                ),
+              ),
+            )),
     );
   }
 }

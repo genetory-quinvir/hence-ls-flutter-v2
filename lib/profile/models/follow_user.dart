@@ -18,6 +18,7 @@ class FollowUser {
     String? profileImageUrl;
     if (profileImage is Map<String, dynamic>) {
       profileImageUrl = profileImage['cdnUrl'] as String? ??
+          profileImage['thumbnailUrl'] as String? ??
           profileImage['fileUrl'] as String?;
     }
 
@@ -25,7 +26,10 @@ class FollowUser {
       id: json['userId'] as String? ?? json['id'] as String? ?? '',
       nickname: json['nickname'] as String? ?? '',
       name: json['name'] as String?,
-      profileImageUrl: profileImageUrl,
+      profileImageUrl: profileImageUrl ??
+          json['profileImageUrl'] as String? ??
+          json['thumbnailUrl'] as String? ??
+          json['avatarUrl'] as String?,
       isFollowing: _asBool(json['isFollowing']) ??
           _asBool(json['following']) ??
           _asBool(json['followed']) ??

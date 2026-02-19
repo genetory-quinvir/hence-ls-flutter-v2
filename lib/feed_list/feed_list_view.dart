@@ -26,6 +26,7 @@ class _FeedListViewState extends State<FeedListView> {
   int _selectedIndex = 0;
   int _currentPage = 0;
   bool _allowRefreshForCurrentDrag = false;
+  bool _isSwitchingOrder = false;
   late final VoidCallback _reloadListener;
 
   String get _orderBy => _selectedIndex == 0 ? 'latest' : 'popular';
@@ -53,8 +54,21 @@ class _FeedListViewState extends State<FeedListView> {
       _feeds.clear();
       _hasNext = true;
       _nextCursor = null;
+      _currentPage = 0;
     });
     await _loadMore();
+  }
+
+  void _jumpToTopWithoutAnimation() {
+    _currentPage = 0;
+    if (_pageController.hasClients) {
+      _pageController.jumpToPage(0);
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_pageController.hasClients) return;
+      _pageController.jumpToPage(0);
+    });
   }
 
   Future<void> _handleRefresh() async {
@@ -157,14 +171,72 @@ class _FeedListViewState extends State<FeedListView> {
     });
   }
 
-  void _onTabSelected(int index) {
+  Future<void> _onTabSelected(int index) async {
     if (_selectedIndex == index) return;
-    setState(() => _selectedIndex = index);
-    _loadInitial();
+    _jumpToTopWithoutAnimation();
+    setState(() {
+      _selectedIndex = index;
+      _isSwitchingOrder = true;
+    });
+    try {
+      await _loadInitial();
+      _jumpToTopWithoutAnimation();
+    } finally {
+      if (mounted) {
+        setState(() => _isSwitchingOrder = false);
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final pageView = PageView.builder(
+      scrollDirection: Axis.vertical,
+      controller: _pageController,
+      physics: _isSwitchingOrder
+          ? const NeverScrollableScrollPhysics()
+          : const AlwaysScrollableScrollPhysics(),
+      itemCount: _feeds.length,
+      onPageChanged: (index) {
+        _currentPage = index;
+        if (_feeds.length > 1 &&
+            index > 0 &&
+            index >= _feeds.length - 2) {
+          _loadMore();
+        }
+      },
+      itemBuilder: (context, index) {
+        return CommonFeedItemView(
+          key: ValueKey(_feeds[index].id),
+          feed: _feeds[index],
+          padding: EdgeInsets.zero,
+          onLikeChanged: _applyFeedLikeUpdate,
+          onCommentCountChanged: _applyFeedCommentCount,
+        );
+      },
+    );
+
+    final feedContent = _isSwitchingOrder
+        ? pageView
+        : CommonRefreshView(
+            onRefresh: _handleRefresh,
+            topPadding: MediaQuery.of(context).padding.top + 12,
+            notificationPredicate: (notification) {
+              if (_isSwitchingOrder) return false;
+              if (notification is ScrollStartNotification) {
+                _allowRefreshForCurrentDrag =
+                    _currentPage == 0 &&
+                    notification.metrics.extentBefore == 0;
+              } else if (notification is ScrollEndNotification) {
+                _allowRefreshForCurrentDrag = false;
+              }
+              if (!_allowRefreshForCurrentDrag) return false;
+              return notification.depth == 0 &&
+                  notification.metrics.extentBefore == 0;
+            },
+            child: pageView,
+          );
+
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.light,
       child: Scaffold(
@@ -175,45 +247,7 @@ class _FeedListViewState extends State<FeedListView> {
           removeBottom: true,
           child: Stack(
             children: [
-              CommonRefreshView(
-                onRefresh: _handleRefresh,
-                topPadding: MediaQuery.of(context).padding.top + 12,
-                notificationPredicate: (notification) {
-                  if (notification is ScrollStartNotification) {
-                    _allowRefreshForCurrentDrag =
-                        _currentPage == 0 &&
-                        notification.metrics.extentBefore == 0;
-                  } else if (notification is ScrollEndNotification) {
-                    _allowRefreshForCurrentDrag = false;
-                  }
-                  if (!_allowRefreshForCurrentDrag) return false;
-                  return notification.depth == 0 &&
-                      notification.metrics.extentBefore == 0;
-                },
-                child: PageView.builder(
-                  scrollDirection: Axis.vertical,
-                  controller: _pageController,
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  itemCount: _feeds.length,
-                  onPageChanged: (index) {
-                    _currentPage = index;
-                    if (_feeds.length > 1 &&
-                        index > 0 &&
-                        index >= _feeds.length - 2) {
-                      _loadMore();
-                    }
-                  },
-                  itemBuilder: (context, index) {
-                    return CommonFeedItemView(
-                      key: ValueKey(_feeds[index].id),
-                      feed: _feeds[index],
-                      padding: EdgeInsets.zero,
-                      onLikeChanged: _applyFeedLikeUpdate,
-                      onCommentCountChanged: _applyFeedCommentCount,
-                    );
-                  },
-                ),
-              ),
+              feedContent,
               Positioned(
                 top: 0,
                 left: 0,

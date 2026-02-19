@@ -4,12 +4,14 @@ class FeedAuthor {
     required this.nickname,
     required this.name,
     this.profileImageUrl,
+    this.deletedAt,
   });
 
   final String userId;
   final String nickname;
   final String name;
   final String? profileImageUrl;
+  final String? deletedAt;
 
   factory FeedAuthor.fromJson(Map<String, dynamic> json) {
     final profileImage = json['profileImage'];
@@ -22,6 +24,7 @@ class FeedAuthor {
       nickname: json['nickname'] as String? ?? '',
       name: json['name'] as String? ?? '',
       profileImageUrl: profileUrl,
+      deletedAt: json['deletedAt'] as String?,
     );
   }
 }

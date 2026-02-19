@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../state/home_tab_controller.dart';
 import 'common_inkwell.dart';
 
 class CommonTabView extends StatelessWidget {
@@ -53,36 +54,54 @@ class CommonTabView extends StatelessWidget {
       ),
     ];
 
-    return Container(
-      height: height,
-      color: backgroundColor,
-      child: Row(
-        children: List.generate(items.length, (index) {
-          final item = items[index];
-          final isActive = index == currentIndex;
-          final color = isActive ? activeColor : inactiveColor;
+    return ValueListenableBuilder<bool>(
+      valueListenable: HomeTabController.hasUnreadNotifications,
+      builder: (context, hasUnread, _) {
+        return Container(
+          height: height,
+          color: backgroundColor,
+          child: Row(
+            children: List.generate(items.length, (index) {
+              final item = items[index];
+              final isActive = index == currentIndex;
+              final color = isActive ? activeColor : inactiveColor;
+              final showUnreadDot = index == 3 && hasUnread;
 
-          return Expanded(
-            child: CommonInkWell(
-              onTap: () => onTap(index),
-              child: Center(
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    Icon(
-                      isActive ? item.activeIcon : item.icon,
-                      size: iconSize,
-                      color: color,
-                      semanticLabel: item.label,
+              return Expanded(
+                child: CommonInkWell(
+                  onTap: () => onTap(index),
+                  child: Center(
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        Icon(
+                          isActive ? item.activeIcon : item.icon,
+                          size: iconSize,
+                          color: color,
+                          semanticLabel: item.label,
+                        ),
+                        if (showUnreadDot)
+                          Positioned(
+                            right: -2,
+                            top: 2,
+                            child: Container(
+                              width: 4,
+                              height: 4,
+                              decoration: const BoxDecoration(
+                                color: Color(0xFFFF3B30),
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
-                    const SizedBox.shrink(),
-                  ],
+                  ),
                 ),
-              ),
-            ),
-          );
-        }),
-      ),
+              );
+            }),
+          ),
+        );
+      },
     );
   }
 }

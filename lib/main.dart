@@ -64,8 +64,8 @@ class MyApp extends StatelessWidget {
       title: 'Empty App',
       scrollBehavior: const _BouncingScrollBehavior(),
       theme: baseTheme.copyWith(
-        primaryColor: primary200,
-        colorScheme: baseTheme.colorScheme.copyWith(primary: primary200),
+        primaryColor: Colors.black,
+        colorScheme: baseTheme.colorScheme.copyWith(primary: Colors.black),
         textTheme: baseTheme.textTheme.apply(fontFamily: 'Pretendard'),
         primaryTextTheme:
             baseTheme.primaryTextTheme.apply(fontFamily: 'Pretendard'),
