@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/cupertino.dart';
@@ -57,8 +56,6 @@ class _MapViewState extends State<MapView> {
   bool _pendingMarkerPointUpdate = false;
   Map<String, NPoint> _liveMarkerPoints = const {};
   bool _showLiveMarkers = true;
-  int _dongMarkerAppearTick = 0;
-  bool _isLoadingSeoulDongCenters = false;
   bool _isCameraMoving = false;
   bool _skipNextCameraIdleFetch = false;
   bool _isProgrammaticMove = false;
@@ -94,8 +91,6 @@ class _MapViewState extends State<MapView> {
   MapFocusRequest? _pendingMapFocusRequest;
   Map<String, dynamic>? _optimisticCreatedSpace;
   DateTime? _optimisticCreatedAt;
-  List<_DongMarkerData> _seoulDongCenters = const [];
-  Map<String, NPoint> _seoulDongScreenPoints = const {};
 
   bool _isAllowedByTypeScope(Map<String, dynamic> item) {
     final type = _spaceType(item);
@@ -151,7 +146,6 @@ class _MapViewState extends State<MapView> {
       _lastCenter = initialCenter;
       _fetchNearSpaces(initialCenter);
     });
-    _loadSeoulDongCenters();
   }
 
   @override
@@ -329,138 +323,7 @@ class _MapViewState extends State<MapView> {
     await Future<void>.delayed(const Duration(milliseconds: 120));
     await _updateLiveMarkerPoints();
     if (!mounted) return;
-    setState(() {
-      _showLiveMarkers = true;
-      _dongMarkerAppearTick += 1;
-    });
-  }
-
-  Future<void> _loadSeoulDongCenters() async {
-    if (_isLoadingSeoulDongCenters || _seoulDongCenters.isNotEmpty) return;
-    _isLoadingSeoulDongCenters = true;
-    try {
-      final raw = await rootBundle.loadString(
-        'assets/json/HangJeongDong_ver20260201.geojson',
-      );
-      final decoded = jsonDecode(raw);
-      if (decoded is! Map<String, dynamic>) return;
-      final features = decoded['features'];
-      if (features is! List) return;
-      final grouped = <String, ({double latSum, double lngSum, int count})>{};
-      for (final feature in features) {
-        if (feature is! Map<String, dynamic>) continue;
-        final properties = feature['properties'];
-        final geometry = feature['geometry'];
-        if (properties is! Map<String, dynamic> ||
-            geometry is! Map<String, dynamic>) {
-          continue;
-        }
-        final sido = (properties['sidonm'] as String?)?.trim();
-        if (sido != '서울특별시') continue;
-        final center = _centroidForGeometry(geometry);
-        if (center == null) continue;
-        final id = (properties['adm_cd2'] as String?)?.trim();
-        final admName = (properties['adm_nm'] as String?)?.trim() ?? '';
-        final name = admName.contains(' ')
-            ? admName.split(' ').last.trim()
-            : admName;
-        if (id == null || id.isEmpty || name.isEmpty) continue;
-        if (!_isTargetDongName(admName: admName, name: name)) continue;
-        final mergedName = _mergeSubDongName(name);
-        final current = grouped[mergedName];
-        if (current == null) {
-          grouped[mergedName] = (latSum: center.$1, lngSum: center.$2, count: 1);
-        } else {
-          grouped[mergedName] = (
-            latSum: current.latSum + center.$1,
-            lngSum: current.lngSum + center.$2,
-            count: current.count + 1,
-          );
-        }
-      }
-      final centers = <_DongMarkerData>[];
-      for (final entry in grouped.entries) {
-        final value = entry.value;
-        centers.add(
-          _DongMarkerData(
-            id: entry.key,
-            name: entry.key,
-            lat: value.latSum / value.count,
-            lng: value.lngSum / value.count,
-          ),
-        );
-      }
-      if (!mounted) return;
-      setState(() => _seoulDongCenters = centers);
-      await _updateSeoulDongMarkerPoints();
-    } catch (_) {
-      // Ignore marker seed load failures.
-    } finally {
-      _isLoadingSeoulDongCenters = false;
-    }
-  }
-
-  (double, double)? _centroidForGeometry(Map<String, dynamic> geometry) {
-    final coordinates = geometry['coordinates'];
-    if (coordinates == null) return null;
-    final points = <(double lat, double lng)>[];
-    void walk(dynamic node) {
-      if (node is! List) return;
-      if (node.length >= 2 && node[0] is num && node[1] is num) {
-        final lng = (node[0] as num).toDouble();
-        final lat = (node[1] as num).toDouble();
-        points.add((lat, lng));
-        return;
-      }
-      for (final child in node) {
-        walk(child);
-      }
-    }
-
-    walk(coordinates);
-    if (points.isEmpty) return null;
-    var latSum = 0.0;
-    var lngSum = 0.0;
-    for (final point in points) {
-      latSum += point.$1;
-      lngSum += point.$2;
-    }
-    return (latSum / points.length, lngSum / points.length);
-  }
-
-  Future<void> _updateSeoulDongMarkerPoints() async {
-    final controller = _mapController;
-    if (controller == null || _seoulDongCenters.isEmpty) return;
-    final next = <String, NPoint>{};
-    for (final dong in _seoulDongCenters) {
-      final point = await controller.latLngToScreenLocation(
-        NLatLng(dong.lat, dong.lng),
-      );
-      next[dong.id] = point;
-    }
-    if (!mounted) return;
-    setState(() => _seoulDongScreenPoints = next);
-  }
-
-  bool _isTargetDongName({
-    required String admName,
-    required String name,
-  }) {
-    final full = admName.replaceAll(' ', '');
-    final simple = name.replaceAll(' ', '');
-    return full.contains('성수') ||
-        full.contains('논현') ||
-        full.contains('압구정') ||
-        simple.contains('성수') ||
-        simple.contains('논현') ||
-        simple.contains('압구정');
-  }
-
-  String _mergeSubDongName(String name) {
-    final normalized = name.replaceAll(' ', '');
-    if (normalized.contains('성수')) return '성수동';
-    // e.g. 성수1동, 성수2동 -> 성수동
-    return name.replaceFirst(RegExp(r'\d+동$'), '동');
+    setState(() => _showLiveMarkers = true);
   }
 
   void _onMapCenterChanged(NLatLng center) {
@@ -1182,12 +1045,8 @@ class _MapViewState extends State<MapView> {
     _updateLiveMarkerPoints().whenComplete(() {
       if (!mounted) return;
       if (_showLiveMarkers) return;
-      setState(() {
-        _showLiveMarkers = true;
-        _dongMarkerAppearTick += 1;
-      });
+      setState(() => _showLiveMarkers = true);
     });
-    _updateSeoulDongMarkerPoints();
   }
 
   Future<void> _recenterToLastCenter() async {
@@ -1278,50 +1137,6 @@ class _MapViewState extends State<MapView> {
             child: child,
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildSeoulDongMarkerOverlay() {
-    if (_seoulDongScreenPoints.isEmpty) return const SizedBox.shrink();
-    if (!_showLiveMarkers) return const SizedBox.shrink();
-    return IgnorePointer(
-      child: Stack(
-        children: _seoulDongCenters.map((dong) {
-          final point = _seoulDongScreenPoints[dong.id];
-          if (point == null) return const SizedBox.shrink();
-          const size = 44.0;
-          return TweenAnimationBuilder<double>(
-            key: ValueKey('dong_${_dongMarkerAppearTick}_${dong.id}'),
-            tween: Tween<double>(begin: 0, end: 1),
-            duration: const Duration(milliseconds: 220),
-            curve: Curves.easeOutCubic,
-            builder: (context, t, _) {
-              return Positioned(
-                left: point.x - (size / 2),
-                top: point.y - (size / 2),
-                child: Opacity(
-                  opacity: t.clamp(0.0, 1.0),
-                  child: Transform.scale(
-                    scale: 0.92 + (0.08 * t),
-                    child: Container(
-                      width: size,
-                      height: size,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF1E88E5),
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: Colors.white,
-                          width: 1,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            },
-          );
-        }).toList(),
       ),
     );
   }
@@ -1624,22 +1439,10 @@ class _MapViewState extends State<MapView> {
                               _focusToCreatedLivespace(pending);
                             }
                             _updateLiveMarkerPoints();
-                            _updateSeoulDongMarkerPoints();
                           },
                         );
                       },
                     ),
-                  ),
-                ),
-                Positioned(
-                  top: topSafe + navigationBottomOffset,
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  child: _animatedLayer(
-                    visible: _selectedIndex == 0,
-                    hiddenOffset: const Offset(-0.04, 0),
-                    child: _buildSeoulDongMarkerOverlay(),
                   ),
                 ),
                 Positioned(
@@ -1791,20 +1594,6 @@ class _MapViewState extends State<MapView> {
       },
     );
   }
-}
-
-class _DongMarkerData {
-  const _DongMarkerData({
-    required this.id,
-    required this.name,
-    required this.lat,
-    required this.lng,
-  });
-
-  final String id;
-  final String name;
-  final double lat;
-  final double lng;
 }
 
 class _LiveMarkerCluster {
