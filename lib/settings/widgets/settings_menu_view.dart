@@ -85,9 +85,11 @@ class SettingsMenuRow extends StatelessWidget {
   factory SettingsMenuRow.value({
     required String title,
     required String value,
+    VoidCallback? onTap,
   }) {
     return SettingsMenuRow(
       title: title,
+      onTap: onTap,
       trailing: Text(
         value,
         style: const TextStyle(

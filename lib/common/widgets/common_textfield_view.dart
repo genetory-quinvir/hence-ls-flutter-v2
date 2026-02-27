@@ -17,6 +17,8 @@ class CommonTextFieldView extends StatefulWidget {
     this.enableSuggestions = true,
     this.autocorrect = true,
     this.textCapitalization = TextCapitalization.sentences,
+    this.obscureText = false,
+    this.prefixIcon,
     this.enabled = true,
     this.darkStyle = false,
   });
@@ -34,6 +36,8 @@ class CommonTextFieldView extends StatefulWidget {
   final bool enableSuggestions;
   final bool autocorrect;
   final TextCapitalization textCapitalization;
+  final bool obscureText;
+  final Widget? prefixIcon;
   final bool enabled;
   final bool darkStyle;
 
@@ -182,6 +186,7 @@ class _CommonTextFieldViewState extends State<CommonTextFieldView> {
                       enableSuggestions: widget.enableSuggestions,
                       autocorrect: widget.autocorrect,
                       textCapitalization: widget.textCapitalization,
+                      obscureText: widget.obscureText,
                       textAlignVertical: TextAlignVertical.center,
                       onChanged: widget.onChanged,
                       onSubmitted: widget.onSubmitted,
@@ -199,6 +204,11 @@ class _CommonTextFieldViewState extends State<CommonTextFieldView> {
                         disabledBorder: InputBorder.none,
                         errorBorder: InputBorder.none,
                         focusedErrorBorder: InputBorder.none,
+                        prefixIcon: widget.prefixIcon,
+                        prefixIconConstraints: const BoxConstraints(
+                          minWidth: 0,
+                          minHeight: 44,
+                        ),
                         suffixIconConstraints: const BoxConstraints(
                           minWidth: 16,
                           minHeight: 36,
@@ -234,8 +244,13 @@ class _CommonTextFieldViewState extends State<CommonTextFieldView> {
                     maxLength: widget.maxLength,
                     keyboardType: widget.keyboardType,
                     textInputAction: widget.textInputAction,
+                    enableSuggestions: widget.enableSuggestions,
+                    autocorrect: widget.autocorrect,
+                    textCapitalization: widget.textCapitalization,
+                    obscureText: widget.obscureText,
                     textAlignVertical: TextAlignVertical.center,
                     onChanged: widget.onChanged,
+                    onSubmitted: widget.onSubmitted,
                     enabled: widget.enabled,
                     decoration: InputDecoration(
                       hintText: widget.hintText,
@@ -250,6 +265,11 @@ class _CommonTextFieldViewState extends State<CommonTextFieldView> {
                       disabledBorder: InputBorder.none,
                       errorBorder: InputBorder.none,
                       focusedErrorBorder: InputBorder.none,
+                      prefixIcon: widget.prefixIcon,
+                      prefixIconConstraints: const BoxConstraints(
+                        minWidth: 0,
+                        minHeight: 44,
+                      ),
                       suffixIconConstraints: const BoxConstraints(
                         minWidth: 16,
                         minHeight: 36,

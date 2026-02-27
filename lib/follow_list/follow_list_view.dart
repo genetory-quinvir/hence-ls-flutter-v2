@@ -132,7 +132,7 @@ class _FollowListViewState extends State<FollowListView> {
           Expanded(
             child: _users.isEmpty && _isLoading
                 ? const Center(
-                    child: CommonActivityIndicator(size: 32, color: Colors.black),
+                    child: CommonActivityIndicator(size: 24, color: Colors.black),
                   )
                 : _users.isEmpty
                     ? const CommonEmptyView(

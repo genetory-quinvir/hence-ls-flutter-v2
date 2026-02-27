@@ -31,7 +31,7 @@ class _ProfileViewState extends State<ProfileView> {
     super.initState();
     _tabListener = () {
       if (!mounted) return;
-      if (HomeTabController.currentIndex.value == 4) {
+      if (HomeTabController.currentIndex.value == 3) {
         _refreshMe();
       }
     };
@@ -43,7 +43,7 @@ class _ProfileViewState extends State<ProfileView> {
     HomeTabController.profileReloadSignal.addListener(_profileReloadListener);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      if (HomeTabController.currentIndex.value == 4) {
+      if (HomeTabController.currentIndex.value == 3) {
         _refreshMe();
       }
     });

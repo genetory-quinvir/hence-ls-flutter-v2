@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
+import '../common/widgets/common_activity.dart';
 import '../common/widgets/common_navigation_view.dart';
 import '../common/widgets/common_rounded_button.dart';
 
@@ -34,12 +35,26 @@ class WebViewPage extends StatefulWidget {
 
 class _WebViewPageState extends State<WebViewPage> {
   late final WebViewController _controller;
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onPageStarted: (_) {
+            if (mounted) setState(() => _isLoading = true);
+          },
+          onPageFinished: (_) {
+            if (mounted) setState(() => _isLoading = false);
+          },
+          onWebResourceError: (_) {
+            if (mounted) setState(() => _isLoading = false);
+          },
+        ),
+      )
       ..loadRequest(Uri.parse(widget.url));
   }
 
@@ -64,7 +79,15 @@ class _WebViewPageState extends State<WebViewPage> {
             ),
           ),
           Expanded(
-            child: WebViewWidget(controller: _controller),
+            child: Stack(
+              children: [
+                WebViewWidget(controller: _controller),
+                if (_isLoading)
+                  const Center(
+                    child: CommonActivityIndicator(size: 24),
+                  ),
+              ],
+            ),
           ),
           if (widget.showRevokeButton)
             SafeArea(

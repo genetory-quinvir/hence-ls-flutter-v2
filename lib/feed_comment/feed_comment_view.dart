@@ -329,7 +329,7 @@ class _FeedCommentViewState extends State<FeedCommentView> {
       barrierDismissible: false,
       barrierColor: Colors.black.withOpacity(0.15),
       builder: (_) => const Center(
-        child: CommonActivityIndicator(size: 28),
+        child: CommonActivityIndicator(size: 24),
       ),
     );
     try {
@@ -694,7 +694,7 @@ class _FeedCommentViewState extends State<FeedCommentView> {
                                     return const Padding(
                                       padding: EdgeInsets.symmetric(vertical: 12),
                                       child: Center(
-                                        child: CommonActivityIndicator(size: 20),
+                                        child: CommonActivityIndicator(size: 24),
                                       ),
                                     );
                                   }
@@ -1023,7 +1023,7 @@ class _FeedCommentViewState extends State<FeedCommentView> {
               if (_isLoading)
                 const Positioned.fill(
                   child: Center(
-                    child: CommonActivityIndicator(size: 28),
+                    child: CommonActivityIndicator(size: 24),
                   ),
                 ),
             ],

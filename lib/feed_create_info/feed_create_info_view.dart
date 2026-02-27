@@ -377,7 +377,7 @@ class _FeedCreateInfoViewState extends State<FeedCreateInfoView> {
       Navigator.of(context).popUntil((route) => route.isFirst);
       if (widget.editFeedId == null || widget.editFeedId!.isEmpty) {
         if (widget.isFeedMode) {
-          HomeTabController.switchTo(1);
+          HomeTabController.switchTo(0);
         } else {
           final lat = _selectedLatitude;
           final lng = _selectedLongitude;
@@ -389,7 +389,7 @@ class _FeedCreateInfoViewState extends State<FeedCreateInfoView> {
               createdSpace: createdSpaceForMap,
             );
           }
-          HomeTabController.switchTo(0);
+          HomeTabController.switchTo(1);
         }
       }
       HomeTabController.requestFeedReload();

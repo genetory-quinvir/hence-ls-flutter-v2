@@ -4,9 +4,9 @@ import 'package:loading_indicator/loading_indicator.dart';
 class CommonActivityIndicator extends StatelessWidget {
   const CommonActivityIndicator({
     super.key,
-    this.size = 40,
+    this.size = 32,
     this.color = Colors.black,
-    this.strokeWidth = 4,
+    this.strokeWidth = 2,
   });
 
   final double size;

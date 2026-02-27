@@ -10,12 +10,12 @@ class NotificationRouter {
     rootNavigatorKey.currentState?.popUntil((route) => route.isFirst);
 
     if (link.contains('notifications')) {
-      HomeTabController.switchTo(3);
+      HomeTabController.switchTo(2);
       return;
     }
 
     if (link.contains('feeds')) {
-      HomeTabController.switchTo(1);
+      HomeTabController.switchTo(0);
       return;
     }
   }

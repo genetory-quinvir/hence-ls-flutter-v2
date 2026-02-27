@@ -55,7 +55,7 @@ class _NotificationBodyState extends State<_NotificationBody> {
     _loadInitial();
     _tabListener = () {
       if (!mounted) return;
-      if (HomeTabController.currentIndex.value == 3) {
+      if (HomeTabController.currentIndex.value == 2) {
         HomeTabController.setUnreadNotifications(false);
         _reloadAll();
       }
@@ -341,7 +341,7 @@ class _NotificationBodyState extends State<_NotificationBody> {
         await _openFeedDetail(feedId);
         return;
       }
-      HomeTabController.switchTo(1);
+      HomeTabController.switchTo(0);
       return;
     }
     if (template == 'NEW_COMMENT') {
@@ -350,7 +350,7 @@ class _NotificationBodyState extends State<_NotificationBody> {
         await _openFeedComments(feedId);
         return;
       }
-      HomeTabController.switchTo(1);
+      HomeTabController.switchTo(0);
       return;
     }
     if (template == 'NEW_FOLLOW' ||
@@ -366,11 +366,11 @@ class _NotificationBodyState extends State<_NotificationBody> {
     if (template == 'NEW_COMMENT' ||
         template == 'FEED_LIKED' ||
         template == 'NEW_FEED') {
-      HomeTabController.switchTo(1);
+      HomeTabController.switchTo(0);
       return;
     }
     if (template.contains('SPACE')) {
-      HomeTabController.switchTo(0);
+      HomeTabController.switchTo(1);
       return;
     }
     } finally {
@@ -457,17 +457,28 @@ class _NotificationBodyState extends State<_NotificationBody> {
             Expanded(
               child: Stack(
                 children: [
-                  _items.isEmpty && _isLoading
+                  _items.isEmpty && _isLoading && !_isRefreshing
                       ? const Center(
                           child: CommonActivityIndicator(size: 24),
                         )
                       : _items.isEmpty
-                          ? CommonEmptyView(
-                              message: _errorMessage ??
-                                  (AuthStore.instance.isSignedIn.value
-                                      ? '알림이 없습니다.'
-                                      : '로그인 후 알림을 확인할 수 있습니다.'),
-                              showButton: false,
+                          ? CommonRefreshView(
+                              onRefresh: _handleRefresh,
+                              topPadding: 12,
+                              child: ListView(
+                                padding: EdgeInsets.zero,
+                                physics: const AlwaysScrollableScrollPhysics(),
+                                children: [
+                                  CommonEmptyView(
+                                    message: _errorMessage ??
+                                        (AuthStore.instance.isSignedIn.value
+                                            ? '알림이 없습니다.'
+                                            : '로그인 후 알림을 확인할 수 있습니다.'),
+                                    showButton: false,
+                                    height: 240,
+                                  ),
+                                ],
+                              ),
                             )
                           : NotificationListener<ScrollNotification>(
                               onNotification: (notification) {

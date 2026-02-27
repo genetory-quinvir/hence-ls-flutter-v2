@@ -6,7 +6,8 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../common/auth/auth_store.dart';
 import '../common/network/api_client.dart';
-import '../home/home_screen.dart';
+import '../common/state/placebook_cache.dart';
+import '../home/home_view.dart';
 
 class SplashView extends StatefulWidget {
   const SplashView({super.key});
@@ -66,6 +67,18 @@ class _SplashViewState extends State<SplashView>
     } catch (_) {
       await AuthStore.instance.clear();
     }
+    try {
+      final categories = await ApiClient.fetchPlacebookCategories();
+      final themes = await ApiClient.fetchPlacebookThemes();
+      debugPrint(
+        '[PLACEBOOK][CACHE] categories=${categories.length} themes=${themes.length}',
+      );
+      await PlacebookCache.saveCategories(categories);
+      await PlacebookCache.saveThemes(themes);
+    } catch (e) {
+      debugPrint('[PLACEBOOK][CACHE] preload failed: $e');
+      // Best-effort cache; ignore failures.
+    }
   }
 
   Future<void> _start() async {
@@ -79,7 +92,7 @@ class _SplashViewState extends State<SplashView>
     _navigated = true;
     Navigator.of(context).pushReplacement(
       PageRouteBuilder(
-        pageBuilder: (_, __, ___) => const HomeScreen(),
+        pageBuilder: (_, __, ___) => const HomeView(),
         transitionDuration: Duration.zero,
         reverseTransitionDuration: Duration.zero,
       ),

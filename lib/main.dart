@@ -103,4 +103,4 @@ class _BouncingScrollBehavior extends ScrollBehavior {
   }
 }
 
-// HomeScreen moved to lib/home/home_screen.dart
+// HomeView lives in lib/home/home_view.dart

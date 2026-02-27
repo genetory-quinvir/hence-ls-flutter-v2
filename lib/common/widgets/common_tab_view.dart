@@ -28,19 +28,14 @@ class CommonTabView extends StatelessWidget {
   Widget build(BuildContext context) {
     const items = [
       _TabItem(
+        label: '피쳐드',
+        icon: PhosphorIconsRegular.star,
+        activeIcon: PhosphorIconsFill.star,
+      ),
+      _TabItem(
         label: '맵',
         icon: PhosphorIconsRegular.mapPin,
         activeIcon: PhosphorIconsFill.mapPin,
-      ),
-      _TabItem(
-        label: '피드',
-        icon: PhosphorIconsRegular.article,
-        activeIcon: PhosphorIconsFill.article,
-      ),
-      _TabItem(
-        label: '만들기',
-        icon: PhosphorIconsRegular.plus,
-        activeIcon: PhosphorIconsFill.plus,
       ),
       _TabItem(
         label: '알림',
@@ -65,7 +60,7 @@ class CommonTabView extends StatelessWidget {
               final item = items[index];
               final isActive = index == currentIndex;
               final color = isActive ? activeColor : inactiveColor;
-              final showUnreadDot = index == 3 && hasUnread;
+              final showUnreadDot = index == 2 && hasUnread;
 
               return Expanded(
                 child: CommonInkWell(

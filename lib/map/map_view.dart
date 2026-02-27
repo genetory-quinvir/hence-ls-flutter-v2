@@ -11,21 +11,20 @@ import '../common/location/naver_location_service.dart';
 import '../common/auth/auth_store.dart';
 import '../common/state/home_tab_controller.dart';
 import '../sign/sign_view.dart';
-import '../feed_create_photo/feed_create_photo_view.dart';
 import '../common/network/api_client.dart';
-import '../common/widgets/common_calendar_view.dart';
 import '../common/widgets/common_dot_marker.dart';
 import '../common/widgets/common_feed_cluster_marker.dart';
+import '../common/state/placebook_cache.dart';
 import '../common/widgets/common_feed_marker.dart';
 import '../common/widgets/common_livespace_cluster_marker.dart';
 import '../common/widgets/common_map_view.dart';
 import '../common/widgets/common_livespace_marker.dart';
 import '../feed_list/models/feed_models.dart';
-import '../list/list_view.dart';
 import '../map_cluster/map_cluster_view.dart';
 import '../profile/profile_feed_detail_view.dart';
 import '../livespace_detail/livespace_detail_view.dart';
 import 'widgets/map_navigation_view.dart';
+import 'map_filter/map_filter_view.dart';
 
 class MapView extends StatefulWidget {
   const MapView({super.key});
@@ -40,15 +39,14 @@ class _MapViewState extends State<MapView> {
   static const double _clusterMaxZoom = 18.0;
   static const double _clusterSelectionZoomThreshold = 17.8;
   int _selectedIndex = 0;
-  String _selectedFilter = '오늘';
-  bool _isHotArea = false;
+  String? _selectedCategoryId;
+  List<String> _selectedThemeIds = const [];
   String _selectedListSort = '최신순';
   String _selectedListKind = 'LIVESPACE';
-  String _selectedTypeScope = '전체';
   String _centerPlaceText = '';
-  DateTime? _selectedFilterDate;
   final ScrollController _chipScrollController = ScrollController();
   Timer? _reverseGeocodeDebounce;
+  Timer? _placebookFetchDebounce;
   bool _isLoadingNear = false;
   List<Map<String, dynamic>> _nearSpaces = const [];
   NaverMapController? _mapController;
@@ -62,89 +60,158 @@ class _MapViewState extends State<MapView> {
   String? _selectedLiveMarkerId;
   NLatLng? _lastCenter;
   double? _lastZoom;
+  NLatLng? _lastFetchCenter;
+  double? _lastFetchZoom;
   double _screenScale = 1.0;
   double _mapViewportWidth = 0;
   double _mapViewportHeight = 0;
-  NCircleOverlay? _radiusOverlay;
-  bool _isAddingRadiusOverlay = false;
-  ({NLatLng center, double radiusKm})? _pendingRadiusUpdate;
-  bool _radiusOverlayAdded = false;
-  static const List<String> _filters = <String>[
-    '오늘',
-    '핫한 지역',
-    '러닝',
-    '카페',
-    '전시',
-  ];
-  static const List<String> _listSorts = <String>[
-    '최신순',
-    '인기순',
-    '거리순',
-  ];
-  static const List<String> _typeScopes = <String>[
-    '전체',
-    '라이브스페이스만',
-    '피드만',
-  ];
+  late final Widget _mapWidget;
+  List<Map<String, dynamic>> _categoryFilters = const [];
+  static const String _filterLabel = '필터';
   late final Map<String, GlobalKey> _chipKeys;
   late final VoidCallback _mapFocusListener;
   MapFocusRequest? _pendingMapFocusRequest;
   Map<String, dynamic>? _optimisticCreatedSpace;
   DateTime? _optimisticCreatedAt;
 
-  bool _isAllowedByTypeScope(Map<String, dynamic> item) {
-    final type = _spaceType(item);
-    if (type == 'LIVESPACE') return _selectedTypeScope == '라이브스페이스만';
-    if (type == 'FEED') return _selectedTypeScope == '피드만';
-    return _selectedTypeScope == '전체';
+  Map<String, dynamic> _normalizePlaceItem(Map<String, dynamic> item) {
+    final next = Map<String, dynamic>.from(item);
+    String? _asString(dynamic value) {
+      if (value == null) return null;
+      if (value is String && value.trim().isNotEmpty) return value;
+      return null;
+    }
+
+    num? _asNum(dynamic value) {
+      if (value is num) return value;
+      if (value is String) return num.tryParse(value);
+      return null;
+    }
+
+    void setLatLng(dynamic source, {String latKey = 'latitude', String lngKey = 'longitude'}) {
+      if (source is! Map<String, dynamic>) return;
+      next['latitude'] ??= source[latKey] ?? source['lat'];
+      next['longitude'] ??= source[lngKey] ?? source['lng'] ?? source['lon'];
+    }
+
+    next['latitude'] ??= item['lat'];
+    next['longitude'] ??= item['lng'] ?? item['lon'];
+    setLatLng(item['location']);
+    setLatLng(item['position']);
+    setLatLng(item['center']);
+    setLatLng(item['coords']);
+
+    final rawTitle = _asString(next['title']) ?? _asString(next['name']);
+    final rawSubtitle = _asString(next['subtitle']);
+    final rawDescription = _asString(next['description']);
+    if (rawTitle != null) {
+      next['title'] = rawTitle;
+      next['placeName'] ??= rawTitle;
+    }
+    if (rawSubtitle != null) {
+      next['subtitle'] = rawSubtitle;
+    }
+    if (rawDescription != null) {
+      next['description'] = rawDescription;
+    }
+
+    final lat = _asNum(next['latitude']);
+    final lng = _asNum(next['longitude']);
+    if (lat != null) next['latitude'] = lat.toDouble();
+    if (lng != null) next['longitude'] = lng.toDouble();
+
+    final placeName = next['placeName'] ?? next['name'];
+    if (placeName is String && placeName.isNotEmpty) {
+      next['placeName'] ??= placeName;
+      next['title'] ??= placeName;
+    }
+
+    return next;
   }
 
-  List<Map<String, dynamic>> get _typeScopedSpaces {
-    if (_selectedTypeScope == '전체') return _nearSpaces;
-    return _nearSpaces.where(_isAllowedByTypeScope).toList();
-  }
-
-  List<Map<String, dynamic>> get _listItems {
-    return _typeScopedSpaces.toList();
-  }
-
-  String get _orderBy {
-    switch (_selectedListSort) {
-      case '인기순':
-        return 'popular';
-      case '거리순':
-        return 'distance';
-      default:
-        return 'latest';
+  Future<void> _fetchPlacebookSpaces() async {
+    if (_isLoadingNear) return;
+    if (_lastCenter != null) {
+      _lastFetchCenter = _lastCenter;
+    }
+    if (_lastZoom != null) {
+      _lastFetchZoom = _lastZoom;
+    }
+    setState(() => _isLoadingNear = true);
+    try {
+      final center = _lastCenter ?? const NLatLng(37.5665, 126.9780);
+      final radiusKm =
+          (_radiusKmForScreen() ?? 10.0).clamp(1.0, 500.0);
+      const limit = 200;
+      const orderBy = 'createdAt';
+      const order = 'DESC';
+      final categoryId = _selectedCategoryId;
+      final themeIds = _selectedThemeIds.isNotEmpty ? _selectedThemeIds : null;
+      final spaces = _selectedIndex == 1
+          ? await ApiClient.fetchTopPlacebookThemes(
+              latitude: center.latitude,
+              longitude: center.longitude,
+              radiusKm: radiusKm,
+              limit: limit,
+              orderBy: orderBy,
+              order: order,
+              categoryId: categoryId,
+              themeIds: themeIds,
+            )
+          : await ApiClient.fetchMyPlacebookPlaces(
+              latitude: center.latitude,
+              longitude: center.longitude,
+              radiusKm: radiusKm,
+              limit: limit,
+              orderBy: orderBy,
+              order: order,
+              categoryId: categoryId,
+              themeIds: themeIds,
+            );
+      if (!mounted) return;
+      final normalized = spaces.map(_normalizePlaceItem).toList();
+      final merged = _dedupeSpaces(_mergeOptimisticCreatedSpace(normalized));
+      setState(() => _nearSpaces = merged);
+      _updateLiveMarkerPoints();
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _nearSpaces = const []);
+      _updateLiveMarkerPoints();
+    } finally {
+      if (mounted) setState(() => _isLoadingNear = false);
     }
   }
 
-  String _displayFilterLabel(String label) {
-    if (label != '오늘') return label;
-    final selected = _selectedFilterDate;
-    if (selected == null) return '오늘';
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final picked = DateTime(selected.year, selected.month, selected.day);
-    final diffDays = today.difference(picked).inDays;
-    if (diffDays == 0) return '오늘';
-    if (diffDays == 1) return '어제';
-    return '${picked.year}. ${picked.month}. ${picked.day}';
-  }
+  bool _isAllowedByTypeScope(Map<String, dynamic> item) => true;
+
+  List<Map<String, dynamic>> get _typeScopedSpaces => _nearSpaces;
+
 
   @override
   void initState() {
     super.initState();
+    _mapWidget = CommonMapView(
+      onCenterChanged: _onMapCenterChanged,
+      onCameraMoving: _onMapCameraMoving,
+      onCameraIdle: _onMapCameraIdle,
+      onMapReady: (controller) {
+        _mapController = controller;
+        final pending = _pendingMapFocusRequest;
+        if (pending != null) {
+          _focusToCreatedLivespace(pending);
+        }
+        _updateLiveMarkerPoints();
+      },
+    );
     _mapFocusListener = _handleMapFocusRequest;
     HomeTabController.mapFocusRequest.addListener(_mapFocusListener);
-    _chipKeys = <String, GlobalKey>{
-      for (final label in _filters) label: GlobalKey(),
-    };
+    _chipKeys = <String, GlobalKey>{};
+    _loadCategoryFilters();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _centerChip(animated: false);
       const initialCenter = NLatLng(37.5665, 126.9780);
       _lastCenter = initialCenter;
-      _fetchNearSpaces(initialCenter);
+      _fetchPlacebookSpaces();
     });
   }
 
@@ -152,20 +219,41 @@ class _MapViewState extends State<MapView> {
   void dispose() {
     HomeTabController.mapFocusRequest.removeListener(_mapFocusListener);
     _reverseGeocodeDebounce?.cancel();
+    _placebookFetchDebounce?.cancel();
     _chipScrollController.dispose();
     super.dispose();
   }
 
   void _resetMapFiltersToDefault() {
     setState(() {
-      _selectedFilter = '오늘';
-      _selectedFilterDate = DateTime.now();
-      _isHotArea = false;
-      _selectedTypeScope = '전체';
       _selectedListSort = '최신순';
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _centerChip(animated: false);
+    });
+  }
+
+  Future<void> _loadCategoryFilters() async {
+    final categories = await PlacebookCache.loadCategories();
+    if (!mounted) return;
+    debugPrint('[PLACEBOOK][CACHE] loaded categories=${categories.length}');
+    final active = categories
+        .whereType<Map<String, dynamic>>()
+        .where((item) => item['isActive'] != false)
+        .toList()
+      ..sort((a, b) {
+        final aOrder = (a['sortOrder'] as num?)?.toInt() ?? 0;
+        final bOrder = (b['sortOrder'] as num?)?.toInt() ?? 0;
+        return aOrder.compareTo(bOrder);
+      });
+    setState(() {
+      _categoryFilters = active;
+      _chipKeys
+        ..clear()
+        ..addAll({
+          for (final item in active)
+            (item['id']?.toString() ?? ''): GlobalKey(),
+        });
     });
   }
 
@@ -299,7 +387,7 @@ class _MapViewState extends State<MapView> {
       // Ignore camera update errors.
     }
     await _forceRefreshLiveMarkers();
-    await _fetchNearSpaces(target);
+    await _fetchPlacebookSpaces();
     await _forceRefreshLiveMarkers();
   }
 
@@ -353,14 +441,6 @@ class _MapViewState extends State<MapView> {
     return parts.first;
   }
 
-  double _radiusKmForZoom(double zoom) {
-    if (zoom >= 17) return 1;
-    if (zoom >= 15) return 3;
-    if (zoom >= 13) return 5;
-    if (zoom >= 11) return 30;
-    return 20;
-  }
-
   double? _radiusKmForScreen() {
     final controller = _mapController;
     if (controller == null || _mapViewportHeight <= 0) return null;
@@ -371,149 +451,6 @@ class _MapViewState extends State<MapView> {
     return meters / 1000;
   }
 
-  Future<void> _updateRadiusOverlay({
-    required NLatLng center,
-    required double radiusKm,
-  }) async {
-    return;
-    final controller = _mapController;
-    if (controller == null) return;
-    final radiusMeters = radiusKm * 1000;
-    if (_isAddingRadiusOverlay) {
-      _pendingRadiusUpdate = (center: center, radiusKm: radiusKm);
-      return;
-    }
-    if (_radiusOverlay == null || !_radiusOverlayAdded) {
-      final overlay = NCircleOverlay(
-        id: 'map_radius_overlay',
-        center: center,
-        radius: radiusMeters,
-        color: const Color(0x332E6BFF),
-        outlineColor: const Color(0x662E6BFF),
-        outlineWidth: 1.2,
-      );
-      _radiusOverlay = overlay;
-      _isAddingRadiusOverlay = true;
-      try {
-        await controller.addOverlay(overlay);
-        _radiusOverlayAdded = true;
-      } finally {
-        _isAddingRadiusOverlay = false;
-      }
-      final pending = _pendingRadiusUpdate;
-      _pendingRadiusUpdate = null;
-      if (pending != null) {
-        _updateRadiusOverlay(
-          center: pending.center,
-          radiusKm: pending.radiusKm,
-        );
-      }
-    } else {
-      try {
-        _radiusOverlay!.setCenter(center);
-        _radiusOverlay!.setRadius(radiusMeters);
-      } catch (_) {
-        _radiusOverlay = null;
-        _radiusOverlayAdded = false;
-        _updateRadiusOverlay(center: center, radiusKm: radiusKm);
-      }
-    }
-  }
-
-  Future<void> _fetchNearSpaces(
-    NLatLng center, {
-    double? zoom,
-    int? hotRankOverride,
-  }) async {
-    final filter = _selectedFilter;
-    final isHotArea = hotRankOverride != null ? true : _isHotArea;
-    final isTagFilter = filter == '러닝' || filter == '카페' || filter == '전시';
-    final String? type = switch (_selectedTypeScope) {
-      '라이브스페이스만' => 'LIVESPACE',
-      '피드만' => 'FEED',
-      _ => null,
-    };
-    String formatDate(DateTime value) {
-      final yyyy = value.year.toString().padLeft(4, '0');
-      final mm = value.month.toString().padLeft(2, '0');
-      final dd = value.day.toString().padLeft(2, '0');
-      return '$yyyy-$mm-$dd';
-    }
-    final date = filter == '오늘'
-        ? formatDate(_selectedFilterDate ?? DateTime.now())
-        : null;
-    final effectiveZoom = zoom ?? _lastZoom;
-    final screenRadiusKm = _selectedIndex == 1 ? 100.0 : _radiusKmForScreen();
-    final baseRadiusKm =
-        effectiveZoom == null ? 10.0 : _radiusKmForZoom(effectiveZoom);
-    final fallbackRadiusKm = (baseRadiusKm * _screenScale).clamp(1.0, 30.0);
-    final radiusKm = (screenRadiusKm ?? fallbackRadiusKm).clamp(1.0, 500.0);
-    _updateRadiusOverlay(center: center, radiusKm: radiusKm);
-    setState(() => _isLoadingNear = true);
-    try {
-      List<Map<String, dynamic>> spaces;
-      Map<String, dynamic>? movedCenter;
-      if (isHotArea) {
-        final res = await ApiClient.fetchNearbySpacesWithMeta(
-          latitude: center.latitude,
-          longitude: center.longitude,
-          radiusKm: radiusKm,
-          date: date,
-          type: type,
-          tags: isTagFilter ? <String>[filter] : null,
-          orderBy: _orderBy,
-          hotRank: hotRankOverride ?? 1,
-        );
-        spaces = res.feeds;
-        movedCenter = res.movedCenter;
-      } else {
-        spaces = await ApiClient.fetchNearbySpaces(
-          latitude: center.latitude,
-          longitude: center.longitude,
-          radiusKm: radiusKm,
-          date: date,
-          type: type,
-          tags: isTagFilter ? <String>[filter] : null,
-          orderBy: _orderBy,
-        );
-      }
-      if (!mounted) return;
-      final mergedSpaces = _dedupeSpaces(_mergeOptimisticCreatedSpace(spaces));
-      setState(() => _nearSpaces = mergedSpaces);
-      if (movedCenter is Map<String, dynamic>) {
-        final lat = (movedCenter['latitude'] as num?)?.toDouble();
-        final lng = (movedCenter['longitude'] as num?)?.toDouble();
-        if (lat != null && lng != null) {
-          final target = NLatLng(lat, lng);
-          _lastCenter = target;
-          _onMapCenterChanged(target);
-          final controller = _mapController;
-          if (controller != null) {
-            try {
-              _skipNextCameraIdleFetch = true;
-              _isProgrammaticMove = true;
-              const nextZoom = 14.0;
-              await controller.updateCamera(
-                NCameraUpdate.withParams(
-                  target: target,
-                  zoom: nextZoom,
-                ),
-              );
-            } catch (_) {
-              // Ignore camera update errors.
-            }
-          }
-        }
-      }
-      _updateLiveMarkerPoints();
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _nearSpaces = const []);
-      _updateLiveMarkerPoints();
-    } finally {
-      if (mounted) setState(() => _isLoadingNear = false);
-    }
-  }
 
   Future<void> _updateLiveMarkerPoints() async {
     final controller = _mapController;
@@ -1009,12 +946,29 @@ class _MapViewState extends State<MapView> {
 
   double _toRadians(double degree) => degree * (math.pi / 180);
 
+  bool _shouldFetchPlacebook({
+    required NLatLng center,
+    required double zoom,
+  }) {
+    final lastCenter = _lastFetchCenter;
+    final lastZoom = _lastFetchZoom;
+    if (lastCenter == null || lastZoom == null) return true;
+    final movedMeters = _distanceMeters(
+      lat1: lastCenter.latitude,
+      lng1: lastCenter.longitude,
+      lat2: center.latitude,
+      lng2: center.longitude,
+    );
+    const minMoveMeters = 300.0;
+    const minZoomDelta = 0.7;
+    if (movedMeters >= minMoveMeters) return true;
+    if ((zoom - lastZoom).abs() >= minZoomDelta) return true;
+    return false;
+  }
+
   void _onMapCameraMoving() {
     if (_isCameraMoving) return;
     _isCameraMoving = true;
-    if (!_isProgrammaticMove && _isHotArea) {
-      setState(() => _isHotArea = false);
-    }
     if (!_showLiveMarkers) return;
     setState(() => _showLiveMarkers = false);
   }
@@ -1037,7 +991,16 @@ class _MapViewState extends State<MapView> {
         final camera = await controller.getCameraPosition();
         _lastCenter = camera.target;
         _lastZoom = camera.zoom;
-        _fetchNearSpaces(camera.target, zoom: camera.zoom);
+        if (!_shouldFetchPlacebook(center: camera.target, zoom: camera.zoom)) {
+          return;
+        }
+        _placebookFetchDebounce?.cancel();
+        _placebookFetchDebounce = Timer(const Duration(milliseconds: 350), () {
+          if (!mounted) return;
+          _lastFetchCenter = camera.target;
+          _lastFetchZoom = camera.zoom;
+          _fetchPlacebookSpaces();
+        });
       } catch (_) {
         // Ignore transient camera errors.
       }
@@ -1062,43 +1025,20 @@ class _MapViewState extends State<MapView> {
     }
   }
 
-  IconData _iconForFilter(String label) {
-    switch (label) {
-      case '오늘':
-        return PhosphorIconsFill.calendarBlank;
-      case '핫한 지역':
-        return PhosphorIconsFill.fire;
-      case '러닝':
-        return PhosphorIconsFill.personSimpleRun;
-      case '카페':
-        return PhosphorIconsFill.coffee;
-      case '전시':
-        return PhosphorIconsFill.paintBrush;
-      default:
-        return PhosphorIconsFill.tag;
-    }
-  }
-
   void _onTabSelected(int index) {
     if (_selectedIndex == index) return;
     setState(() => _selectedIndex = index);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _centerChip(animated: false);
-      if (index == 0) {
-        _updateLiveMarkerPoints();
-        final center = _lastCenter;
-        if (center != null && !_isLoadingNear) {
-          _fetchNearSpaces(center);
-        }
-      }
-      if (index == 1 && !_isLoadingNear) {
-        _fetchNearSpaces(_lastCenter ?? const NLatLng(37.5665, 126.9780));
-      }
+      _updateLiveMarkerPoints();
+      _fetchPlacebookSpaces();
     });
   }
 
   void _centerChip({bool animated = true}) {
-    final key = _chipKeys[_selectedFilter];
+    final selectedId = _selectedCategoryId;
+    if (selectedId == null) return;
+    final key = _chipKeys[selectedId];
     final targetContext = key?.currentContext;
     if (targetContext == null) return;
     final scrollableState = Scrollable.maybeOf(targetContext);
@@ -1143,9 +1083,9 @@ class _MapViewState extends State<MapView> {
 
   Widget _buildFilterChips() {
     final labels = <String>[
-      if (_filters.isNotEmpty) _filters.first,
-      '__type_scope__',
-      ..._filters.skip(1),
+      '__filter__',
+      ..._categoryFilters.map((e) => e['id']?.toString() ?? '').where((id) => id.isNotEmpty),
+      if (_categoryFilters.isEmpty) '__empty__',
     ];
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
@@ -1158,21 +1098,32 @@ class _MapViewState extends State<MapView> {
               clipBehavior: Clip.none,
               child: Row(
                 children: labels.map((label) {
-                  if (label == '__type_scope__') {
+                  if (label == '__filter__') {
                     return Padding(
                       padding: const EdgeInsets.only(right: 8),
                       child: GestureDetector(
-                        onTap: () {
-                          final currentIndex =
-                              _typeScopes.indexOf(_selectedTypeScope);
-                          final nextIndex =
-                              (currentIndex + 1) % _typeScopes.length;
-                          final nextScope = _typeScopes[nextIndex];
-                          setState(() => _selectedTypeScope = nextScope);
-                          _updateLiveMarkerPoints();
-                          _fetchNearSpaces(
-                            _lastCenter ?? const NLatLng(37.5665, 126.9780),
+                        onTap: () async {
+                          final result = await showModalBottomSheet<Map<String, dynamic>?>(
+                            context: context,
+                            isScrollControlled: true,
+                            backgroundColor: Colors.white,
+                            shape: const RoundedRectangleBorder(
+                              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                            ),
+                            builder: (_) => MapFilterView(
+                              categories: _categoryFilters,
+                              selectedCategoryId: _selectedCategoryId,
+                              selectedThemeIds: _selectedThemeIds,
+                            ),
                           );
+                          if (!mounted || result == null) return;
+                          setState(() {
+                            _selectedCategoryId = result['categoryId'] as String?;
+                            _selectedThemeIds =
+                                (result['themeIds'] as List<String>? ?? const []);
+                          });
+                          _updateLiveMarkerPoints();
+                          _fetchPlacebookSpaces();
                         },
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 180),
@@ -1189,9 +1140,9 @@ class _MapViewState extends State<MapView> {
                               ),
                             ],
                           ),
-                          child: Text(
-                            _selectedTypeScope,
-                            style: const TextStyle(
+                          child: const Text(
+                            _filterLabel,
+                            style: TextStyle(
                               fontFamily: 'Pretendard',
                               fontSize: 13,
                               fontWeight: FontWeight.w600,
@@ -1202,47 +1153,46 @@ class _MapViewState extends State<MapView> {
                       ),
                     );
                   }
-                  final selected = label == '핫한 지역'
-                      ? _isHotArea
-                      : _selectedFilter == label;
-                  final icon = _iconForFilter(label);
-                  final displayLabel = _displayFilterLabel(label);
+                  if (label == '__empty__') {
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(color: const Color(0x22000000)),
+                        ),
+                        child: const Text(
+                          '카테고리 없음',
+                          style: TextStyle(
+                            fontFamily: 'Pretendard',
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF9E9E9E),
+                          ),
+                        ),
+                      ),
+                    );
+                  }
+                  final category = _categoryFilters
+                      .firstWhere((e) => (e['id']?.toString() ?? '') == label);
+                  final selected = _selectedCategoryId == label;
+                  final icon = PhosphorIconsFill.tag;
+                  final displayLabel = (category['title'] as String?) ?? '';
                   return Padding(
                     padding: const EdgeInsets.only(right: 8),
                     child: KeyedSubtree(
                       key: _chipKeys[label],
                       child: GestureDetector(
                         onTap: () async {
-                          if (label == '핫한 지역') {
-                            final nextHotArea = !_isHotArea;
-                            setState(() => _isHotArea = nextHotArea);
-                            final center = _lastCenter;
-                            if (center != null) {
-                              _fetchNearSpaces(
-                                center,
-                                hotRankOverride: nextHotArea ? 1 : null,
-                              );
-                            }
-                            return;
-                          }
-                          if (label == '오늘') {
-                            final picked = await CommonCalendarView.show(
-                              context,
-                              initialDate: _selectedFilterDate ?? DateTime.now(),
-                              lastDate: DateTime.now(),
-                            );
-                            if (!mounted) return;
-                            if (picked != null) {
-                              _selectedFilterDate = picked;
-                            }
-                          }
-                          setState(() => _selectedFilter = label);
+                          setState(() => _selectedCategoryId = label);
                           WidgetsBinding.instance.addPostFrameCallback((_) {
                             _centerChip();
                           });
                           final center = _lastCenter;
                           if (center != null) {
-                            _fetchNearSpaces(center);
+                            _fetchPlacebookSpaces();
                           }
                         },
                         child: AnimatedContainer(
@@ -1250,9 +1200,7 @@ class _MapViewState extends State<MapView> {
                           curve: Curves.easeOut,
                           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                           decoration: BoxDecoration(
-                            color: label == '핫한 지역' && selected
-                                ? const Color(0xFFE53935)
-                                : Colors.white,
+                            color: selected ? Colors.black : Colors.white,
                             borderRadius: BorderRadius.circular(999),
                             boxShadow: [
                               BoxShadow(
@@ -1268,13 +1216,7 @@ class _MapViewState extends State<MapView> {
                               Icon(
                                 icon,
                                 size: 16,
-                                color: label == '핫한 지역'
-                                    ? (selected
-                                        ? Colors.white
-                                        : const Color(0xFFE53935))
-                                    : label == '오늘'
-                                        ? const Color(0xFF7A5AF8)
-                                        : (selected ? Colors.white : Colors.black),
+                                color: selected ? Colors.white : Colors.black,
                               ),
                               const SizedBox(width: 6),
                               Text(
@@ -1283,9 +1225,7 @@ class _MapViewState extends State<MapView> {
                                   fontFamily: 'Pretendard',
                                   fontSize: 13,
                                   fontWeight: FontWeight.w600,
-                                  color: label == '핫한 지역' && selected
-                                      ? Colors.white
-                                      : Colors.black,
+                                  color: selected ? Colors.white : Colors.black,
                                 ),
                               ),
                             ],
@@ -1299,56 +1239,6 @@ class _MapViewState extends State<MapView> {
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildListSortBar() {
-    return Container(
-      height: 40,
-      color: Colors.white,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: Row(
-          children: [
-            const Spacer(),
-            ...List.generate(_listSorts.length, (index) {
-              final label = _listSorts[index];
-              final selected = _selectedListSort == label;
-              return Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (index > 0)
-                    Container(
-                      width: 1,
-                      height: 12,
-                      margin: const EdgeInsets.symmetric(horizontal: 8),
-                      color: const Color(0x33000000),
-                    ),
-                  GestureDetector(
-                    onTap: () {
-                      setState(() => _selectedListSort = label);
-                      final center = _lastCenter;
-                      if (center != null) {
-                        _fetchNearSpaces(center);
-                      }
-                    },
-                    behavior: HitTestBehavior.opaque,
-                    child: Text(
-                      label,
-                      style: TextStyle(
-                        fontFamily: 'Pretendard',
-                        fontSize: 13,
-                        fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                        color: selected ? Colors.black : const Color(0x88000000),
-                      ),
-                    ),
-                  ),
-                ],
-              );
-            }),
-          ],
-        ),
       ),
     );
   }
@@ -1391,20 +1281,10 @@ class _MapViewState extends State<MapView> {
     const navigationBottomOffset = 56.0;
     const chipTopOffset = navigationBottomOffset + 8;
     const chipBlockHeight = 44.0;
-    const listSortBarHeight = 40.0;
-    const listGapBelowChips = 4.0;
-    const listGradientHeight = 16.0;
-    final listSortBarBottom =
-        topSafe + chipTopOffset + chipBlockHeight + 12 + listSortBarHeight;
-    final listTopPadding = topSafe +
-        chipTopOffset +
-        chipBlockHeight +
-        listSortBarHeight +
-        listGapBelowChips;
-
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.dark,
       child: Scaffold(
+        resizeToAvoidBottomInset: false,
         body: Stack(
           clipBehavior: Clip.none,
           children: [
@@ -1417,7 +1297,7 @@ class _MapViewState extends State<MapView> {
                   right: 0,
                   bottom: 0,
                   child: _animatedLayer(
-                    visible: _selectedIndex == 0,
+                    visible: true,
                     hiddenOffset: const Offset(-0.04, 0),
                     child: LayoutBuilder(
                       builder: (context, constraints) {
@@ -1427,20 +1307,7 @@ class _MapViewState extends State<MapView> {
                         if (constraints.maxHeight > 0) {
                           _mapViewportHeight = constraints.maxHeight;
                         }
-                        return CommonMapView(
-                          onCenterChanged: _onMapCenterChanged,
-                          onCameraMoving: _onMapCameraMoving,
-                          onCameraIdle: _onMapCameraIdle,
-                          onCreateLiveSpace: _handleCreateLiveSpace,
-                          onMapReady: (controller) {
-                            _mapController = controller;
-                            final pending = _pendingMapFocusRequest;
-                            if (pending != null) {
-                              _focusToCreatedLivespace(pending);
-                            }
-                            _updateLiveMarkerPoints();
-                          },
-                        );
+                        return _mapWidget;
                       },
                     ),
                   ),
@@ -1452,32 +1319,13 @@ class _MapViewState extends State<MapView> {
                   bottom: 0,
                   child: IgnorePointer(
                     ignoring: false,
-                    child: _animatedLayer(
-                      visible: _selectedIndex == 0,
-                      hiddenOffset: const Offset(-0.04, 0),
-                      child: _buildAnimatedLiveMarkerOverlay(),
-                    ),
-                    ),
-                  ),
-                Positioned.fill(
                   child: _animatedLayer(
-                    visible: _selectedIndex == 1,
-                    hiddenOffset: const Offset(0.04, 0),
-                    child: MapListView(
-                      topPadding: listTopPadding,
-                      items: _listItems,
-                      isLoading: _isLoadingNear,
-                      currentCenter: _lastCenter == null
-                          ? null
-                          : (lat: _lastCenter!.latitude, lng: _lastCenter!.longitude),
-                      onRefresh: () async {
-                        final center = _lastCenter;
-                        if (center == null) return;
-                        await _fetchNearSpaces(center);
-                      },
+                    visible: true,
+                    hiddenOffset: const Offset(-0.04, 0),
+                    child: _buildAnimatedLiveMarkerOverlay(),
+                  ),
                     ),
                   ),
-                ),
               ],
             ),
             Positioned(
@@ -1486,46 +1334,23 @@ class _MapViewState extends State<MapView> {
               right: 0,
               child: IgnorePointer(
                 child: Container(
-                  height: _selectedIndex == 1 ? listSortBarBottom : topSafe + 150,
-                  decoration: _selectedIndex == 1
-                      ? const BoxDecoration(color: Colors.white)
-                      : const BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              Color(0xFFFFFFFF),
-                              Color(0xFFFFFFFF),
-                              Color(0xFFFFFFFF),
-                              Color(0xddFFFFFF),
-                              Color(0x00FFFFFF),
-                            ],
-                          ),
-                        ),
-                ),
-              ),
-            ),
-            if (_selectedIndex == 1)
-              Positioned(
-                top: listSortBarBottom,
-                left: 0,
-                right: 0,
-                child: IgnorePointer(
-                  child: Container(
-                    height: listGradientHeight,
-                    decoration: const BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Color(0xFFFFFFFF),
-                          Color(0x00FFFFFF),
-                        ],
-                      ),
+                  height: topSafe + 150,
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Color(0xFFFFFFFF),
+                        Color(0xFFFFFFFF),
+                        Color(0xFFFFFFFF),
+                        Color(0xddFFFFFF),
+                        Color(0x00FFFFFF),
+                      ],
                     ),
                   ),
                 ),
               ),
+            ),
             Positioned(
               top: 0,
               left: 0,
@@ -1548,52 +1373,12 @@ class _MapViewState extends State<MapView> {
               right: 0,
               child: _buildFilterChips(),
             ),
-            if (_selectedIndex == 1)
-              Positioned(
-                top: topSafe + chipTopOffset + chipBlockHeight + 12,
-                left: 0,
-                right: 0,
-                child: _buildListSortBar(),
-            ),
           ],
         ),
       ),
     );
   }
 
-  void _handleCreateLiveSpace() {
-    if (!AuthStore.instance.isSignedIn.value) {
-      showCupertinoModalPopup(
-        context: context,
-        builder: (context) {
-          return const SizedBox.expand(
-            child: SignView(),
-          );
-        },
-      );
-      return;
-    }
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: false,
-      backgroundColor: Colors.black,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.zero,
-      ),
-      builder: (_) {
-        final height = MediaQuery.of(context).size.height;
-        final center = _lastCenter ?? const NLatLng(37.5665, 126.9780);
-        return SizedBox(
-          height: height,
-          child: FeedCreatePhotoView(
-            initialLatitude: center.latitude,
-            initialLongitude: center.longitude,
-          ),
-        );
-      },
-    );
-  }
 }
 
 class _LiveMarkerCluster {

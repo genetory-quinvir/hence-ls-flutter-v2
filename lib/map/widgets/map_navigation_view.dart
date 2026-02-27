@@ -51,7 +51,7 @@ class MapNavigationView extends StatelessWidget {
                     CommonInkWell(
                       onTap: onLatestTap,
                       child: _TabLabel(
-                        title: '지도',
+                        title: '내 지도',
                         selected: selectedIndex == 0,
                         selectedStyle: selectedStyle,
                         unselectedStyle: unselectedStyle,
@@ -61,7 +61,7 @@ class MapNavigationView extends StatelessWidget {
                     CommonInkWell(
                       onTap: onPopularTap,
                       child: _TabLabel(
-                        title: '리스트',
+                        title: '공유 지도',
                         selected: selectedIndex == 1,
                         selectedStyle: selectedStyle,
                         unselectedStyle: unselectedStyle,
@@ -78,12 +78,16 @@ class MapNavigationView extends StatelessWidget {
                     child: ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: 170),
                       child: Row(
-                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        mainAxisAlignment: MainAxisAlignment.end,
                         children: [
-                          Icon(
-                            PhosphorIconsFill.mapPin,
-                            size: 14,
-                            color: Colors.black,
+                          Transform.translate(
+                            offset: const Offset(0, 1),
+                            child: Icon(
+                              PhosphorIconsFill.mapPin,
+                              size: 12,
+                              color: Colors.black,
+                            ),
                           ),
                           const SizedBox(width: 4),
                           Flexible(
@@ -94,8 +98,8 @@ class MapNavigationView extends StatelessWidget {
                               textAlign: TextAlign.right,
                               style: TextStyle(
                                 fontFamily: 'Pretendard',
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w400,
                                 color: Colors.black,
                               ),
                             ),

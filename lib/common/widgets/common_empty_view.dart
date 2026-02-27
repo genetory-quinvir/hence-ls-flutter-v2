@@ -9,16 +9,19 @@ class CommonEmptyView extends StatelessWidget {
     this.buttonText = '피드 작성하기',
     this.onTap,
     this.showButton = true,
+    this.height,
   });
 
   final String message;
   final String buttonText;
   final VoidCallback? onTap;
   final bool showButton;
+  final double? height;
 
   @override
   Widget build(BuildContext context) {
     return Container(
+      height: height,
       color: Colors.white,
       alignment: Alignment.center,
       child: Column(

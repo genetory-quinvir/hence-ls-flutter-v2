@@ -8,6 +8,7 @@ import '../common/auth/auth_store.dart';
 import '../common/notifications/fcm_service.dart';
 import '../common/widgets/common_alert_view.dart';
 import '../common/widgets/common_navigation_view.dart';
+import '../sign_email/sign_email_view.dart';
 import '../web/web_view.dart';
 import '../withdraw/withdraw_view.dart';
 import 'widgets/settings_menu_view.dart';
@@ -21,6 +22,8 @@ class SettingsView extends StatefulWidget {
 
 class _SettingsViewState extends State<SettingsView> {
   bool? _pushEnabled;
+  int _versionTapCount = 0;
+  DateTime? _versionTapStart;
 
   @override
   void initState() {
@@ -51,6 +54,26 @@ class _SettingsViewState extends State<SettingsView> {
     await FcmService.deleteTokenAndExpire();
     await FcmService.setAppPushEnabled(false);
     if (mounted) setState(() => _pushEnabled = false);
+  }
+
+  void _handleVersionTap() {
+    const window = Duration(seconds: 5);
+    final now = DateTime.now();
+    if (_versionTapStart == null ||
+        now.difference(_versionTapStart!) > window) {
+      _versionTapStart = now;
+      _versionTapCount = 0;
+    }
+    _versionTapCount += 1;
+    if (_versionTapCount >= 10) {
+      _versionTapCount = 0;
+      _versionTapStart = null;
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => const SignEmailView(),
+        ),
+      );
+    }
   }
 
   @override
@@ -212,7 +235,11 @@ class _SettingsViewState extends State<SettingsView> {
                   (
                     title: '정보',
                     rows: [
-                      SettingsMenuRow.value(title: '서비스 버전', value: version),
+                      SettingsMenuRow.value(
+                        title: '서비스 버전',
+                        value: version,
+                        onTap: _handleVersionTap,
+                      ),
                     ],
                   ),
                   (
