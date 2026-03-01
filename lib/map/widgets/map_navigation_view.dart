@@ -49,20 +49,20 @@ class MapNavigationView extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     CommonInkWell(
-                      onTap: onLatestTap,
+                      onTap: onPopularTap,
                       child: _TabLabel(
-                        title: '내 지도',
-                        selected: selectedIndex == 0,
+                        title: '공유 지도',
+                        selected: selectedIndex == 1,
                         selectedStyle: selectedStyle,
                         unselectedStyle: unselectedStyle,
                       ),
                     ),
                     const SizedBox(width: 16),
                     CommonInkWell(
-                      onTap: onPopularTap,
+                      onTap: onLatestTap,
                       child: _TabLabel(
-                        title: '공유 지도',
-                        selected: selectedIndex == 1,
+                        title: '내 지도',
+                        selected: selectedIndex == 0,
                         selectedStyle: selectedStyle,
                         unselectedStyle: unselectedStyle,
                       ),

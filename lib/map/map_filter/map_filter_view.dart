@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../common/state/placebook_cache.dart';
+import '../../common/widgets/common_empty_view.dart';
 import '../../common/widgets/common_navigation_view.dart';
 import '../../common/widgets/common_rounded_button.dart';
 import '../../common/widgets/common_textfield_view.dart';
@@ -150,6 +151,18 @@ class _MapFilterViewState extends State<MapFilterView> {
   @override
   Widget build(BuildContext context) {
     final items = widget.categories;
+    final searchResults =
+        _query.trim().isNotEmpty ? _searchThemes() : const <Map<String, dynamic>>[];
+    final categoryTitles = <String, String>{
+      for (final item in items)
+        if ((item['id']?.toString() ?? '').isNotEmpty)
+          (item['id']?.toString() ?? ''): (item['title']?.toString() ?? ''),
+    };
+    final allThemeIds = _themes
+        .map((e) => e['id']?.toString())
+        .whereType<String>()
+        .where((id) => id.isNotEmpty)
+        .toSet();
     final height = MediaQuery.of(context).size.height;
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
     final isKeyboardVisible = bottomInset > 0;
@@ -216,36 +229,40 @@ class _MapFilterViewState extends State<MapFilterView> {
                   ),
                   const SizedBox(height: 12),
                   if (_query.trim().isNotEmpty) ...[
-                    _FilterRow(
-                      title: '카테고리 전체 선택',
-                      selected: _selectedThemeIds.isNotEmpty &&
-                          _selectedThemeIds.length ==
-                              _themes
-                                  .map((e) => e['id']?.toString())
-                                  .whereType<String>()
-                                  .where((id) => id.isNotEmpty)
-                                  .toSet()
-                                  .length,
-                      onTap: () => setState(() {
-                        _selectedId = null;
-                        _selectedThemeIds
-                          ..clear()
-                          ..addAll(_themes
-                              .map((e) => e['id']?.toString())
-                              .whereType<String>()
-                              .where((id) => id.isNotEmpty));
-                      }),
-                    ),
-                    const SizedBox(height: 12),
-                    ..._searchThemes().map((theme) {
+                    if (searchResults.isEmpty)
+                      const CommonEmptyView(
+                        message: '검색 결과가 없습니다.',
+                        showButton: false,
+                        height: 200,
+                      )
+                    else ...[
+                      _BulkActionButton(
+                        title: '결과만 선택',
+                        onTap: () => setState(() {
+                          _selectedId = null;
+                          _selectedThemeIds
+                            ..clear()
+                            ..addAll(searchResults
+                                .map((e) => e['id']?.toString())
+                                .whereType<String>()
+                                .where((id) => id.isNotEmpty));
+                        }),
+                      ),
+                      const SizedBox(height: 12),
+                      ...searchResults.map((theme) {
                       final id = theme['id']?.toString() ?? '';
                       final name = theme['title']?.toString() ?? '';
+                      final categoryId = theme['categoryId']?.toString() ?? '';
+                      final categoryTitle = categoryTitles[categoryId]?.trim() ?? '';
                       if (id.isEmpty || name.isEmpty) {
                         return const SizedBox.shrink();
                       }
+                      final displayTitle = categoryTitle.isEmpty
+                          ? name
+                          : '$categoryTitle · $name';
                       final selected = _selectedThemeIds.contains(id);
                       return _ThemeRow(
-                        title: name,
+                        title: displayTitle,
                         selected: selected,
                         onTap: () => setState(() {
                           if (selected) {
@@ -256,29 +273,8 @@ class _MapFilterViewState extends State<MapFilterView> {
                         }),
                       );
                     }),
+                    ],
                   ] else ...[
-                    _BulkActionsRow(
-                      allSelected: _selectedThemeIds.isNotEmpty &&
-                          _selectedThemeIds.length ==
-                              _themes
-                                  .map((e) => e['id']?.toString())
-                                  .whereType<String>()
-                                  .where((id) => id.isNotEmpty)
-                                  .toSet()
-                                  .length,
-                      noneSelected: _selectedThemeIds.isEmpty,
-                      onSelectAll: () => setState(() {
-                        _selectedId = null;
-                        _selectedThemeIds
-                          ..clear()
-                          ..addAll(_themes
-                              .map((e) => e['id']?.toString())
-                              .whereType<String>()
-                              .where((id) => id.isNotEmpty));
-                      }),
-                      onClearAll: () => setState(() => _selectedThemeIds.clear()),
-                    ),
-                    const SizedBox(height: 12),
                     ...items.map((item) {
                       final categoryId = item['id']?.toString() ?? '';
                       final title = item['title']?.toString() ?? '';
@@ -344,17 +340,43 @@ class _MapFilterViewState extends State<MapFilterView> {
                 ],
               ),
             ),
+            const SizedBox(height: 8),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-              child: CommonRoundedButton(
-                title: '적용',
-                onTap: () {
-                  final result = _buildSelectionResult();
-                  Navigator.of(context).pop({
-                    'categoryId': result.categoryId,
-                    'themeIds': result.themeIds,
-                  });
-                },
+              child: Row(
+                children: [
+                  Flexible(
+                    flex: 2,
+                    child: CommonRoundedButton(
+                      title: '초기화',
+                      backgroundColor: const Color(0xFFF2F2F2),
+                      textColor: Colors.black,
+                      onTap: () => setState(() {
+                        _selectedId = null;
+                        _selectedThemeIds
+                          ..clear()
+                          ..addAll(_themes
+                              .map((e) => e['id']?.toString())
+                              .whereType<String>()
+                              .where((id) => id.isNotEmpty));
+                      }),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    flex: 5,
+                    child: CommonRoundedButton(
+                      title: '적용 (${_selectedThemeIds.length})',
+                      onTap: () {
+                        final result = _buildSelectionResult();
+                        Navigator.of(context).pop({
+                          'categoryId': result.categoryId,
+                          'themeIds': result.themeIds,
+                        });
+                      },
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
@@ -403,52 +425,13 @@ class _FilterRow extends StatelessWidget {
   }
 }
 
-class _BulkActionsRow extends StatelessWidget {
-  const _BulkActionsRow({
-    required this.allSelected,
-    required this.noneSelected,
-    required this.onSelectAll,
-    required this.onClearAll,
-  });
-
-  final bool allSelected;
-  final bool noneSelected;
-  final VoidCallback onSelectAll;
-  final VoidCallback onClearAll;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: _BulkActionButton(
-            title: '전체 선택',
-            selected: allSelected,
-            onTap: onSelectAll,
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: _BulkActionButton(
-            title: '전체 해제',
-            selected: noneSelected,
-            onTap: onClearAll,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
 class _BulkActionButton extends StatelessWidget {
   const _BulkActionButton({
     required this.title,
-    required this.selected,
     required this.onTap,
   });
 
   final String title;
-  final bool selected;
   final VoidCallback onTap;
 
   @override
@@ -460,7 +443,7 @@ class _BulkActionButton extends StatelessWidget {
         height: 48,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: selected ? Colors.black : const Color(0xFFF2F2F2),
+          color: const Color(0xFFF2F2F2),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Text(
@@ -469,7 +452,7 @@ class _BulkActionButton extends StatelessWidget {
             fontFamily: 'Pretendard',
             fontSize: 14,
             fontWeight: FontWeight.w600,
-            color: selected ? Colors.white : Colors.black,
+            color: Colors.black,
           ),
         ),
       ),

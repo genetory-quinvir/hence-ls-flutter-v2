@@ -7,7 +7,7 @@ import 'package:flutter/services.dart';
 
 import '../common/location/naver_location_service.dart';
 import '../common/permissions/location_permission_service.dart';
-import '../common/widgets/common_feed_marker.dart';
+import '../common/widgets/common_place_marker.dart';
 import '../common/widgets/common_map_view.dart';
 import '../common/widgets/common_navigation_view.dart';
 import '../common/widgets/common_rounded_button.dart';
@@ -182,9 +182,9 @@ class _PlaceSelectViewState extends State<PlaceSelectView> {
               if (bytes == null) {
                 return const SizedBox.shrink();
               }
-              return CommonFeedMarker(
+              return CommonPlaceMarker(
                 imageBytes: bytes,
-                width: 44,
+                size: 44,
               );
             },
           );

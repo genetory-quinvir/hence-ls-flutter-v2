@@ -12,16 +12,12 @@ import '../common/auth/auth_store.dart';
 import '../common/state/home_tab_controller.dart';
 import '../sign/sign_view.dart';
 import '../common/network/api_client.dart';
-import '../common/widgets/common_dot_marker.dart';
-import '../common/widgets/common_feed_cluster_marker.dart';
 import '../common/state/placebook_cache.dart';
-import '../common/widgets/common_feed_marker.dart';
-import '../common/widgets/common_livespace_cluster_marker.dart';
 import '../common/widgets/common_map_view.dart';
-import '../common/widgets/common_livespace_marker.dart';
-import '../feed_list/models/feed_models.dart';
+import '../common/widgets/common_place_marker.dart';
+import '../common/widgets/common_place_cluster_marker.dart';
+import '../common/widgets/common_login_guard.dart';
 import '../map_cluster/map_cluster_view.dart';
-import '../profile/profile_feed_detail_view.dart';
 import '../livespace_detail/livespace_detail_view.dart';
 import 'widgets/map_navigation_view.dart';
 import 'map_filter/map_filter_view.dart';
@@ -46,8 +42,9 @@ class _MapViewState extends State<MapView> {
   String _centerPlaceText = '';
   final ScrollController _chipScrollController = ScrollController();
   Timer? _reverseGeocodeDebounce;
-  Timer? _placebookFetchDebounce;
   bool _isLoadingNear = false;
+  bool _isLoginPromptVisible = false;
+  bool _awaitingFetchMarkers = false;
   List<Map<String, dynamic>> _nearSpaces = const [];
   NaverMapController? _mapController;
   bool _isUpdatingMarkerPoints = false;
@@ -131,6 +128,14 @@ class _MapViewState extends State<MapView> {
 
   Future<void> _fetchPlacebookSpaces() async {
     if (_isLoadingNear) return;
+    if (_selectedIndex == 0 && !AuthStore.instance.isSignedIn.value) {
+      await _promptLoginForMyMap();
+      if (_awaitingFetchMarkers && mounted) {
+        _awaitingFetchMarkers = false;
+        setState(() => _showLiveMarkers = true);
+      }
+      return;
+    }
     if (_lastCenter != null) {
       _lastFetchCenter = _lastCenter;
     }
@@ -172,14 +177,33 @@ class _MapViewState extends State<MapView> {
       final normalized = spaces.map(_normalizePlaceItem).toList();
       final merged = _dedupeSpaces(_mergeOptimisticCreatedSpace(normalized));
       setState(() => _nearSpaces = merged);
-      _updateLiveMarkerPoints();
+      await _updateLiveMarkerPoints();
+      if (_awaitingFetchMarkers && mounted) {
+        _awaitingFetchMarkers = false;
+        setState(() => _showLiveMarkers = true);
+      }
     } catch (_) {
       if (!mounted) return;
       setState(() => _nearSpaces = const []);
-      _updateLiveMarkerPoints();
+      await _updateLiveMarkerPoints();
+      if (_awaitingFetchMarkers && mounted) {
+        _awaitingFetchMarkers = false;
+        setState(() => _showLiveMarkers = true);
+      }
     } finally {
       if (mounted) setState(() => _isLoadingNear = false);
     }
+  }
+
+  Future<void> _promptLoginForMyMap() async {
+    if (!mounted || _isLoginPromptVisible) return;
+    _isLoginPromptVisible = true;
+    await CommonLoginGuard.ensureSignedIn(
+      context,
+      title: '로그인이 필요합니다.',
+      subTitle: '내 지도를 보려면 로그인해주세요.',
+    );
+    _isLoginPromptVisible = false;
   }
 
   bool _isAllowedByTypeScope(Map<String, dynamic> item) => true;
@@ -219,7 +243,6 @@ class _MapViewState extends State<MapView> {
   void dispose() {
     HomeTabController.mapFocusRequest.removeListener(_mapFocusListener);
     _reverseGeocodeDebounce?.cancel();
-    _placebookFetchDebounce?.cancel();
     _chipScrollController.dispose();
     super.dispose();
   }
@@ -514,27 +537,16 @@ class _MapViewState extends State<MapView> {
         firstImage?['fileUrl'] as String?;
   }
 
-  bool _looksLikeDirectFeed(Map<String, dynamic> space) {
-    return space.containsKey('id') &&
-        (space.containsKey('content') ||
-            space.containsKey('images') ||
-            space.containsKey('author'));
+  String _spaceType(Map<String, dynamic> space) {
+    return 'PLACE';
   }
 
-  String _spaceType(Map<String, dynamic> space) {
-    final rawType = space['type'] as String?;
-    if (rawType != null) {
-      final type = rawType.toUpperCase();
-      if (type == 'FEED' || type == 'LIVESPACE') return type;
+  String _titleForSpace(Map<String, dynamic> space) {
+    final rawTitle = space['title'] ?? space['placeName'] ?? space['name'];
+    if (rawTitle is String && rawTitle.trim().isNotEmpty) {
+      return rawTitle.trim();
     }
-
-    // map/near payload fallback:
-    // - direct feed item => FEED
-    // - wrapper with nested `feed` => LIVESPACE
-    if (_looksLikeDirectFeed(space)) return 'FEED';
-    if (space['feed'] is Map<String, dynamic>) return 'LIVESPACE';
-
-    return 'LIVESPACE';
+    return '';
   }
 
   String _markerIdForSpace(Map<String, dynamic> space, int index) {
@@ -543,33 +555,18 @@ class _MapViewState extends State<MapView> {
     return 'space_${type}_$rawId';
   }
 
-  Feed? _feedFromSpace(Map<String, dynamic> space) {
-    final raw = space['feed'];
-    if (raw is Map<String, dynamic>) {
-      final feed = Feed.fromJson(raw);
-      if (feed.id.isEmpty) return null;
-      return feed;
-    }
-    // /api/v1/map/near returns feed items directly (no wrapper).
-    if (_looksLikeDirectFeed(space)) {
-      final feed = Feed.fromJson(space);
-      if (feed.id.isEmpty) return null;
-      return feed;
-    }
-    return null;
-  }
-
   Widget _buildLiveMarkerOverlay() {
     if (_typeScopedSpaces.isEmpty || _liveMarkerPoints.isEmpty) {
       return const SizedBox.shrink();
     }
     const markerSize = 44.0;
+    const labelHeight = 24.0;
+    const labelWidth = 96.0;
     final markerEntries = <({
       String markerId,
       String type,
       NPoint point,
       String? thumbnailUrl,
-      Feed? feed,
       Map<String, dynamic> space,
       bool isFocused,
       double lat,
@@ -590,7 +587,6 @@ class _MapViewState extends State<MapView> {
         type: type,
         point: point,
         thumbnailUrl: _thumbnailForSpace(space),
-        feed: _feedFromSpace(space),
         space: space,
         isFocused: isFocused,
         lat: lat,
@@ -598,15 +594,13 @@ class _MapViewState extends State<MapView> {
       ));
     }
     final clusters = _buildLiveMarkerClusters(markerEntries);
-    final displayCenters = _buildDisplayCentersForOverlaps(clusters);
+    final displayCenters = {for (final cluster in clusters) cluster.clusterId: cluster.center};
+    final primaryClusterId = _primaryClusterIdForCenter(clusters);
     final markerItems = <({String id, Widget child})>[];
     final clusterItems = <({String id, Widget child})>[];
     for (final cluster in clusters) {
-      final displayCenter = displayCenters[cluster.clusterId] ?? cluster.center;
       final single = cluster.members.length == 1 ? cluster.members.first : null;
-      const feedWidth = 44.0;
-      const feedHeight = feedWidth * 5 / 4;
-      final clusterType = cluster.members.first.type;
+      final displayCenter = single?.point ?? displayCenters[cluster.clusterId] ?? cluster.center;
       final clusterThumbnailUrl = cluster.members
           .map((member) => member.thumbnailUrl)
           .whereType<String>()
@@ -614,16 +608,19 @@ class _MapViewState extends State<MapView> {
             (url) => url.trim().isNotEmpty,
             orElse: () => '',
           );
-      final isSingleFeed = single != null && single.type == 'FEED';
-      final isFeedCluster = single == null && clusterType == 'FEED';
-      final itemWidth = (isSingleFeed || isFeedCluster) ? feedWidth : markerSize;
-      final itemHeight = (isSingleFeed || isFeedCluster) ? feedHeight : markerSize;
+      final isPrimarySingle = single != null &&
+          (cluster.clusterId == primaryClusterId ||
+              cluster.clusterId == _selectedLiveMarkerId);
+      final title = single == null ? '${cluster.members.length}' : _titleForSpace(single.space);
+      final hasLabel = title.isNotEmpty;
+      final itemWidth = hasLabel ? labelWidth : markerSize;
+      final itemHeight = markerSize + (hasLabel ? labelHeight : 0);
       final item = (
         id: cluster.clusterId,
         child: Positioned(
           key: ValueKey(cluster.clusterId),
           left: displayCenter.x - itemWidth / 2,
-          top: displayCenter.y - itemHeight / 2,
+          top: displayCenter.y - markerSize / 2,
           child: SizedBox(
             width: itemWidth,
             height: itemHeight,
@@ -643,33 +640,16 @@ class _MapViewState extends State<MapView> {
                   return;
                 }
                 if (single == null) return;
-                if (single.type == 'FEED') {
-                  final tapped = single.feed;
-                  if (tapped == null) return;
-                  final feeds = markerEntries
-                      .map((entry) => entry.feed)
-                      .whereType<Feed>()
-                      .toList();
-                  if (feeds.isEmpty) return;
-                  final initialIndex =
-                      feeds.indexWhere((feed) => feed.id == tapped.id);
-                  if (initialIndex < 0) return;
-                  showCupertinoModalPopup(
-                    context: context,
-                    builder: (_) => SizedBox.expand(
-                      child: ProfileFeedListView(
-                        feeds: feeds,
-                        initialIndex: initialIndex,
-                      ),
-                    ),
-                  );
-                } else {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => LivespaceDetailView(space: single.space),
-                    ),
-                  );
+                final isDotOnly = !isPrimarySingle;
+                if (isDotOnly) {
+                  setState(() => _selectedLiveMarkerId = cluster.clusterId);
+                  return;
                 }
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => LivespaceDetailView(space: single.space),
+                  ),
+                );
               },
               child: AnimatedOpacity(
                 opacity: _showLiveMarkers ? 1 : 0,
@@ -684,32 +664,21 @@ class _MapViewState extends State<MapView> {
                     child: _AppearScaleIn(
                     key: ValueKey('appear_${cluster.clusterId}'),
                     child: single == null
-                        ? Center(
-                            child: clusterType == 'FEED'
-                                ? CommonFeedClusterMarker(
-                                    count: cluster.members.length,
-                                    imageUrl: clusterThumbnailUrl,
-                                    width: feedWidth,
-                                  )
-                                : CommonLiveClusterMarker(
-                                    count: cluster.members.length,
-                                    imageUrl: clusterThumbnailUrl,
-                                    size: markerSize,
-                                  ),
+                        ? CommonPlaceClusterMarker(
+                            count: cluster.members.length,
+                            imageUrl: clusterThumbnailUrl,
+                            size: markerSize,
+                            title: title,
                           )
-                        : isSingleFeed
-                            ? CommonFeedMarker(
+                        : isPrimarySingle
+                            ? CommonPlaceMarker(
                                 imageUrl: single.thumbnailUrl,
-                                width: feedWidth,
+                                size: markerSize,
+                                title: title,
                               )
-                            : single.isFocused
-                                ? CommonLivespaceMarker(
-                                    imageUrl: single.thumbnailUrl,
-                                    size: markerSize,
-                                  )
-                                : const Center(
-                                    child: CommonDotMarker(),
-                                  ),
+                            : const Center(
+                                child: _PlaceDotMarker(),
+                              ),
                   ),
                 ),
               ),
@@ -737,13 +706,35 @@ class _MapViewState extends State<MapView> {
       });
     }
     final renderItems = <({String id, Widget child})>[
-      ...markerItems,
       ...clusterItems,
+      ...markerItems,
     ];
     return Stack(
       clipBehavior: Clip.none,
       children: renderItems.map((item) => item.child).toList(),
     );
+  }
+
+  String? _primaryClusterIdForCenter(List<_LiveMarkerCluster> clusters) {
+    final center = _lastCenter;
+    if (center == null || clusters.isEmpty) return null;
+    String? closestId;
+    double? closestDistance;
+    for (final cluster in clusters) {
+      if (cluster.members.length != 1) continue;
+      final member = cluster.members.first;
+      final distance = _distanceMeters(
+        lat1: center.latitude,
+        lng1: center.longitude,
+        lat2: member.lat,
+        lng2: member.lng,
+      );
+      if (closestDistance == null || distance < closestDistance) {
+        closestDistance = distance;
+        closestId = cluster.clusterId;
+      }
+    }
+    return closestId;
   }
 
   Widget _buildAnimatedLiveMarkerOverlay() {
@@ -756,7 +747,6 @@ class _MapViewState extends State<MapView> {
       String type,
       NPoint point,
       String? thumbnailUrl,
-      Feed? feed,
       Map<String, dynamic> space,
       bool isFocused,
       double lat,
@@ -775,7 +765,6 @@ class _MapViewState extends State<MapView> {
       String type,
       NPoint point,
       String? thumbnailUrl,
-      Feed? feed,
       Map<String, dynamic> space,
       bool isFocused,
       double lat,
@@ -969,6 +958,9 @@ class _MapViewState extends State<MapView> {
   void _onMapCameraMoving() {
     if (_isCameraMoving) return;
     _isCameraMoving = true;
+    if (_selectedLiveMarkerId != null) {
+      setState(() => _selectedLiveMarkerId = null);
+    }
     if (!_showLiveMarkers) return;
     setState(() => _showLiveMarkers = false);
   }
@@ -985,6 +977,7 @@ class _MapViewState extends State<MapView> {
       });
       return;
     }
+    var triggeredFetch = false;
     final controller = _mapController;
     if (controller != null) {
       try {
@@ -992,24 +985,25 @@ class _MapViewState extends State<MapView> {
         _lastCenter = camera.target;
         _lastZoom = camera.zoom;
         if (!_shouldFetchPlacebook(center: camera.target, zoom: camera.zoom)) {
-          return;
-        }
-        _placebookFetchDebounce?.cancel();
-        _placebookFetchDebounce = Timer(const Duration(milliseconds: 350), () {
-          if (!mounted) return;
+          triggeredFetch = false;
+        } else {
+          triggeredFetch = true;
+          _awaitingFetchMarkers = true;
           _lastFetchCenter = camera.target;
           _lastFetchZoom = camera.zoom;
           _fetchPlacebookSpaces();
-        });
+        }
       } catch (_) {
         // Ignore transient camera errors.
       }
     }
-    _updateLiveMarkerPoints().whenComplete(() {
-      if (!mounted) return;
-      if (_showLiveMarkers) return;
-      setState(() => _showLiveMarkers = true);
-    });
+    if (!triggeredFetch) {
+      _updateLiveMarkerPoints().whenComplete(() {
+        if (!mounted) return;
+        if (_showLiveMarkers) return;
+        setState(() => _showLiveMarkers = true);
+      });
+    }
   }
 
   Future<void> _recenterToLastCenter() async {
@@ -1033,6 +1027,14 @@ class _MapViewState extends State<MapView> {
       _updateLiveMarkerPoints();
       _fetchPlacebookSpaces();
     });
+  }
+
+  Future<void> _onMyMapTap() async {
+    if (!AuthStore.instance.isSignedIn.value) {
+      await _promptLoginForMyMap();
+      return;
+    }
+    _onTabSelected(0);
   }
 
   void _centerChip({bool animated = true}) {
@@ -1087,6 +1089,11 @@ class _MapViewState extends State<MapView> {
       ..._categoryFilters.map((e) => e['id']?.toString() ?? '').where((id) => id.isNotEmpty),
       if (_categoryFilters.isEmpty) '__empty__',
     ];
+    final filterCount = _selectedThemeIds.isNotEmpty
+        ? _selectedThemeIds.length
+        : (_selectedCategoryId != null && _selectedCategoryId!.isNotEmpty ? 1 : 0);
+    final showFilterBadge = filterCount > 0;
+    final filterLabel = _filterLabel;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       child: Row(
@@ -1100,7 +1107,7 @@ class _MapViewState extends State<MapView> {
                 children: labels.map((label) {
                   if (label == '__filter__') {
                     return Padding(
-                      padding: const EdgeInsets.only(right: 8),
+                      padding: const EdgeInsets.only(left: 8, right: 12),
                       child: GestureDetector(
                         onTap: () async {
                           final result = await showModalBottomSheet<Map<String, dynamic>?>(
@@ -1125,30 +1132,58 @@ class _MapViewState extends State<MapView> {
                           _updateLiveMarkerPoints();
                           _fetchPlacebookSpaces();
                         },
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 180),
-                          curve: Curves.easeOut,
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(999),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.18),
-                                blurRadius: 8,
-                                offset: const Offset(0, 3),
+                        child: Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            AnimatedContainer(
+                              duration: const Duration(milliseconds: 180),
+                              curve: Curves.easeOut,
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(999),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.18),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 3),
+                                  ),
+                                ],
                               ),
-                            ],
-                          ),
-                          child: const Text(
-                            _filterLabel,
-                            style: TextStyle(
-                              fontFamily: 'Pretendard',
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.black,
+                              child: Text(
+                                filterLabel,
+                                style: TextStyle(
+                                  fontFamily: 'Pretendard',
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.black,
+                                ),
+                              ),
                             ),
-                          ),
+                            if (showFilterBadge)
+                              Positioned(
+                                top: -8,
+                                right: -10,
+                                child: Container(
+                                  padding:
+                                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black,
+                                    borderRadius: BorderRadius.circular(999),
+                                    border: Border.all(color: Colors.white, width: 2),
+                                  ),
+                                  child: Text(
+                                    '$filterCount',
+                                    style: const TextStyle(
+                                      fontFamily: 'Pretendard',
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w700,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
                         ),
                       ),
                     );
@@ -1357,10 +1392,11 @@ class _MapViewState extends State<MapView> {
               right: 0,
               child: MapNavigationView(
                 selectedIndex: _selectedIndex,
-                onLatestTap: () => _onTabSelected(0),
+                onLatestTap: _onMyMapTap,
                 onPopularTap: () => _onTabSelected(1),
                 onAddressTap: () async {
-                  _onTabSelected(0);
+                  await _onMyMapTap();
+                  if (!AuthStore.instance.isSignedIn.value) return;
                   await Future<void>.delayed(const Duration(milliseconds: 50));
                   _recenterToLastCenter();
                 },
@@ -1397,12 +1433,32 @@ class _LiveMarkerCluster {
     String type,
     NPoint point,
     String? thumbnailUrl,
-    Feed? feed,
     Map<String, dynamic> space,
     bool isFocused,
     double lat,
     double lng,
   })> members;
+}
+
+class _PlaceDotMarker extends StatelessWidget {
+  const _PlaceDotMarker();
+
+  @override
+  Widget build(BuildContext context) {
+    return const SizedBox(
+      width: 12,
+      height: 12,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Colors.black,
+          shape: BoxShape.circle,
+          border: Border.fromBorderSide(
+            BorderSide(color: Colors.white, width: 2),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _AppearScaleIn extends StatefulWidget {
