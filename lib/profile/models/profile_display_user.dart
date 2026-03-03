@@ -6,6 +6,7 @@ class ProfileDisplayUser {
     this.email,
     this.profileImageUrl,
     this.feedCount,
+    this.placebookTotalCount,
     this.followingCount,
     this.followerCount,
     this.activityLevel,
@@ -19,6 +20,7 @@ class ProfileDisplayUser {
   final String? email;
   final String? profileImageUrl;
   final int? feedCount;
+  final int? placebookTotalCount;
   final int? followingCount;
   final int? followerCount;
   final int? activityLevel;
@@ -81,6 +83,8 @@ class ProfileDisplayUser {
       profileImageUrl: profileImageUrl,
       feedCount: (json['feedCount'] as num?)?.toInt() ??
           (json['postCount'] as num?)?.toInt(),
+      placebookTotalCount:
+          (json['placebookTotalCount'] as num?)?.toInt(),
       followingCount: (json['followingCount'] as num?)?.toInt(),
       followerCount: (json['followerCount'] as num?)?.toInt(),
       activityLevel: (json['activityLevel'] as num?)?.toInt(),

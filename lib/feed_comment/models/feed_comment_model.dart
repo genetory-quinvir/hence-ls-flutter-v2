@@ -12,6 +12,7 @@ class FeedCommentItem {
     this.isLiked = false,
     this.likeCount = 0,
     this.replyCount = 0,
+    this.mentionNames = const [],
   });
 
   final String id;
@@ -26,6 +27,7 @@ class FeedCommentItem {
   final bool isLiked;
   final int likeCount;
   final int? replyCount;
+  final List<String> mentionNames;
 
   factory FeedCommentItem.fromJson(Map<String, dynamic> json) {
     final author = json['author'];
@@ -71,7 +73,27 @@ class FeedCommentItem {
           (json['repliesCount'] as num?)?.toInt() ??
           (json['childCount'] as num?)?.toInt() ??
           0,
+      mentionNames: _parseMentionNames(json['mentions']),
     );
+  }
+
+  static List<String> _parseMentionNames(dynamic raw) {
+    if (raw is! List) return const [];
+    final names = <String>[];
+    for (final item in raw) {
+      if (item is Map<String, dynamic>) {
+        final nickname = item['nickname'];
+        if (nickname is String && nickname.trim().isNotEmpty) {
+          names.add(nickname.trim());
+          continue;
+        }
+        final name = item['name'];
+        if (name is String && name.trim().isNotEmpty) {
+          names.add(name.trim());
+        }
+      }
+    }
+    return names;
   }
 }
 

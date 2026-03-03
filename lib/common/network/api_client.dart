@@ -304,8 +304,8 @@ class ApiClient {
     }
   }
 
-  static Future<void> checkinFeed(String feedId) async {
-    final uri = Uri.parse('$baseUrl/api/v1/feeds/$feedId/checkin');
+  static Future<void> favoritePlace(String placeId) async {
+    final uri = Uri.parse('$baseUrl/api/v1/placebook/places/$placeId/favorite');
     _logRequest('POST', uri);
     final response = await _sendWithAuthRetry(
       () => http.post(uri, headers: _headers()),
@@ -313,7 +313,20 @@ class ApiClient {
     );
     _logResponse(response);
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception('Checkin feed failed: ${response.statusCode}');
+      throw Exception('Favorite place failed: ${response.statusCode}');
+    }
+  }
+
+  static Future<void> unfavoritePlace(String placeId) async {
+    final uri = Uri.parse('$baseUrl/api/v1/placebook/places/$placeId/favorite');
+    _logRequest('DELETE', uri);
+    final response = await _sendWithAuthRetry(
+      () => http.delete(uri, headers: _headers()),
+      retryRequest: () => http.delete(uri, headers: _headers()),
+    );
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Unfavorite place failed: ${response.statusCode}');
     }
   }
 
@@ -884,6 +897,58 @@ class ApiClient {
     );
   }
 
+  static Future<FeedCommentPage> fetchEntityComments({
+    required String entityType,
+    required String entityId,
+    String? cursor,
+    int limit = 20,
+    String? orderBy,
+  }) async {
+    final query = <String, String>{
+      'entityType': entityType,
+      'entityId': entityId,
+      'limit': '$limit',
+      if (cursor != null && cursor.isNotEmpty) 'cursor': cursor,
+      if (orderBy != null && orderBy.isNotEmpty) 'orderBy': orderBy,
+    };
+    final uri = Uri.parse('$baseUrl/api/v1/comments').replace(
+      queryParameters: query,
+    );
+    _logRequest('GET', uri);
+    final response = await _sendWithAuthRetry(
+      () => http.get(uri, headers: _headers()),
+      retryRequest: () => http.get(uri, headers: _headers()),
+    );
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Comments request failed: ${response.statusCode}');
+    }
+    final json = jsonDecode(response.body);
+    if (json is Map<String, dynamic>) {
+      final data = json['data'];
+      final root = data is Map<String, dynamic> ? data : json;
+      final items = root['items'];
+      final meta = root['meta'] ?? json['meta'];
+      final comments = items is List
+          ? items.whereType<Map<String, dynamic>>().map(FeedCommentItem.fromJson).toList()
+          : const <FeedCommentItem>[];
+      final hasNext = meta is Map<String, dynamic>
+          ? (meta['hasNext'] as bool?) ?? false
+          : false;
+      final nextCursor = meta is Map<String, dynamic> ? meta['nextCursor'] as String? : null;
+      final totalCount = meta is Map<String, dynamic>
+          ? (meta['totalCount'] as num?)?.toInt()
+          : null;
+      return FeedCommentPage(
+        comments: comments,
+        hasNext: hasNext,
+        nextCursor: nextCursor,
+        totalCount: totalCount,
+      );
+    }
+    return const FeedCommentPage(comments: [], hasNext: false);
+  }
+
   static Future<List<MentionUser>> fetchSpaceParticipants({
     required String spaceId,
     int limit = 50,
@@ -977,6 +1042,36 @@ class ApiClient {
     _logResponse(response);
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception('Comment create failed: ${response.statusCode}');
+    }
+  }
+
+  static Future<void> createEntityComment({
+    required String entityType,
+    required String entityId,
+    required String content,
+    String? imageId,
+    String? parentId,
+  }) async {
+    final uri = Uri.parse('$baseUrl/api/v1/comments');
+    final userId = AuthStore.instance.currentUser.value?.id;
+    final body = <String, dynamic>{
+      'entityType': entityType,
+      'entityId': entityId,
+      'content': content,
+      if (parentId != null && parentId.isNotEmpty) 'parentId': parentId,
+      if (imageId != null && imageId.isNotEmpty) 'imageId': imageId,
+    };
+    if (userId != null && userId.isNotEmpty) {
+      body['userId'] = userId;
+    }
+    _logJsonRequest('POST', uri, body);
+    final response = await _sendWithAuthRetry(
+      () => http.post(uri, headers: _headers(json: true), body: jsonEncode(body)),
+      retryRequest: () => http.post(uri, headers: _headers(json: true), body: jsonEncode(body)),
+    );
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Entity comment create failed: ${response.statusCode}');
     }
   }
 
@@ -1154,6 +1249,112 @@ class ApiClient {
     return _extractPlacebookItems(jsonDecode(response.body));
   }
 
+  static Future<List<Map<String, dynamic>>> fetchMyPlacebookMyPlaces() async {
+    final uri = Uri.parse('$baseUrl/api/v1/placebook/my-places');
+    _logRequest('GET', uri);
+    final response = await _sendWithAuthRetry(
+      () => http.get(uri, headers: _headers()),
+      retryRequest: () => http.get(uri, headers: _headers()),
+    );
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('My placebook places request failed: ${response.statusCode}');
+    }
+    final json = jsonDecode(response.body);
+    if (json is Map<String, dynamic>) {
+      final items = json['items'];
+      if (items is List) {
+        return items.whereType<Map<String, dynamic>>().toList();
+      }
+      final data = json['data'];
+      if (data is Map<String, dynamic>) {
+        final nestedItems = data['items'];
+        if (nestedItems is List) {
+          return nestedItems.whereType<Map<String, dynamic>>().toList();
+        }
+      }
+    }
+    return _extractPlacebookItems(json);
+  }
+
+  static Future<Map<String, dynamic>> fetchMyPlacebookMyPlacesInfo() async {
+    final uri = Uri.parse('$baseUrl/api/v1/placebook/my-places/info');
+    _logRequest('GET', uri);
+    final response = await _sendWithAuthRetry(
+      () => http.get(uri, headers: _headers()),
+      retryRequest: () => http.get(uri, headers: _headers()),
+    );
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('My placebook info request failed: ${response.statusCode}');
+    }
+    final json = jsonDecode(response.body);
+    if (json is Map<String, dynamic>) {
+      final data = json['data'];
+      if (data is Map<String, dynamic>) {
+        final nested = data['data'];
+        if (nested is Map<String, dynamic>) return nested;
+        return data;
+      }
+      return json;
+    }
+    return const <String, dynamic>{};
+  }
+
+  static Future<Map<String, dynamic>> fetchMyPlacebookMyPlacesSearch({
+    required String query,
+    String? cursor,
+    int limit = 20,
+  }) async {
+    final params = <String, String>{
+      'q': query,
+      'limit': '$limit',
+      if (cursor != null && cursor.isNotEmpty) 'cursor': cursor,
+    };
+    final uri = Uri.parse('$baseUrl/api/v1/placebook/my-places/search')
+        .replace(queryParameters: params);
+    _logRequest('GET', uri);
+    final response = await _sendWithAuthRetry(
+      () => http.get(uri, headers: _headers()),
+      retryRequest: () => http.get(uri, headers: _headers()),
+    );
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+          'My placebook search request failed: ${response.statusCode}');
+    }
+    final json = jsonDecode(response.body);
+    if (json is Map<String, dynamic>) {
+      final data = json['data'];
+      final root = data is Map<String, dynamic> ? data : json;
+      final items = root['items'];
+      final meta = root['meta'] ?? json['meta'];
+      final list = items is List
+          ? items.whereType<Map<String, dynamic>>().toList()
+          : const <Map<String, dynamic>>[];
+      final hasNext = meta is Map<String, dynamic>
+          ? (meta['hasNext'] as bool?) ?? false
+          : false;
+      final nextCursor =
+          meta is Map<String, dynamic> ? meta['nextCursor'] as String? : null;
+      final totalCount = meta is Map<String, dynamic>
+          ? (meta['totalCount'] as num?)?.toInt()
+          : null;
+      return {
+        'items': list,
+        'hasNext': hasNext,
+        'nextCursor': nextCursor,
+        'totalCount': totalCount,
+      };
+    }
+    return const <String, dynamic>{
+      'items': <Map<String, dynamic>>[],
+      'hasNext': false,
+      'nextCursor': null,
+      'totalCount': null,
+    };
+  }
+
   static Future<List<Map<String, dynamic>>> fetchTopPlacebookThemes({
     required double latitude,
     required double longitude,
@@ -1211,6 +1412,40 @@ class ApiClient {
     }
     final json = jsonDecode(response.body);
     return _extractPlacebookItems(json);
+  }
+
+  static Future<Map<String, dynamic>> fetchPlacebookPlaceDetail(String placeId) async {
+    final uri = Uri.parse('$baseUrl/api/v1/placebook/places/$placeId');
+    _logRequest('GET', uri);
+    final response = await _sendWithAuthRetry(
+      () => http.get(uri, headers: _headers()),
+      retryRequest: () => http.get(uri, headers: _headers()),
+    );
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Placebook place detail request failed: ${response.statusCode}');
+    }
+    final json = jsonDecode(response.body);
+    if (json is Map<String, dynamic>) {
+      final data = json['data'];
+      if (data is Map<String, dynamic>) {
+        final items = data['items'];
+        if (items is List) {
+          for (final item in items) {
+            if (item is Map<String, dynamic> &&
+                item['id']?.toString() == placeId) {
+              return item;
+            }
+          }
+          if (items.isNotEmpty && items.first is Map<String, dynamic>) {
+            return items.first as Map<String, dynamic>;
+          }
+        }
+        return data;
+      }
+      return json;
+    }
+    return const <String, dynamic>{};
   }
 
   static List<Map<String, dynamic>> _extractPlacebookItems(dynamic json) {

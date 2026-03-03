@@ -5,6 +5,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../common/network/api_client.dart';
+import '../common/auth/auth_store.dart';
 import '../common/widgets/common_activity.dart';
 import '../common/widgets/common_empty_view.dart';
 import '../common/widgets/common_inkwell.dart';
@@ -23,16 +24,22 @@ import '../common/widgets/common_login_guard.dart';
 class FeedCommentView extends StatefulWidget {
   const FeedCommentView({
     super.key,
-    required this.feedId,
+    this.feedId,
     this.spaceId,
+    this.entityType,
+    this.entityId,
+    this.readOnly = false,
     required this.comments,
     this.onCommentAdded,
     this.initialTotalCount,
     this.initialCommentId,
   });
 
-  final String feedId;
+  final String? feedId;
   final String? spaceId;
+  final String? entityType;
+  final String? entityId;
+  final bool readOnly;
   final List<FeedCommentItem> comments;
   final VoidCallback? onCommentAdded;
   final int? initialTotalCount;
@@ -78,17 +85,40 @@ class _FeedCommentViewState extends State<FeedCommentView> {
     _totalCount = widget.initialTotalCount ?? widget.comments.length;
     _pendingCommentId = widget.initialCommentId;
     _loadComments();
-    _controller.addListener(_handleMentionChanged);
-    _loadMentions();
+    if (!widget.readOnly) {
+      _controller.addListener(_handleMentionChanged);
+      _loadMentions();
+    }
+  }
+
+  Future<FeedCommentPage> _fetchComments({
+    String? cursor,
+  }) async {
+    final entityType = widget.entityType;
+    final entityId = widget.entityId;
+    if (entityType != null && entityId != null) {
+      return ApiClient.fetchEntityComments(
+        entityType: entityType,
+        entityId: entityId,
+        cursor: cursor,
+        orderBy: _orderBy,
+      );
+    }
+    final feedId = widget.feedId;
+    if (feedId == null || feedId.isEmpty) {
+      return const FeedCommentPage(comments: [], hasNext: false);
+    }
+    return ApiClient.fetchFeedComments(
+      feedId: feedId,
+      cursor: cursor,
+      orderBy: _orderBy,
+    );
   }
 
   Future<void> _loadComments() async {
     setState(() => _isLoading = true);
     try {
-      final page = await ApiClient.fetchFeedComments(
-        feedId: widget.feedId,
-        orderBy: _orderBy,
-      );
+      final page = await _fetchComments();
       if (!mounted) return;
       setState(() {
         _comments = page.comments;
@@ -110,10 +140,7 @@ class _FeedCommentViewState extends State<FeedCommentView> {
 
   Future<void> _refreshComments() async {
     try {
-      final page = await ApiClient.fetchFeedComments(
-        feedId: widget.feedId,
-        orderBy: _orderBy,
-      );
+      final page = await _fetchComments();
       if (!mounted) return;
       setState(() {
         _comments = page.comments;
@@ -135,11 +162,7 @@ class _FeedCommentViewState extends State<FeedCommentView> {
     if (_isLoadingMore || !_hasNext) return;
     setState(() => _isLoadingMore = true);
     try {
-      final page = await ApiClient.fetchFeedComments(
-        feedId: widget.feedId,
-        cursor: _nextCursor,
-        orderBy: _orderBy,
-      );
+      final page = await _fetchComments(cursor: _nextCursor);
       if (!mounted) return;
       setState(() {
         _comments = List.of(_comments)..addAll(page.comments);
@@ -195,7 +218,9 @@ class _FeedCommentViewState extends State<FeedCommentView> {
 
   @override
   void dispose() {
-    _controller.removeListener(_handleMentionChanged);
+    if (!widget.readOnly) {
+      _controller.removeListener(_handleMentionChanged);
+    }
     _controller.dispose();
     _inputFocusNode.dispose();
     _listController.dispose();
@@ -310,8 +335,72 @@ class _FeedCommentViewState extends State<FeedCommentView> {
     FocusScope.of(context).requestFocus(_inputFocusNode);
   }
 
+  void _prependOptimisticComment(String content, {String? imageId}) {
+    final user = AuthStore.instance.currentUser.value;
+    final authorId = user?.id ?? '';
+    final authorName = (user?.nickname.trim().isNotEmpty == true)
+        ? user!.nickname
+        : '';
+    final profileUrl = user?.profileImageUrl;
+    final optimistic = FeedCommentItem(
+      id: 'local_${DateTime.now().microsecondsSinceEpoch}',
+      content: content,
+      createdAt: DateTime.now().toIso8601String(),
+      authorName: authorName,
+      authorId: authorId,
+      authorProfileUrl: profileUrl,
+      imageId: imageId,
+      imageUrl: null,
+      isLiked: false,
+      likeCount: 0,
+      replyCount: 0,
+    );
+    setState(() {
+      _comments = [optimistic, ..._comments];
+      _totalCount += 1;
+    });
+  }
+
+  void _prependOptimisticReply(
+    FeedCommentItem parent,
+    String content, {
+    String? imageId,
+  }) {
+    final user = AuthStore.instance.currentUser.value;
+    final authorId = user?.id ?? '';
+    final authorName = (user?.nickname.trim().isNotEmpty == true)
+        ? user!.nickname
+        : '';
+    final profileUrl = user?.profileImageUrl;
+    final optimistic = FeedCommentItem(
+      id: 'local_${DateTime.now().microsecondsSinceEpoch}',
+      content: content,
+      createdAt: DateTime.now().toIso8601String(),
+      authorName: authorName,
+      authorId: authorId,
+      authorProfileUrl: profileUrl,
+      imageId: imageId,
+      imageUrl: null,
+      isLiked: false,
+      likeCount: 0,
+      replyCount: 0,
+    );
+    final existing = _repliesByCommentId[parent.id] ?? const <FeedCommentItem>[];
+    setState(() {
+      _repliesByCommentId[parent.id] = [optimistic, ...existing];
+    });
+  }
+
   Future<void> _handleSend() async {
     if (_isSending) return;
+    if (widget.readOnly) return;
+    final feedId = widget.feedId;
+    final entityType = widget.entityType;
+    final entityId = widget.entityId;
+    if ((feedId == null || feedId.isEmpty) &&
+        (entityType == null || entityId == null || entityType.isEmpty || entityId.isEmpty)) {
+      return;
+    }
     final content = _controller.text.trim();
     final hasImage = _commentImageFile != null;
     if (content.isEmpty && !hasImage) return;
@@ -348,19 +437,40 @@ class _FeedCommentViewState extends State<FeedCommentView> {
           ? '$mentionPrefix$content'
           : content;
       if (target == null) {
-        await ApiClient.createFeedComment(
-          feedId: widget.feedId,
-          content: payloadContent,
-          imageId: imageId,
-        );
+        if (entityType != null && entityId != null && entityType.isNotEmpty && entityId.isNotEmpty) {
+          await ApiClient.createEntityComment(
+            entityType: entityType,
+            entityId: entityId,
+            content: payloadContent,
+            imageId: imageId,
+          );
+        } else {
+          await ApiClient.createFeedComment(
+            feedId: feedId!,
+            content: payloadContent,
+            imageId: imageId,
+          );
+        }
+        _prependOptimisticComment(payloadContent, imageId: imageId);
         widget.onCommentAdded?.call();
       } else {
-        await ApiClient.createCommentReply(
-          commentId: target.id,
-          feedId: widget.feedId,
-          content: payloadContent,
-          imageId: imageId,
-        );
+        if (entityType != null && entityId != null && entityType.isNotEmpty && entityId.isNotEmpty) {
+          await ApiClient.createEntityComment(
+            entityType: entityType,
+            entityId: entityId,
+            parentId: target.id,
+            content: payloadContent,
+            imageId: imageId,
+          );
+        } else {
+          await ApiClient.createCommentReply(
+            commentId: target.id,
+            feedId: feedId!,
+            content: payloadContent,
+            imageId: imageId,
+          );
+        }
+        _prependOptimisticReply(target, payloadContent, imageId: imageId);
       }
       if (!mounted) return;
       _controller.clear();
@@ -897,10 +1007,11 @@ class _FeedCommentViewState extends State<FeedCommentView> {
                       ),
                     ),
                   ],
-                  const SizedBox(height: inputGap),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
+                  if (!widget.readOnly || widget.entityType != null) ...[
+                    const SizedBox(height: inputGap),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
                       CommonInkWell(
                         onTap: _showCommentImageActionSheet,
                         borderRadius: BorderRadius.circular(12),
@@ -1015,8 +1126,9 @@ class _FeedCommentViewState extends State<FeedCommentView> {
                           },
                         ),
                       ),
-                    ],
-                  ),
+                      ],
+                    ),
+                  ],
                 ],
               ),
             ),

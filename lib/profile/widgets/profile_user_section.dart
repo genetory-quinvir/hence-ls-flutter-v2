@@ -64,7 +64,9 @@ class _ProfileUserSectionState extends State<ProfileUserSection> {
           introduction: user.introduction?.trim() ?? '',
           profileImageUrl: user.profileImageUrl,
           showEditButton: widget.showEditButton,
-          feedCount: widget.feedCount ?? user.feedCount,
+          feedCount: widget.feedCount ??
+              user.placebookTotalCount ??
+              user.feedCount,
           followingCount: widget.followingCount ?? user.followingCount,
           followerCount: widget.followerCount ?? user.followerCount,
           showFollowActions: widget.showFollowActions,
@@ -96,7 +98,9 @@ class _ProfileUserSectionState extends State<ProfileUserSection> {
           introduction: introduction,
           profileImageUrl: user?.profileImageUrl,
           showEditButton: widget.showEditButton,
-          feedCount: widget.feedCount ?? user?.feedCount,
+          feedCount: widget.feedCount ??
+              user?.placebookTotalCount ??
+              user?.feedCount,
           followingCount: widget.followingCount ?? user?.followingCount,
           followerCount: widget.followerCount ?? user?.followerCount,
           showFollowActions: widget.showFollowActions,
@@ -213,30 +217,6 @@ class _ProfileUserContent extends StatelessWidget {
                           ),
                         ],
                       )
-                    else if (activityLevel != null)
-                      Row(
-                        children: [
-                          SvgPicture.asset(
-                            'assets/images/levels/icon_level_${activityLevel!.clamp(0, 5)}.svg',
-                            width: 14,
-                            height: 14,
-                          ),
-                          const SizedBox(width: 4),
-                          Expanded(
-                            child: Text(
-                              '활동점수 ${activityLevel!}',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontFamily: 'Pretendard',
-                                fontSize: 12,
-                                fontWeight: FontWeight.w400,
-                                color: Color(0xFF8E8E8E),
-                              ),
-                            ),
-                          ),
-                        ],
-                      )
                     else if (!showFollowActions && email.isNotEmpty)
                       Row(
                         children: [
@@ -331,13 +311,19 @@ class _ProfileUserContent extends StatelessWidget {
               ],
             ],
           ),
+          if (introduction.isNotEmpty) ...[
+            const SizedBox(height: 20),
+            _IntroductionText(
+              introduction: introduction,
+            ),
+          ],
           if (showFollowActions) ...[
             const SizedBox(height: 16),
             Row(
               children: [
                 Expanded(
                   child: _StatItem(
-                    label: '피드',
+                    label: '장소 도감',
                     value: feedCount ?? 0,
                     alignCenter: true,
                   ),
@@ -365,12 +351,6 @@ class _ProfileUserContent extends StatelessWidget {
                   ),
                 ),
               ],
-            ),
-          ],
-          if (introduction.isNotEmpty) ...[
-            const SizedBox(height: 20),
-            _IntroductionText(
-              introduction: introduction,
             ),
           ],
         ],

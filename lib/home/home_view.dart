@@ -10,6 +10,7 @@ import '../common/auth/auth_store.dart';
 import '../sign/sign_view.dart';
 import '../notification/notification_view.dart';
 import '../featured/featured_view.dart';
+import '../placebook/placebook_list_view.dart';
 
 class HomeView extends StatefulWidget {
   const HomeView({super.key});
@@ -54,6 +55,7 @@ class _HomeViewState extends State<HomeView> {
           children: const [
             FeaturedView(),
             MapView(),
+            PlacebookListView(),
             SafeArea(top: true, bottom: true, child: NotificationView()),
             SafeArea(bottom: true, child: ProfileView()),
           ],
@@ -65,10 +67,10 @@ class _HomeViewState extends State<HomeView> {
             child: CommonTabView(
               currentIndex: _currentIndex,
               onTap: (index) {
-                if (index == 3 && _currentIndex == 3) {
+                if (index == 4 && _currentIndex == 4) {
                   HomeTabController.requestProfileReload();
                 }
-                if (index == 2) {
+                if (index == 3) {
                   if (!AuthStore.instance.isSignedIn.value) {
                     showCupertinoModalPopup(
                       context: context,

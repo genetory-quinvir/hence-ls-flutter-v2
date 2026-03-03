@@ -35,13 +35,13 @@ class LivespaceDetailInfoView extends StatelessWidget {
               color: Colors.black,
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
             decoration: BoxDecoration(
               color: const Color(0xFFF5F5F5),
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(12),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,

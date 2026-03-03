@@ -204,7 +204,12 @@ class _CommonTextFieldViewState extends State<CommonTextFieldView> {
                         disabledBorder: InputBorder.none,
                         errorBorder: InputBorder.none,
                         focusedErrorBorder: InputBorder.none,
-                        prefixIcon: widget.prefixIcon,
+                        prefixIcon: widget.prefixIcon == null
+                            ? null
+                            : Padding(
+                                padding: const EdgeInsets.only(right: 8),
+                                child: widget.prefixIcon,
+                              ),
                         prefixIconConstraints: const BoxConstraints(
                           minWidth: 0,
                           minHeight: 44,
@@ -265,7 +270,12 @@ class _CommonTextFieldViewState extends State<CommonTextFieldView> {
                       disabledBorder: InputBorder.none,
                       errorBorder: InputBorder.none,
                       focusedErrorBorder: InputBorder.none,
-                      prefixIcon: widget.prefixIcon,
+                      prefixIcon: widget.prefixIcon == null
+                          ? null
+                          : Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: widget.prefixIcon,
+                            ),
                       prefixIconConstraints: const BoxConstraints(
                         minWidth: 0,
                         minHeight: 44,

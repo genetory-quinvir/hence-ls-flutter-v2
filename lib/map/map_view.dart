@@ -34,7 +34,7 @@ class _MapViewState extends State<MapView> {
   static const double _liveClusterDistancePx = 52;
   static const double _clusterMaxZoom = 18.0;
   static const double _clusterSelectionZoomThreshold = 17.8;
-  int _selectedIndex = 0;
+  int _selectedIndex = 1;
   String? _selectedCategoryId;
   List<String> _selectedThemeIds = const [];
   String _selectedListSort = '최신순';
@@ -64,6 +64,8 @@ class _MapViewState extends State<MapView> {
   double _mapViewportHeight = 0;
   late final Widget _mapWidget;
   List<Map<String, dynamic>> _categoryFilters = const [];
+  List<Map<String, dynamic>> _themeFilters = const [];
+  List<Map<String, dynamic>> _themeChipFilters = const [];
   static const String _filterLabel = '필터';
   late final Map<String, GlobalKey> _chipKeys;
   late final VoidCallback _mapFocusListener;
@@ -231,6 +233,7 @@ class _MapViewState extends State<MapView> {
     HomeTabController.mapFocusRequest.addListener(_mapFocusListener);
     _chipKeys = <String, GlobalKey>{};
     _loadCategoryFilters();
+    _loadThemeFilters();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _centerChip(animated: false);
       const initialCenter = NLatLng(37.5665, 126.9780);
@@ -271,10 +274,27 @@ class _MapViewState extends State<MapView> {
       });
     setState(() {
       _categoryFilters = active;
+    });
+  }
+
+  Future<void> _loadThemeFilters() async {
+    final themes = await PlacebookCache.loadThemes();
+    if (!mounted) return;
+    debugPrint('[PLACEBOOK][CACHE] loaded themes=${themes.length}');
+    final active = themes
+        .whereType<Map<String, dynamic>>()
+        .where((item) => item['isActive'] != false)
+        .toList();
+    final shuffled = List<Map<String, dynamic>>.from(active);
+    shuffled.shuffle(math.Random());
+    final chips = shuffled.take(5).toList();
+    setState(() {
+      _themeFilters = active;
+      _themeChipFilters = chips;
       _chipKeys
         ..clear()
         ..addAll({
-          for (final item in active)
+          for (final item in chips)
             (item['id']?.toString() ?? ''): GlobalKey(),
         });
     });
@@ -1037,8 +1057,13 @@ class _MapViewState extends State<MapView> {
     _onTabSelected(0);
   }
 
+  String? _activeChipId() {
+    if (_selectedThemeIds.length == 1) return _selectedThemeIds.first;
+    return _selectedCategoryId;
+  }
+
   void _centerChip({bool animated = true}) {
-    final selectedId = _selectedCategoryId;
+    final selectedId = _activeChipId();
     if (selectedId == null) return;
     final key = _chipKeys[selectedId];
     final targetContext = key?.currentContext;
@@ -1084,11 +1109,7 @@ class _MapViewState extends State<MapView> {
   }
 
   Widget _buildFilterChips() {
-    final labels = <String>[
-      '__filter__',
-      ..._categoryFilters.map((e) => e['id']?.toString() ?? '').where((id) => id.isNotEmpty),
-      if (_categoryFilters.isEmpty) '__empty__',
-    ];
+    final themeChips = _themeChipFilters;
     final filterCount = _selectedThemeIds.isNotEmpty
         ? _selectedThemeIds.length
         : (_selectedCategoryId != null && _selectedCategoryId!.isNotEmpty ? 1 : 0);
@@ -1104,92 +1125,90 @@ class _MapViewState extends State<MapView> {
               scrollDirection: Axis.horizontal,
               clipBehavior: Clip.none,
               child: Row(
-                children: labels.map((label) {
-                  if (label == '__filter__') {
-                    return Padding(
-                      padding: const EdgeInsets.only(left: 8, right: 12),
-                      child: GestureDetector(
-                        onTap: () async {
-                          final result = await showModalBottomSheet<Map<String, dynamic>?>(
-                            context: context,
-                            isScrollControlled: true,
-                            backgroundColor: Colors.white,
-                            shape: const RoundedRectangleBorder(
-                              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(left: 8, right: 12),
+                    child: GestureDetector(
+                      onTap: () async {
+                        final result = await showModalBottomSheet<Map<String, dynamic>?>(
+                          context: context,
+                          isScrollControlled: true,
+                          backgroundColor: Colors.white,
+                          shape: const RoundedRectangleBorder(
+                            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                          ),
+                          builder: (_) => MapFilterView(
+                            categories: _categoryFilters,
+                            selectedCategoryId: _selectedCategoryId,
+                            selectedThemeIds: _selectedThemeIds,
+                          ),
+                        );
+                        if (!mounted || result == null) return;
+                        setState(() {
+                          _selectedCategoryId = result['categoryId'] as String?;
+                          _selectedThemeIds =
+                              (result['themeIds'] as List<String>? ?? const []);
+                        });
+                        _updateLiveMarkerPoints();
+                        _fetchPlacebookSpaces();
+                      },
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          AnimatedContainer(
+                            duration: const Duration(milliseconds: 180),
+                            curve: Curves.easeOut,
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(999),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.18),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 3),
+                                ),
+                              ],
                             ),
-                            builder: (_) => MapFilterView(
-                              categories: _categoryFilters,
-                              selectedCategoryId: _selectedCategoryId,
-                              selectedThemeIds: _selectedThemeIds,
-                            ),
-                          );
-                          if (!mounted || result == null) return;
-                          setState(() {
-                            _selectedCategoryId = result['categoryId'] as String?;
-                            _selectedThemeIds =
-                                (result['themeIds'] as List<String>? ?? const []);
-                          });
-                          _updateLiveMarkerPoints();
-                          _fetchPlacebookSpaces();
-                        },
-                        child: Stack(
-                          clipBehavior: Clip.none,
-                          children: [
-                            AnimatedContainer(
-                              duration: const Duration(milliseconds: 180),
-                              curve: Curves.easeOut,
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(999),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withValues(alpha: 0.18),
-                                    blurRadius: 8,
-                                    offset: const Offset(0, 3),
-                                  ),
-                                ],
+                            child: Text(
+                              filterLabel,
+                              style: TextStyle(
+                                fontFamily: 'Pretendard',
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.black,
                               ),
-                              child: Text(
-                                filterLabel,
-                                style: TextStyle(
-                                  fontFamily: 'Pretendard',
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          if (showFilterBadge)
+                            Positioned(
+                              top: -8,
+                              right: -10,
+                              child: Container(
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
                                   color: Colors.black,
+                                  borderRadius: BorderRadius.circular(999),
+                                  border: Border.all(color: Colors.white, width: 2),
+                                ),
+                                child: Text(
+                                  '$filterCount',
+                                  style: const TextStyle(
+                                    fontFamily: 'Pretendard',
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.white,
+                                  ),
                                 ),
                               ),
                             ),
-                            if (showFilterBadge)
-                              Positioned(
-                                top: -8,
-                                right: -10,
-                                child: Container(
-                                  padding:
-                                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: Colors.black,
-                                    borderRadius: BorderRadius.circular(999),
-                                    border: Border.all(color: Colors.white, width: 2),
-                                  ),
-                                  child: Text(
-                                    '$filterCount',
-                                    style: const TextStyle(
-                                      fontFamily: 'Pretendard',
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w700,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                          ],
-                        ),
+                        ],
                       ),
-                    );
-                  }
-                  if (label == '__empty__') {
-                    return Padding(
+                    ),
+                  ),
+                  if (themeChips.isEmpty)
+                    Padding(
                       padding: const EdgeInsets.only(right: 8),
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
@@ -1199,7 +1218,7 @@ class _MapViewState extends State<MapView> {
                           border: Border.all(color: const Color(0x22000000)),
                         ),
                         child: const Text(
-                          '카테고리 없음',
+                          '테마 없음',
                           style: TextStyle(
                             fontFamily: 'Pretendard',
                             fontSize: 13,
@@ -1208,68 +1227,78 @@ class _MapViewState extends State<MapView> {
                           ),
                         ),
                       ),
-                    );
-                  }
-                  final category = _categoryFilters
-                      .firstWhere((e) => (e['id']?.toString() ?? '') == label);
-                  final selected = _selectedCategoryId == label;
-                  final icon = PhosphorIconsFill.tag;
-                  final displayLabel = (category['title'] as String?) ?? '';
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: KeyedSubtree(
-                      key: _chipKeys[label],
-                      child: GestureDetector(
-                        onTap: () async {
-                          setState(() => _selectedCategoryId = label);
-                          WidgetsBinding.instance.addPostFrameCallback((_) {
-                            _centerChip();
-                          });
-                          final center = _lastCenter;
-                          if (center != null) {
-                            _fetchPlacebookSpaces();
-                          }
-                        },
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 180),
-                          curve: Curves.easeOut,
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: selected ? Colors.black : Colors.white,
-                            borderRadius: BorderRadius.circular(999),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.18),
-                                blurRadius: 8,
-                                offset: const Offset(0, 3),
+                    )
+                  else
+                    ...themeChips.map((theme) {
+                      final themeId = theme['id']?.toString() ?? '';
+                      final displayLabel = (theme['title'] as String?) ?? '';
+                      final selected = themeId.isNotEmpty &&
+                          _selectedThemeIds.length == 1 &&
+                          _selectedThemeIds.first == themeId;
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: KeyedSubtree(
+                          key: _chipKeys[themeId],
+                          child: GestureDetector(
+                            onTap: () async {
+                              if (themeId.isEmpty) return;
+                              setState(() {
+                                if (selected) {
+                                  _selectedThemeIds = const [];
+                                } else {
+                                  _selectedThemeIds = [themeId];
+                                }
+                                _selectedCategoryId = null;
+                              });
+                              WidgetsBinding.instance.addPostFrameCallback((_) {
+                                _centerChip();
+                              });
+                              final center = _lastCenter;
+                              if (center != null) {
+                                _fetchPlacebookSpaces();
+                              }
+                            },
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 180),
+                              curve: Curves.easeOut,
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: selected ? Colors.black : Colors.white,
+                                borderRadius: BorderRadius.circular(999),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.18),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 3),
+                                  ),
+                                ],
                               ),
-                            ],
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                icon,
-                                size: 16,
-                                color: selected ? Colors.white : Colors.black,
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    PhosphorIconsFill.tag,
+                                    size: 16,
+                                    color: selected ? Colors.white : Colors.black,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    displayLabel,
+                                    style: TextStyle(
+                                      fontFamily: 'Pretendard',
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: selected ? Colors.white : Colors.black,
+                                    ),
+                                  ),
+                                ],
                               ),
-                              const SizedBox(width: 6),
-                              Text(
-                                displayLabel,
-                                style: TextStyle(
-                                  fontFamily: 'Pretendard',
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                  color: selected ? Colors.white : Colors.black,
-                                ),
-                              ),
-                            ],
+                            ),
                           ),
                         ),
-                      ),
-                    ),
-                  );
-                }).toList(),
+                      );
+                    }).toList(),
+                ],
               ),
             ),
           ),

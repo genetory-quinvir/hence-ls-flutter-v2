@@ -18,6 +18,8 @@ class LivespaceDetailProfileView extends StatefulWidget {
     required this.profileImageUrl,
     required this.nickname,
     required this.userId,
+    this.categoryLabel,
+    this.themeLabel,
     this.isDeletedUser = false,
     required this.participantCount,
     required this.checkinUsers,
@@ -31,6 +33,8 @@ class LivespaceDetailProfileView extends StatefulWidget {
   final String? profileImageUrl;
   final String nickname;
   final String userId;
+  final String? categoryLabel;
+  final String? themeLabel;
   final bool isDeletedUser;
   final int participantCount;
   final List<dynamic> checkinUsers;
@@ -142,6 +146,21 @@ class _LivespaceDetailProfileViewState extends State<LivespaceDetailProfileView>
                         ),
                       ),
                       const SizedBox(height: 6),
+                      if ((widget.categoryLabel ?? '').trim().isNotEmpty ||
+                          (widget.themeLabel ?? '').trim().isNotEmpty)
+                        Text(
+                          [
+                            (widget.categoryLabel ?? '').trim(),
+                            (widget.themeLabel ?? '').trim(),
+                          ].where((value) => value.isNotEmpty).join(' · '),
+                          style: const TextStyle(
+                            fontFamily: 'Pretendard',
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            color: Color(0xFF616161),
+                          ),
+                        ),
+                      const SizedBox(height: 6),
                       Row(
                         children: [
                           CommonInkWell(
@@ -210,7 +229,7 @@ class _HeaderSection extends StatelessWidget {
   static const double overlap = 25;
   static const double bottomPadding = 12;
   static const double defaultHeight = 317;
-  static const double titleBlockHeight = 76;
+  static const double titleBlockHeight = 96;
 
   String? _extractProfileImageUrl(dynamic user) {
     if (user is Map<String, dynamic>) {
@@ -335,7 +354,7 @@ class _HeaderSection extends StatelessWidget {
                       child: Padding(
                         padding: const EdgeInsets.only(left: 4),
                         child: Text(
-                          '👋🏻 제일 먼저 체크인을 해보세요!',
+                          '📍 내 도감에 추가해보세요!',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
@@ -390,33 +409,37 @@ class _HeaderSection extends StatelessWidget {
                   if (participantCount > 0) const Spacer(),
                   if (participantCount <= 0) const SizedBox(width: 8),
                   if (isCheckedIn)
-                    Container(
-                      height: 30,
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF2F2F2),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      alignment: Alignment.center,
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: const [
-                          Icon(
-                            PhosphorIconsRegular.check,
-                            size: 14,
-                            color: Color(0xFF212121),
-                          ),
-                          SizedBox(width: 4),
-                          Text(
-                            '체크인 완료',
-                            style: TextStyle(
-                              fontFamily: 'Pretendard',
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
+                    CommonInkWell(
+                      onTap: onCheckinTap,
+                      borderRadius: BorderRadius.circular(999),
+                      child: Container(
+                        height: 30,
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF2F2F2),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        alignment: Alignment.center,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: const [
+                            Icon(
+                              PhosphorIconsRegular.check,
+                              size: 14,
                               color: Color(0xFF212121),
                             ),
-                          ),
-                        ],
+                            SizedBox(width: 4),
+                            Text(
+                              '도감 등록 해제',
+                              style: TextStyle(
+                                fontFamily: 'Pretendard',
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF212121),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   if (!isCheckedIn)
@@ -432,7 +455,7 @@ class _HeaderSection extends StatelessWidget {
                         ),
                         alignment: Alignment.center,
                         child: const Text(
-                          '체크인',
+                          '도감 등록',
                           style: TextStyle(
                             fontFamily: 'Pretendard',
                             fontSize: 12,

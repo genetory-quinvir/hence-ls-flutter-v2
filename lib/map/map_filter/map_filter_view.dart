@@ -111,7 +111,6 @@ class _MapFilterViewState extends State<MapFilterView> {
         .whereType<String>()
         .where((id) => id.isNotEmpty)
         .toSet();
-
     // 전체: 모든 테마가 선택된 상태면 필터 없이 반환
     if (_selectedThemeIds.isEmpty || _selectedThemeIds.length == allThemeIds.length) {
       return (categoryId: null, themeIds: const []);
@@ -163,6 +162,8 @@ class _MapFilterViewState extends State<MapFilterView> {
         .whereType<String>()
         .where((id) => id.isNotEmpty)
         .toSet();
+    final isAllSelected =
+        allThemeIds.isNotEmpty && _selectedThemeIds.length == allThemeIds.length;
     final height = MediaQuery.of(context).size.height;
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
     final isKeyboardVisible = bottomInset > 0;
@@ -348,17 +349,18 @@ class _MapFilterViewState extends State<MapFilterView> {
                   Flexible(
                     flex: 2,
                     child: CommonRoundedButton(
-                      title: '초기화',
+                      title: isAllSelected ? '전체해제' : '전체선택',
                       backgroundColor: const Color(0xFFF2F2F2),
                       textColor: Colors.black,
                       onTap: () => setState(() {
-                        _selectedId = null;
-                        _selectedThemeIds
-                          ..clear()
-                          ..addAll(_themes
-                              .map((e) => e['id']?.toString())
-                              .whereType<String>()
-                              .where((id) => id.isNotEmpty));
+                        if (allThemeIds.isEmpty) return;
+                        if (isAllSelected) {
+                          _selectedThemeIds.clear();
+                        } else {
+                          _selectedThemeIds
+                            ..clear()
+                            ..addAll(allThemeIds);
+                        }
                       }),
                     ),
                   ),

@@ -8,6 +8,7 @@ import '../../common/widgets/common_profile_modal.dart';
 import '../../common/widgets/common_alert_view.dart';
 import '../../profile/models/profile_display_user.dart';
 import '../../common/widgets/common_inkwell.dart';
+import '../../main.dart';
 import '../models/feed_comment_model.dart';
 
 class FeedCommentListItemView extends StatelessWidget {
@@ -16,6 +17,7 @@ class FeedCommentListItemView extends StatelessWidget {
     required this.comment,
     this.onLikeTap,
     this.onReplyTap,
+    this.onMentionTap,
     this.onToggleReplies,
     this.hasReplies = false,
     this.repliesExpanded = false,
@@ -24,6 +26,7 @@ class FeedCommentListItemView extends StatelessWidget {
   final FeedCommentItem comment;
   final VoidCallback? onLikeTap;
   final VoidCallback? onReplyTap;
+  final VoidCallback? onMentionTap;
   final VoidCallback? onToggleReplies;
   final bool hasReplies;
   final bool repliesExpanded;
@@ -74,28 +77,37 @@ class FeedCommentListItemView extends StatelessWidget {
       );
     }
 
+    void handleMentionTap() {
+      if (onMentionTap != null) {
+        onMentionTap!();
+        return;
+      }
+      openProfile();
+    }
+
     final createdAt = formatRelativeTime(comment.createdAt);
     final isLiked = comment.isLiked;
     final mentionRegex = RegExp(r'@([a-zA-Z0-9_가-힣]{1,50})');
     final spans = <TextSpan>[];
+    final displayContent = comment.content;
     var lastIndex = 0;
-    for (final match in mentionRegex.allMatches(comment.content)) {
+    for (final match in mentionRegex.allMatches(displayContent)) {
       if (match.start > lastIndex) {
-        spans.add(TextSpan(text: comment.content.substring(lastIndex, match.start)));
+        spans.add(TextSpan(text: displayContent.substring(lastIndex, match.start)));
       }
       spans.add(
         TextSpan(
           text: match.group(0),
           style: const TextStyle(
-            color: Color(0xFF1E88E5),
+            color: MyApp.primary200,
             fontWeight: FontWeight.w500,
           ),
         ),
       );
       lastIndex = match.end;
     }
-    if (lastIndex < comment.content.length) {
-      spans.add(TextSpan(text: comment.content.substring(lastIndex)));
+    if (lastIndex < displayContent.length) {
+      spans.add(TextSpan(text: displayContent.substring(lastIndex)));
     }
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -123,7 +135,7 @@ class FeedCommentListItemView extends StatelessWidget {
                       children: [
                         Flexible(
                           child: CommonInkWell(
-                            onTap: openProfile,
+                            onTap: handleMentionTap,
                             child: Text(
                               comment.authorName,
                               maxLines: 1,

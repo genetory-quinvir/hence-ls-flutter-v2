@@ -10,6 +10,7 @@ class AuthUser {
     this.dateOfBirth,
     this.activityLevel,
     this.feedCount,
+    this.placebookTotalCount,
     this.followerCount,
     this.followingCount,
   });
@@ -24,6 +25,7 @@ class AuthUser {
   final String? dateOfBirth;
   final int? activityLevel;
   final int? feedCount;
+  final int? placebookTotalCount;
   final int? followerCount;
   final int? followingCount;
 
@@ -46,6 +48,7 @@ class AuthUser {
       activityLevel: (json['activityLevel'] as num?)?.toInt(),
       feedCount: (json['feedCount'] as num?)?.toInt() ??
           (json['postCount'] as num?)?.toInt(),
+      placebookTotalCount: (json['placebookTotalCount'] as num?)?.toInt(),
       followerCount: (json['followerCount'] as num?)?.toInt(),
       followingCount: (json['followingCount'] as num?)?.toInt(),
     );
@@ -63,6 +66,7 @@ class AuthUser {
       'dateOfBirth': dateOfBirth,
       'activityLevel': activityLevel,
       'feedCount': feedCount,
+      'placebookTotalCount': placebookTotalCount,
       'followerCount': followerCount,
       'followingCount': followingCount,
     };
@@ -81,6 +85,7 @@ class AuthUser {
       activityLevel: (json['activityLevel'] as num?)?.toInt(),
       feedCount: (json['feedCount'] as num?)?.toInt() ??
           (json['postCount'] as num?)?.toInt(),
+      placebookTotalCount: (json['placebookTotalCount'] as num?)?.toInt(),
       followerCount: (json['followerCount'] as num?)?.toInt(),
       followingCount: (json['followingCount'] as num?)?.toInt(),
     );

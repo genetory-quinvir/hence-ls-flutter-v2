@@ -113,70 +113,23 @@ class _ProfileSignedViewState extends State<ProfileSignedView> {
       if (!mounted) return;
       _measureHeaderHeight();
     });
-    return DefaultTabController(
-      length: 2,
-      child: NestedScrollView(
-        controller: _scrollController,
-        headerSliverBuilder: (context, innerBoxIsScrolled) {
-          return [
-            const SliverToBoxAdapter(child: SizedBox(height: 16)),
-            SliverToBoxAdapter(
-              child: KeyedSubtree(
-                key: _headerKey,
-                child: _ProfileHeaderUserSection(
-                  refreshSignal: _headerRefreshSignal,
-                ),
-              ),
-            ),
-            const SliverToBoxAdapter(child: SizedBox(height: 24)),
-            const SliverToBoxAdapter(child: _ProfileActivitySection()),
-            const SliverToBoxAdapter(child: SizedBox(height: 24)),
-            SliverOverlapAbsorber(
-              handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context),
-              sliver: SliverPersistentHeader(
-                pinned: true,
-                delegate: _TabBarHeaderDelegate(
-                  const TabBar(
-                    labelColor: Colors.black,
-                    unselectedLabelColor: Color(0xFF8E8E8E),
-                    indicatorColor: Colors.transparent,
-                    overlayColor: MaterialStatePropertyAll(Colors.transparent),
-                    splashFactory: NoSplash.splashFactory,
-                    labelStyle: TextStyle(
-                      fontFamily: 'Pretendard',
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
-                    unselectedLabelStyle: TextStyle(
-                      fontFamily: 'Pretendard',
-                      fontSize: 14,
-                      fontWeight: FontWeight.w400,
-                    ),
-                    tabs: [
-                      Tab(text: '피드'),
-                      Tab(text: '라이브스페이스'),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ];
-        },
-        body: TabBarView(
-          children: [
-            _ProfileFeedGrid(
-              emptyMessage: '현재 피드가 없습니다.',
-              emptyButtonText: '피드 작성하기',
-              onRefreshTab: _refreshProfileInfo,
-              refreshProfileOnTabRefresh: false,
-            ),
-            _ProfileParticipantList(
-              onRefreshTab: _refreshProfileInfo,
-              refreshProfileOnTabRefresh: false,
-            ),
-          ],
-        ),
+    return CustomScrollView(
+      controller: _scrollController,
+      physics: const AlwaysScrollableScrollPhysics(
+        parent: BouncingScrollPhysics(),
       ),
+      slivers: [
+        const SliverToBoxAdapter(child: SizedBox(height: 16)),
+        SliverToBoxAdapter(
+          child: KeyedSubtree(
+            key: _headerKey,
+            child: _ProfileHeaderUserSection(
+              refreshSignal: _headerRefreshSignal,
+            ),
+          ),
+        ),
+        const SliverToBoxAdapter(child: SizedBox(height: 24)),
+      ],
     );
   }
 }

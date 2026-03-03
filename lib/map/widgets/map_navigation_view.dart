@@ -60,11 +60,16 @@ class MapNavigationView extends StatelessWidget {
                     const SizedBox(width: 16),
                     CommonInkWell(
                       onTap: onLatestTap,
-                      child: _TabLabel(
-                        title: '내 지도',
-                        selected: selectedIndex == 0,
-                        selectedStyle: selectedStyle,
-                        unselectedStyle: unselectedStyle,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _TabLabel(
+                            title: '내 지도',
+                            selected: selectedIndex == 0,
+                            selectedStyle: selectedStyle,
+                            unselectedStyle: unselectedStyle,
+                          ),
+                        ],
                       ),
                     ),
                   ],
@@ -147,6 +152,23 @@ class _TabLabel extends StatelessWidget {
             color: selected ? Colors.black : Colors.transparent,
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _TabIcon extends StatelessWidget {
+  const _TabIcon();
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(6),
+      child: Image.asset(
+        'assets/images/img_map.webp',
+        width: 56,
+        height: 56,
+        fit: BoxFit.cover,
       ),
     );
   }

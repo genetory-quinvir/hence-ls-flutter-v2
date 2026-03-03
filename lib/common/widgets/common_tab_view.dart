@@ -38,6 +38,11 @@ class CommonTabView extends StatelessWidget {
         activeIcon: PhosphorIconsFill.mapPin,
       ),
       _TabItem(
+        label: '도감',
+        icon: PhosphorIconsRegular.book,
+        activeIcon: PhosphorIconsFill.book,
+      ),
+      _TabItem(
         label: '알림',
         icon: PhosphorIconsRegular.bell,
         activeIcon: PhosphorIconsFill.bell,
@@ -60,7 +65,7 @@ class CommonTabView extends StatelessWidget {
               final item = items[index];
               final isActive = index == currentIndex;
               final color = isActive ? activeColor : inactiveColor;
-              final showUnreadDot = index == 2 && hasUnread;
+              final showUnreadDot = index == 3 && hasUnread;
 
               return Expanded(
                 child: CommonInkWell(

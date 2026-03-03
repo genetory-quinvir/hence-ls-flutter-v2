@@ -55,7 +55,7 @@ class _NotificationBodyState extends State<_NotificationBody> {
     _loadInitial();
     _tabListener = () {
       if (!mounted) return;
-      if (HomeTabController.currentIndex.value == 2) {
+      if (HomeTabController.currentIndex.value == 3) {
         HomeTabController.setUnreadNotifications(false);
         _reloadAll();
       }
