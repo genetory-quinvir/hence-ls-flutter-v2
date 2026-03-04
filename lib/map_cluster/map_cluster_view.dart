@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 import '../common/widgets/common_feed_list_item_view.dart';
 import '../common/widgets/common_livespace_list_item_view.dart';
 import '../feed_list/models/feed_models.dart';
-import '../livespace_detail/livespace_detail_view.dart';
+import '../placebook_detail/placebook_detail_view.dart';
 import '../profile/profile_feed_detail_view.dart';
 
 class MapClusterView extends StatefulWidget {
@@ -292,7 +292,7 @@ class _MapClusterViewState extends State<MapClusterView> {
                           Navigator.of(context).pop();
                           Navigator.of(widget.parentContext).push(
                             MaterialPageRoute(
-                              builder: (_) => LivespaceDetailView(space: item),
+                              builder: (_) => PlacebookDetailView(space: item),
                             ),
                           );
                         },

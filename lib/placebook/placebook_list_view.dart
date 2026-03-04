@@ -1,5 +1,4 @@
-import 'dart:async';
-
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -8,7 +7,8 @@ import '../common/network/api_client.dart';
 import '../common/state/home_tab_controller.dart';
 import '../placebook/widgets/placebook_list_item_view.dart';
 import '../placebook/widgets/placebook_list_empty_view.dart';
-import '../common/widgets/common_textfield_view.dart';
+import '../placebook_create/placebook_create_view.dart';
+import '../placebook_detail/placebook_detail_view.dart';
 import '../common/widgets/common_inkwell.dart';
 
 class PlacebookListView extends StatefulWidget {
@@ -26,21 +26,13 @@ class _PlacebookListViewState extends State<PlacebookListView> {
   int _createdCount = 0;
   int _favoriteCount = 0;
   int _totalCount = 0;
-  final TextEditingController _searchController = TextEditingController();
-  String _searchQuery = '';
-  List<Map<String, dynamic>> _searchResults = const [];
-  bool _isSearching = false;
-  bool _isSearchingMore = false;
-  bool _hasMoreSearch = false;
-  String? _searchCursor;
-  Timer? _searchDebounce;
   late final VoidCallback _tabListener;
+  final Map<String, ScrollController> _categoryScrollControllers = {};
 
   @override
   void initState() {
     super.initState();
     _loadPlacebookData();
-    _searchController.addListener(_handleSearchChanged);
     _tabListener = () {
       if (!mounted) return;
       if (HomeTabController.currentIndex.value == 2) {
@@ -56,11 +48,30 @@ class _PlacebookListViewState extends State<PlacebookListView> {
   @override
   void dispose() {
     HomeTabController.currentIndex.removeListener(_tabListener);
-    _searchController.removeListener(_handleSearchChanged);
-    _searchController.dispose();
-    _searchDebounce?.cancel();
+    for (final controller in _categoryScrollControllers.values) {
+      controller.dispose();
+    }
     super.dispose();
   }
+
+  ScrollController _controllerForCategory(String id) {
+    return _categoryScrollControllers.putIfAbsent(
+      id,
+      () => ScrollController(),
+    );
+  }
+
+  void _scrollToTop() {
+    for (final controller in _categoryScrollControllers.values) {
+      if (!controller.hasClients) continue;
+      controller.animateTo(
+        0,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+      );
+    }
+  }
+
 
   Future<void> _loadPlacebookData() async {
     final categories = await PlacebookCache.loadCategories();
@@ -101,94 +112,8 @@ class _PlacebookListViewState extends State<PlacebookListView> {
     return grouped;
   }
 
-  Future<void> _applySearch() async {
-    final query = _searchController.text.trim();
-    if (query.isEmpty) {
-      _clearSearch();
-      return;
-    }
-    if (query == _searchQuery && _searchResults.isNotEmpty) {
-      return;
-    }
-    setState(() {
-      _searchQuery = query;
-      _isSearching = true;
-      _searchResults = const [];
-      _hasMoreSearch = false;
-      _searchCursor = null;
-    });
-    try {
-      final result = await ApiClient.fetchMyPlacebookMyPlacesSearch(
-        query: query,
-        limit: 20,
-      );
-      if (!mounted) return;
-      setState(() {
-        _searchResults =
-            (result['items'] as List<Map<String, dynamic>>?) ?? const [];
-        _hasMoreSearch = (result['hasNext'] as bool?) ?? false;
-        _searchCursor = result['nextCursor'] as String?;
-      });
-    } finally {
-      if (mounted) setState(() => _isSearching = false);
-    }
-  }
-
-  Future<void> _loadMoreSearch() async {
-    if (_isSearchingMore || !_hasMoreSearch) return;
-    final query = _searchQuery.trim();
-    final cursor = _searchCursor;
-    if (query.isEmpty || cursor == null || cursor.isEmpty) return;
-    setState(() => _isSearchingMore = true);
-    try {
-      final result = await ApiClient.fetchMyPlacebookMyPlacesSearch(
-        query: query,
-        cursor: cursor,
-        limit: 20,
-      );
-      if (!mounted) return;
-      final items =
-          (result['items'] as List<Map<String, dynamic>>?) ?? const [];
-      setState(() {
-        _searchResults = List.of(_searchResults)..addAll(items);
-        _hasMoreSearch = (result['hasNext'] as bool?) ?? false;
-        _searchCursor = result['nextCursor'] as String?;
-      });
-    } finally {
-      if (mounted) setState(() => _isSearchingMore = false);
-    }
-  }
-
-  void _clearSearch() {
-    if (_searchQuery.isEmpty &&
-        _searchResults.isEmpty &&
-        !_hasMoreSearch) {
-      return;
-    }
-    _searchController.clear();
-    setState(() {
-      _searchQuery = '';
-      _searchResults = const [];
-      _hasMoreSearch = false;
-      _searchCursor = null;
-      _isSearching = false;
-      _isSearchingMore = false;
-    });
-  }
-
-  void _handleSearchChanged() {
-    final next = _searchController.text.trim();
-    _searchDebounce?.cancel();
-    if (next.isEmpty) {
-      _clearSearch();
-      return;
-    }
-    _searchDebounce = Timer(const Duration(milliseconds: 350), _applySearch);
-  }
-
   @override
   Widget build(BuildContext context) {
-    final topSafe = MediaQuery.of(context).padding.top;
     final placesByTheme = _groupPlacesByTheme();
     final categories = _categories
         .whereType<Map<String, dynamic>>()
@@ -213,296 +138,210 @@ class _PlacebookListViewState extends State<PlacebookListView> {
         return aOrder.compareTo(bOrder);
       });
     }
-    final filteredPlaces = _searchResults;
 
     return Scaffold(
       backgroundColor: Colors.white,
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SafeArea(
-            bottom: false,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    const Text(
-                      '내 도감',
-                      textAlign: TextAlign.left,
-                      style: TextStyle(
-                        color: Colors.black,
-                        fontFamily: 'Pretendard',
-                        fontSize: 20,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ],
+      resizeToAvoidBottomInset: false,
+      body: SafeArea(
+        bottom: false,
+        child: _isLoading
+            ? const Center(
+                child: SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(strokeWidth: 2),
                 ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _CountChip(
-                          label: '내가 등록한 장소',
-                          value: _createdCount,
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: _CountChip(
-                          label: '즐겨찾기한 장소',
-                          value: _favoriteCount,
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: _CountChip(
-                          label: '모은 장소',
-                          value: _totalCount,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-          Expanded(
-            child: _isLoading
-                ? const Center(
-                    child: SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
+              )
+            : categories.isEmpty
+                ? const _EmptyState(
+                    title: '도감이 비어있어요',
+                    description: '카테고리/테마 정보를 불러오지 못했어요.',
                   )
-                : categories.isEmpty
-                    ? const _EmptyState(
-                        title: '도감이 비어있어요',
-                        description: '카테고리/테마 정보를 불러오지 못했어요.',
-                      )
-                    : DefaultTabController(
-                        length: categories.length,
-                        child: Column(
-                          children: [
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-                              child: Row(
+                : DefaultTabController(
+                    length: categories.length,
+                    child: NestedScrollView(
+                      headerSliverBuilder: (context, innerBoxIsScrolled) {
+                        return [
+                          SliverToBoxAdapter(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 16, vertical: 16),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Expanded(
-                                    child: CommonTextFieldView(
-                                      controller: _searchController,
-                                      hintText: '도감에서 검색',
-                                      textInputAction: TextInputAction.search,
-                                      onSubmitted: (_) => _applySearch(),
-                                      prefixIcon: const Icon(
-                                        PhosphorIconsRegular.magnifyingGlass,
-                                        size: 18,
-                                        color: Color(0xFF9E9E9E),
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  CommonInkWell(
-                                    onTap: _applySearch,
-                                    borderRadius: BorderRadius.circular(10),
-                                    child: Container(
-                                      width: 56,
-                                      height: 50,
-                                      decoration: BoxDecoration(
-                                        color: Colors.black,
-                                        borderRadius: BorderRadius.circular(10),
-                                      ),
-                                      alignment: Alignment.center,
-                                      child: const Text(
-                                        '검색',
+                                Row(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.center,
+                                  children: [
+                                    const Expanded(
+                                      child: Text(
+                                        '내 도감',
+                                        textAlign: TextAlign.left,
                                         style: TextStyle(
+                                          color: Colors.black,
                                           fontFamily: 'Pretendard',
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w600,
-                                          color: Colors.white,
+                                          fontSize: 20,
+                                          fontWeight: FontWeight.w800,
                                         ),
                                       ),
                                     ),
-                                  ),
-                                  if (_searchQuery.isNotEmpty) ...[
-                                    const SizedBox(width: 8),
                                     CommonInkWell(
-                                      onTap: _clearSearch,
-                                      borderRadius: BorderRadius.circular(10),
-                                      child: Container(
-                                        height: 50,
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 12),
-                                        alignment: Alignment.center,
-                                        child: const Text(
-                                          '취소',
-                                          style: TextStyle(
-                                            fontFamily: 'Pretendard',
-                                            fontSize: 14,
-                                            fontWeight: FontWeight.w500,
-                                            color: Color(0xFF9E9E9E),
-                                          ),
+                                      onTap: () {},
+                                      borderRadius: BorderRadius.circular(20),
+                                      child: const SizedBox(
+                                        width: 36,
+                                        height: 36,
+                                        child: Icon(
+                                          PhosphorIconsRegular.magnifyingGlass,
+                                          size: 20,
+                                          color: Colors.black,
                                         ),
                                       ),
                                     ),
                                   ],
+                                ),
+                                  const SizedBox(height: 16),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: _CountChip(
+                                          label: '내가 등록한 장소',
+                                          value: _createdCount,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: _CountChip(
+                                          label: '즐겨찾기한 장소',
+                                          value: _favoriteCount,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: _CountChip(
+                                          label: '모은 장소',
+                                          value: _totalCount,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ],
                               ),
                             ),
-                            if (_searchQuery.isEmpty)
-                              TabBar(
-                                isScrollable: true,
-                                padding:
-                                    const EdgeInsets.symmetric(horizontal: 16),
-                                indicatorPadding: EdgeInsets.zero,
-                                labelPadding: const EdgeInsets.only(right: 24),
-                                tabAlignment: TabAlignment.start,
-                                splashFactory: NoSplash.splashFactory,
-                                overlayColor:
-                                    WidgetStateProperty.all(Colors.transparent),
-                                // dividerColor: const Color.fromARGB(255, 24, 24, 24),
-                                labelColor: Colors.black,
-                                unselectedLabelColor: const Color(0xFFB0B0B0),
-                                indicator: const UnderlineTabIndicator(
-                                  borderSide: BorderSide(
-                                      color: Colors.black, width: 2),
-                                  borderRadius: BorderRadius.zero,
-                                ),
-                                labelStyle: const TextStyle(
-                                  fontFamily: 'Pretendard',
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                                unselectedLabelStyle: const TextStyle(
-                                  fontFamily: 'Pretendard',
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                                tabs: [
-                                  for (final category in categories)
-                                    Tab(
-                                      text: (category['name'] as String?) ??
-                                          (category['title'] as String?) ??
-                                          '카테고리',
-                                    ),
-                                ],
+                          ),
+                        const SliverToBoxAdapter(child: SizedBox.shrink()),
+                        SliverPersistentHeader(
+                          pinned: true,
+                          delegate: _TabBarHeaderDelegate(
+                            TabBar(
+                              isScrollable: true,
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 16),
+                              indicatorPadding: EdgeInsets.zero,
+                              labelPadding: const EdgeInsets.only(right: 24),
+                              tabAlignment: TabAlignment.start,
+                              splashFactory: NoSplash.splashFactory,
+                              overlayColor: WidgetStateProperty.all(
+                                  Colors.transparent),
+                              labelColor: Colors.black,
+                              unselectedLabelColor: const Color(0xFFB0B0B0),
+                              indicator: const UnderlineTabIndicator(
+                                borderSide: BorderSide(
+                                    color: Colors.black, width: 2),
+                                borderRadius: BorderRadius.zero,
                               ),
-                            Expanded(
-                              child: _searchQuery.isNotEmpty
-                                  ? (_isSearching
-                                      ? const Center(
-                                          child: SizedBox(
-                                            width: 24,
-                                            height: 24,
-                                            child: CircularProgressIndicator(
-                                                strokeWidth: 2),
-                                          ),
-                                        )
-                                      : filteredPlaces.isEmpty
-                                          ? const _EmptyState(
-                                              title: '검색 결과가 없어요',
-                                              description:
-                                                  '다른 키워드로 다시 검색해보세요.',
-                                            )
-                                          : NotificationListener<
-                                              ScrollNotification>(
-                                              onNotification: (notification) {
-                                                if (notification.metrics
-                                                        .extentAfter <
-                                                    300) {
-                                                  _loadMoreSearch();
-                                                }
-                                                return false;
-                                              },
-                                              child: ListView.separated(
-                                                padding:
-                                                    const EdgeInsets.fromLTRB(
-                                                        16, 8, 16, 24),
-                                                itemCount:
-                                                    filteredPlaces.length +
-                                                        (_isSearchingMore
-                                                            ? 1
-                                                            : 0),
-                                                separatorBuilder: (_, __) =>
-                                                    const SizedBox(height: 12),
-                                                itemBuilder: (context, index) {
-                                                  if (index >=
-                                                      filteredPlaces.length) {
-                                                    return const Padding(
-                                                      padding: EdgeInsets.only(
-                                                          top: 8, bottom: 8),
-                                                      child: Center(
-                                                        child: SizedBox(
-                                                          width: 20,
-                                                          height: 20,
-                                                          child:
-                                                              CircularProgressIndicator(
-                                                                  strokeWidth:
-                                                                      2),
-                                                        ),
-                                                      ),
-                                                    );
-                                                  }
-                                                  final place =
-                                                      filteredPlaces[index];
-                                                  return PlacebookListItemView(
-                                                    title: place['title']
-                                                            as String? ??
-                                                        '',
-                                                    address: place['address']
-                                                            as String? ??
-                                                        '',
-                                                    thumbnailUrl:
-                                                        place['thumbnailUrl']
-                                                                as String? ??
-                                                            '',
-                                                    favoriteCount: (place[
-                                                                'favoriteCount']
-                                                            as num?)
-                                                        ?.toInt() ??
-                                                        0,
-                                                    commentCount: (place[
-                                                                'commentCount']
-                                                            as num?)
-                                                        ?.toInt() ??
-                                                        0,
-                                                  );
-                                                },
-                                              ),
-                                            ))
-                                  : TabBarView(
-                                      children: [
-                                        for (final category in categories)
-                                          ListView(
-                                            padding: const EdgeInsets.fromLTRB(
-                                                16, 24, 16, 24),
-                                            children: [
-                                              _CategorySection(
-                                                title: '',
-                                                themes: themesByCategory[
-                                                        category['id']
-                                                            ?.toString() ??
-                                                    ''] ??
-                                                    const [],
-                                                placesByTheme: placesByTheme,
-                                              ),
-                                            ],
-                                          ),
-                                      ],
-                                    ),
+                              labelStyle: const TextStyle(
+                                fontFamily: 'Pretendard',
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                              ),
+                              unselectedLabelStyle: const TextStyle(
+                                fontFamily: 'Pretendard',
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                              ),
+                              tabs: [
+                                for (final category in categories)
+                                  Tab(
+                                    text: (category['name'] as String?) ??
+                                        (category['title'] as String?) ??
+                                        '카테고리',
+                                  ),
+                              ],
                             ),
-                          ],
+                          ),
                         ),
+                        ];
+                      },
+                      body: TabBarView(
+                        children: [
+                          for (final category in categories)
+                            ListView(
+                              controller: _controllerForCategory(
+                                category['id']?.toString() ?? '',
+                              ),
+                              padding: const EdgeInsets.fromLTRB(
+                                  16, 24, 16, 24),
+                              children: [
+                                _CategorySection(
+                                  title: (category['name'] as String?) ??
+                                      (category['title'] as String?) ??
+                                      '카테고리',
+                                  themes: themesByCategory[
+                                          category['id']?.toString() ?? ''] ??
+                                      const [],
+                                  placesByTheme: placesByTheme,
+                                  onCreated: (created) async {
+                                    if (!mounted || created == null) return;
+                                    await _loadPlacebookData();
+                                    if (!mounted) return;
+                                    _scrollToTop();
+                                    if (!mounted) return;
+                                    Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (_) =>
+                                            PlacebookDetailView(space: created),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ],
+                            ),
+                        ],
                       ),
-          ),
-        ],
+                    ),
+                  ),
       ),
     );
+  }
+}
+
+class _TabBarHeaderDelegate extends SliverPersistentHeaderDelegate {
+  _TabBarHeaderDelegate(this.tabBar);
+
+  final TabBar tabBar;
+
+  @override
+  double get minExtent => tabBar.preferredSize.height;
+
+  @override
+  double get maxExtent => tabBar.preferredSize.height;
+
+  @override
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
+    return Container(
+      color: Colors.white,
+      child: tabBar,
+    );
+  }
+
+  @override
+  bool shouldRebuild(covariant _TabBarHeaderDelegate oldDelegate) {
+    return oldDelegate.tabBar != tabBar;
   }
 }
 
@@ -511,11 +350,13 @@ class _CategorySection extends StatelessWidget {
     required this.title,
     required this.themes,
     required this.placesByTheme,
+    required this.onCreated,
   });
 
   final String title;
   final List<Map<String, dynamic>> themes;
   final Map<String, List<Map<String, dynamic>>> placesByTheme;
+  final ValueChanged<Map<String, dynamic>?> onCreated;
 
   @override
   Widget build(BuildContext context) {
@@ -541,8 +382,10 @@ class _CategorySection extends StatelessWidget {
           ],
           for (final theme in themes)
             _ThemeSection(
+              categoryTitle: title,
               theme: theme,
               places: placesByTheme[theme['id']?.toString() ?? ''] ?? const [],
+              onCreated: onCreated,
             ),
         ],
       ),
@@ -552,12 +395,16 @@ class _CategorySection extends StatelessWidget {
 
 class _ThemeSection extends StatelessWidget {
   const _ThemeSection({
+    required this.categoryTitle,
     required this.theme,
     required this.places,
+    required this.onCreated,
   });
 
+  final String categoryTitle;
   final Map<String, dynamic> theme;
   final List<Map<String, dynamic>> places;
+  final ValueChanged<Map<String, dynamic>?> onCreated;
 
   @override
   Widget build(BuildContext context) {
@@ -569,39 +416,47 @@ class _ThemeSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Expanded(
-                child: Text(
-                  title,
-                  style: const TextStyle(
-                    fontFamily: 'Pretendard',
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.black,
-                  ),
-                ),
-              ),
-              if (subtitle.isNotEmpty)
-                Text(
-                  subtitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontFamily: 'Pretendard',
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                    color: Color(0xFF9E9E9E),
-                  ),
-                ),
-            ],
+          Text(
+            title,
+            style: const TextStyle(
+              fontFamily: 'Pretendard',
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+              color: Colors.black,
+            ),
           ),
+          if (subtitle.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              subtitle,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontFamily: 'Pretendard',
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: Color(0xFF9E9E9E),
+              ),
+            ),
+          ],
           const SizedBox(height: 14),
           if (places.isEmpty)
             PlacebookListEmptyView(
               themeTitle: title,
-              onTap: () {},
+              onTap: () async {
+                final result =
+                    await showCupertinoModalPopup<Map<String, dynamic>>(
+                  context: context,
+                  builder: (_) => SizedBox.expand(
+                    child: PlacebookCreateView(
+                      categoryTitle: categoryTitle,
+                      themeTitle: title,
+                      themeId: theme['id']?.toString(),
+                    ),
+                  ),
+                );
+                onCreated(result);
+              },
             )
           else
             SizedBox(
@@ -634,10 +489,7 @@ class _RegisteredPlaceCard extends StatelessWidget {
     final title = (place['title'] as String?) ??
         (place['name'] as String?) ??
         '장소';
-    final thumbnailUrl = (place['thumbnailUrl'] as String?) ??
-        (place['imageUrl'] as String?) ??
-        (place['thumbnail'] as String?) ??
-        '';
+    final thumbnailUrl = _resolvePlaceImageUrl(place);
     final favoriteCount = (place['favoriteCount'] as num?)?.toInt() ?? 0;
     final commentCount = (place['commentCount'] as num?)?.toInt() ?? 0;
     final address = (place['address'] as String?) ??
@@ -701,6 +553,37 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
+String _resolvePlaceImageUrl(Map<String, dynamic> place) {
+  final thumbnailRaw = place['thumbnail'];
+  final thumbnailMap =
+      thumbnailRaw is Map<String, dynamic> ? thumbnailRaw : null;
+  final imageIdRaw = place['imageId'];
+  final imageIdMap = imageIdRaw is Map<String, dynamic> ? imageIdRaw : null;
+  final imageRaw = place['image'];
+  final imageMap = imageRaw is Map<String, dynamic> ? imageRaw : null;
+  final images = place['images'];
+  final firstImage =
+      images is List && images.isNotEmpty && images.first is Map<String, dynamic>
+          ? images.first as Map<String, dynamic>
+          : null;
+
+  return (place['thumbnailUrl'] as String?) ??
+      (place['imageUrl'] as String?) ??
+      (thumbnailMap?['cdnUrl'] as String?) ??
+      (thumbnailMap?['fileUrl'] as String?) ??
+      (thumbnailMap?['thumbnailUrl'] as String?) ??
+      (imageIdMap?['cdnUrl'] as String?) ??
+      (imageIdMap?['fileUrl'] as String?) ??
+      (imageIdMap?['thumbnailUrl'] as String?) ??
+      (imageMap?['cdnUrl'] as String?) ??
+      (imageMap?['fileUrl'] as String?) ??
+      (imageMap?['thumbnailUrl'] as String?) ??
+      (firstImage?['cdnUrl'] as String?) ??
+      (firstImage?['fileUrl'] as String?) ??
+      (firstImage?['thumbnailUrl'] as String?) ??
+      '';
+}
+
 class _CountChip extends StatelessWidget {
   const _CountChip({
     required this.label,
@@ -730,8 +613,8 @@ class _CountChip extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
                 fontFamily: 'Pretendard',
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
+                fontSize: 12,
+                fontWeight: FontWeight.w400,
                 color: Color(0xFF616161),
               ),
             ),
@@ -743,7 +626,7 @@ class _CountChip extends StatelessWidget {
               '$value',
               style: const TextStyle(
                 fontFamily: 'Pretendard',
-                fontSize: 16,
+                fontSize: 20,
                 fontWeight: FontWeight.w800,
                 color: Colors.black,
               ),

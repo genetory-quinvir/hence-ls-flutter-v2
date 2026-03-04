@@ -19,7 +19,7 @@ class PlacebookListEmptyView extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(8),
       child: SizedBox(
-        width: 200,
+        width: double.infinity,
         height: 100,
         child: CustomPaint(
           foregroundPainter: _DashedBorderPainter(

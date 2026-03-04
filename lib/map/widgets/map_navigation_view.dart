@@ -137,39 +137,9 @@ class _TabLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return IntrinsicWidth(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: selected ? selectedStyle : unselectedStyle,
-          ),
-          Container(
-            height: 2,
-            width: double.infinity,
-            color: selected ? Colors.black : Colors.transparent,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _TabIcon extends StatelessWidget {
-  const _TabIcon();
-
-  @override
-  Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(6),
-      child: Image.asset(
-        'assets/images/img_map.webp',
-        width: 56,
-        height: 56,
-        fit: BoxFit.cover,
-      ),
+    return Text(
+      title,
+      style: selected ? selectedStyle : unselectedStyle,
     );
   }
 }

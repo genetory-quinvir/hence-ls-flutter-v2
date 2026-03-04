@@ -8,6 +8,7 @@ import 'common_alert_view.dart';
 class CommonMapView extends StatefulWidget {
   const CommonMapView({
     super.key,
+    this.controller,
     this.initialLatitude,
     this.initialLongitude,
     this.onCenterChanged,
@@ -19,6 +20,7 @@ class CommonMapView extends StatefulWidget {
     this.onMapReady,
   });
 
+  final CommonMapViewController? controller;
   final double? initialLatitude;
   final double? initialLongitude;
   final ValueChanged<NLatLng>? onCenterChanged;
@@ -33,6 +35,24 @@ class CommonMapView extends StatefulWidget {
   State<CommonMapView> createState() => _CommonMapViewState();
 }
 
+class CommonMapViewController {
+  _CommonMapViewState? _state;
+
+  void _attach(_CommonMapViewState state) {
+    _state = state;
+  }
+
+  void _detach(_CommonMapViewState state) {
+    if (_state == state) {
+      _state = null;
+    }
+  }
+
+  Future<void> moveToMyLocation() async {
+    await _state?._moveToMyLocation();
+  }
+}
+
 class _CommonMapViewState extends State<CommonMapView> {
   static const String styleId = 'b55d5c20-f158-4e23-851c-55c7d348a2ef';
 
@@ -44,9 +64,29 @@ class _CommonMapViewState extends State<CommonMapView> {
   @override
   void initState() {
     super.initState();
+    widget.controller?._attach(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _ensureLocationPermission(autoPrompt: true);
     });
+  }
+
+  @override
+  void didUpdateWidget(covariant CommonMapView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller?._detach(this);
+      widget.controller?._attach(this);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.controller?._detach(this);
+    super.dispose();
+  }
+
+  Future<void> moveToMyLocation() async {
+    await _moveToMyLocation();
   }
 
   @override

@@ -17,14 +17,14 @@ import '../common/widgets/common_title_actionsheet.dart';
 import '../common/permissions/media_permission_service.dart';
 import '../common/media/media_picker_service.dart';
 import '../common/media/media_conversion_service.dart';
-import 'widgets/livespace_detail_profile_view.dart';
-import 'widgets/livespace_detail_info_view.dart';
-import 'widgets/livespace_detail_content_view.dart';
+import 'widgets/placebook_detail_profile_view.dart';
+import 'widgets/placebook_detail_info_view.dart';
+import 'widgets/placebook_detail_content_view.dart';
 import '../feed_comment/models/feed_comment_model.dart';
 import '../feed_comment/widgets/feed_comment_list_item_view.dart';
 
-class LivespaceDetailView extends StatefulWidget {
-  const LivespaceDetailView({
+class PlacebookDetailView extends StatefulWidget {
+  const PlacebookDetailView({
     super.key,
     required this.space,
   });
@@ -32,10 +32,10 @@ class LivespaceDetailView extends StatefulWidget {
   final Map<String, dynamic> space;
 
   @override
-  State<LivespaceDetailView> createState() => _LivespaceDetailViewState();
+  State<PlacebookDetailView> createState() => _PlacebookDetailViewState();
 }
 
-class _LivespaceDetailViewState extends State<LivespaceDetailView> {
+class _PlacebookDetailViewState extends State<PlacebookDetailView> {
   late Map<String, dynamic> _space;
   bool _isLoading = false;
   bool _isLoadingComments = false;
@@ -697,7 +697,7 @@ class _LivespaceDetailViewState extends State<LivespaceDetailView> {
     final title = (_space['title'] as String?) ??
         (_space['spaceTitle'] as String?) ??
         (_space['name'] as String?) ??
-        '라이브 스페이스';
+        '도감';
     final imageUrls = _extractImageUrls(_space);
     final thumbnail = imageUrls.isNotEmpty ? imageUrls.first : '';
     final user = _space['user'] is Map<String, dynamic>
@@ -823,7 +823,7 @@ class _LivespaceDetailViewState extends State<LivespaceDetailView> {
                           stretchModes: const [
                             StretchMode.zoomBackground,
                           ],
-                          background: LivespaceDetailProfileView(
+                          background: PlacebookDetailProfileView(
                             title: title,
                             imageUrls:
                                 imageUrls.isNotEmpty ? imageUrls : [thumbnail],
@@ -842,7 +842,7 @@ class _LivespaceDetailViewState extends State<LivespaceDetailView> {
                         ),
                       ),
                         SliverToBoxAdapter(
-                        child: LivespaceDetailInfoView(
+                        child: PlacebookDetailInfoView(
                           title: title,
                           place: place,
                           time: time,
@@ -855,7 +855,7 @@ class _LivespaceDetailViewState extends State<LivespaceDetailView> {
                         child: _SectionDivider(),
                       ),
                         SliverToBoxAdapter(
-                        child: LivespaceDetailContentView(
+                        child: PlacebookDetailContentView(
                           content: content,
                         ),
                       ),
@@ -863,7 +863,7 @@ class _LivespaceDetailViewState extends State<LivespaceDetailView> {
                         child: _SectionDivider(),
                       ),
                         SliverToBoxAdapter(
-                        child: _LivespaceDetailCommentsSection(
+                        child: _PlacebookDetailCommentsSection(
                           commentCount: _commentCount,
                           comments: _commentPreview,
                           isLoading: _isLoadingComments,
@@ -1166,6 +1166,24 @@ class _LivespaceDetailViewState extends State<LivespaceDetailView> {
 
   static List<String> _extractImageUrls(Map<String, dynamic> space) {
     final urls = <String>[];
+    final imageIdRaw = space['imageId'];
+    if (imageIdRaw is Map<String, dynamic>) {
+      final url = imageIdRaw['cdnUrl'] as String? ??
+          imageIdRaw['fileUrl'] as String? ??
+          imageIdRaw['thumbnailUrl'] as String?;
+      if (url != null && url.trim().isNotEmpty) {
+        urls.add(url.trim());
+      }
+    }
+    final imageRaw = space['image'];
+    if (imageRaw is Map<String, dynamic>) {
+      final url = imageRaw['cdnUrl'] as String? ??
+          imageRaw['fileUrl'] as String? ??
+          imageRaw['thumbnailUrl'] as String?;
+      if (url != null && url.trim().isNotEmpty) {
+        urls.add(url.trim());
+      }
+    }
     final imagesRaw = space['images'];
     if (imagesRaw is List) {
       for (final item in imagesRaw) {
@@ -1217,8 +1235,8 @@ class _SectionDivider extends StatelessWidget {
   }
 }
 
-class _LivespaceDetailCommentsSection extends StatelessWidget {
-  const _LivespaceDetailCommentsSection({
+class _PlacebookDetailCommentsSection extends StatelessWidget {
+  const _PlacebookDetailCommentsSection({
     required this.commentCount,
     required this.comments,
     required this.isLoading,

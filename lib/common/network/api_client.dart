@@ -408,6 +408,55 @@ class ApiClient {
     return ids.first;
   }
 
+  static Future<String> uploadPlacebookPlaceImage(File file) async {
+    final uri = Uri.parse('$baseUrl/api/v1/placebook/places/images');
+
+    Future<http.Response> send() async {
+      final request = http.MultipartRequest('POST', uri);
+      request.headers.addAll(_headers());
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          'files',
+          file.path,
+          contentType: MediaType('image', 'webp'),
+          filename: 'placebook_${DateTime.now().microsecondsSinceEpoch}.webp',
+        ),
+      );
+      final streamed = await request.send();
+      return http.Response.fromStream(streamed);
+    }
+
+    _logRequest('POST', uri);
+    final response = await _sendWithAuthRetry(send, retryRequest: send);
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+          'Placebook place image upload failed: ${response.statusCode}');
+    }
+    if (response.body.isEmpty) {
+      throw Exception('Placebook place image upload failed: empty response');
+    }
+    final json = jsonDecode(response.body);
+    final ids = _extractFileIds(json);
+    if (ids.isNotEmpty) return ids.first;
+
+    if (json is Map<String, dynamic>) {
+      final data = json['data'];
+      if (data is Map<String, dynamic>) {
+        final candidate = data['imageId'] ?? data['fileId'] ?? data['id'];
+        if (candidate is String && candidate.isNotEmpty) {
+          return candidate;
+        }
+      }
+      final candidate = json['imageId'] ?? json['fileId'] ?? json['id'];
+      if (candidate is String && candidate.isNotEmpty) {
+        return candidate;
+      }
+    }
+
+    throw Exception('Placebook place image upload failed: no imageId returned');
+  }
+
   static Future<Map<String, dynamic>?> createPersonalFeed({
     required String content,
     required List<String> fileIds,
@@ -1412,6 +1461,98 @@ class ApiClient {
     }
     final json = jsonDecode(response.body);
     return _extractPlacebookItems(json);
+  }
+
+  static Future<Map<String, dynamic>> createPlacebookPlace({
+    required String themeId,
+    required String title,
+    required String description,
+    required String subtitle,
+    required String address,
+    required double latitude,
+    required double longitude,
+    String? imageId,
+    String? thumbnailUrl,
+    required List<String> hashtags,
+  }) async {
+    final uri = Uri.parse('$baseUrl/api/v1/placebook/places');
+    final body = <String, dynamic>{
+      'themeId': themeId,
+      'description': description,
+      'title': title,
+      'subtitle': subtitle,
+      'address': address,
+      'latitude': latitude,
+      'longitude': longitude,
+      if (imageId != null && imageId.isNotEmpty)
+        'imageId': <String, dynamic>{'id': imageId},
+      if (thumbnailUrl != null && thumbnailUrl.isNotEmpty)
+        'thumbnailUrl': thumbnailUrl,
+      'hashtags': hashtags,
+    };
+    _logJsonRequest('POST', uri, body);
+    final response = await _sendWithAuthRetry(
+      () => http.post(uri, headers: _headers(json: true), body: jsonEncode(body)),
+      retryRequest: () => http.post(uri, headers: _headers(json: true), body: jsonEncode(body)),
+    );
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Placebook place create failed: ${response.statusCode}');
+    }
+    final json = jsonDecode(response.body);
+    if (json is Map<String, dynamic>) {
+      final data = json['data'];
+      if (data is Map<String, dynamic>) {
+        return data;
+      }
+      return json;
+    }
+    return <String, dynamic>{};
+  }
+
+  static Future<Map<String, dynamic>> updatePlacebookPlace({
+    required String placeId,
+    required String title,
+    required String description,
+    required String subtitle,
+    required String address,
+    required double latitude,
+    required double longitude,
+    String? imageId,
+    List<String>? hashtags,
+  }) async {
+    final uri = Uri.parse('$baseUrl/api/v1/placebook/places/$placeId');
+    final body = <String, dynamic>{
+      'description': description,
+      'title': title,
+      'subtitle': subtitle,
+      'address': address,
+      'latitude': latitude,
+      'longitude': longitude,
+    };
+    if (hashtags != null) {
+      body['hashtags'] = hashtags;
+    }
+    if (imageId != null && imageId.isNotEmpty) {
+      body['imageId'] = <String, dynamic>{'id': imageId};
+    }
+    _logJsonRequest('PATCH', uri, body);
+    final response = await _sendWithAuthRetry(
+      () => http.patch(uri, headers: _headers(json: true), body: jsonEncode(body)),
+      retryRequest: () => http.patch(uri, headers: _headers(json: true), body: jsonEncode(body)),
+    );
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Placebook place update failed: ${response.statusCode}');
+    }
+    if (response.body.isEmpty) return <String, dynamic>{};
+    final json = jsonDecode(response.body);
+    if (json is Map<String, dynamic>) {
+      final data = json['data'];
+      if (data is Map<String, dynamic>) return data;
+      return json;
+    }
+    return <String, dynamic>{};
   }
 
   static Future<Map<String, dynamic>> fetchPlacebookPlaceDetail(String placeId) async {

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-class LivespaceDetailContentView extends StatelessWidget {
-  const LivespaceDetailContentView({
+class PlacebookDetailContentView extends StatelessWidget {
+  const PlacebookDetailContentView({
     super.key,
     required this.content,
   });
@@ -19,7 +19,7 @@ class LivespaceDetailContentView extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            '어떤 라이브스페이스 인가요?',
+            '어떤 장소인가요?',
             style: TextStyle(
               fontFamily: 'Pretendard',
               fontSize: 16,

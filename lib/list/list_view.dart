@@ -7,7 +7,7 @@ import '../common/widgets/common_refresh_view.dart';
 import '../common/widgets/common_livespace_list_item_view.dart';
 import '../common/widgets/common_feed_list_item_view.dart';
 import '../feed_list/models/feed_models.dart';
-import '../livespace_detail/livespace_detail_view.dart';
+import '../placebook_detail/placebook_detail_view.dart';
 import '../profile/profile_feed_detail_view.dart';
 
 class MapListView extends StatefulWidget {
@@ -208,7 +208,7 @@ class _MapListViewState extends State<MapListView> {
                     onTap: () {
                       Navigator.of(context).push(
                         MaterialPageRoute(
-                          builder: (_) => LivespaceDetailView(space: item),
+                          builder: (_) => PlacebookDetailView(space: item),
                         ),
                       );
                     },

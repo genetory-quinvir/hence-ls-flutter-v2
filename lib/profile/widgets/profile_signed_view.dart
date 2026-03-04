@@ -16,7 +16,7 @@ import '../../common/widgets/common_image_view.dart';
 import '../../common/widgets/common_livespace_list_item_view.dart';
 import '../../common/widgets/common_empty_view.dart';
 import '../../common/widgets/common_refresh_view.dart';
-import '../../livespace_detail/livespace_detail_view.dart';
+import '../../placebook_detail/placebook_detail_view.dart';
 import '../profile_feed_detail_view.dart';
 import '../models/profile_display_user.dart';
 import '../../following_list/following_list_view.dart';
@@ -592,7 +592,7 @@ class _ProfileParticipantListState extends State<_ProfileParticipantList> {
                           onTap: () {
                             Navigator.of(context).push(
                               MaterialPageRoute(
-                                builder: (_) => LivespaceDetailView(space: item),
+                                builder: (_) => PlacebookDetailView(space: item),
                               ),
                             );
                           },

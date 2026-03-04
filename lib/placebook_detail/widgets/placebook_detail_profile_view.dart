@@ -10,8 +10,8 @@ import '../../common/widgets/common_profile_modal.dart';
 import '../../common/widgets/common_alert_view.dart';
 import '../../profile/models/profile_display_user.dart';
 
-class LivespaceDetailProfileView extends StatefulWidget {
-  const LivespaceDetailProfileView({
+class PlacebookDetailProfileView extends StatefulWidget {
+  const PlacebookDetailProfileView({
     super.key,
     required this.title,
     required this.imageUrls,
@@ -43,11 +43,11 @@ class LivespaceDetailProfileView extends StatefulWidget {
   final VoidCallback? onCheckinTap;
 
   @override
-  State<LivespaceDetailProfileView> createState() =>
-      _LivespaceDetailProfileViewState();
+  State<PlacebookDetailProfileView> createState() =>
+      _PlacebookDetailProfileViewState();
 }
 
-class _LivespaceDetailProfileViewState extends State<LivespaceDetailProfileView> {
+class _PlacebookDetailProfileViewState extends State<PlacebookDetailProfileView> {
   final ValueNotifier<int> _pageIndex = ValueNotifier<int>(0);
 
   @override

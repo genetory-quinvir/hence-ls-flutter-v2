@@ -8,6 +8,7 @@ class CommonTextFieldView extends StatefulWidget {
     this.focusNode,
     this.title,
     this.hintText,
+    this.hintColor,
     this.maxLines = 1,
     this.maxLength,
     this.keyboardType,
@@ -27,6 +28,7 @@ class CommonTextFieldView extends StatefulWidget {
   final FocusNode? focusNode;
   final String? title;
   final String? hintText;
+  final Color? hintColor;
   final int maxLines;
   final int? maxLength;
   final TextInputType? keyboardType;
@@ -126,9 +128,10 @@ class _CommonTextFieldViewState extends State<CommonTextFieldView> {
         widget.darkStyle ? const Color(0xFF1E1E1E) : const Color(0xFFF2F2F2);
     final labelColor =
         widget.darkStyle ? const Color(0xFFBDBDBD) : const Color(0xFF757575);
-    final hintColor = widget.darkStyle
-        ? Colors.white.withOpacity(0.35)
-        : Colors.black.withOpacity(0.35);
+    final hintColor = widget.hintColor ??
+        (widget.darkStyle
+            ? Colors.white.withOpacity(0.35)
+            : Colors.black.withOpacity(0.35));
     final textColor = widget.darkStyle ? Colors.white : Colors.black;
     final clearColor =
         widget.darkStyle ? const Color(0xFFBDBDBD) : const Color(0xFF9E9E9E);

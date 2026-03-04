@@ -18,7 +18,7 @@ import '../common/widgets/common_place_marker.dart';
 import '../common/widgets/common_place_cluster_marker.dart';
 import '../common/widgets/common_login_guard.dart';
 import '../map_cluster/map_cluster_view.dart';
-import '../livespace_detail/livespace_detail_view.dart';
+import '../placebook_detail/placebook_detail_view.dart';
 import 'widgets/map_navigation_view.dart';
 import 'map_filter/map_filter_view.dart';
 
@@ -63,6 +63,7 @@ class _MapViewState extends State<MapView> {
   double _mapViewportWidth = 0;
   double _mapViewportHeight = 0;
   late final Widget _mapWidget;
+  final CommonMapViewController _mapViewController = CommonMapViewController();
   List<Map<String, dynamic>> _categoryFilters = const [];
   List<Map<String, dynamic>> _themeFilters = const [];
   List<Map<String, dynamic>> _themeChipFilters = const [];
@@ -217,6 +218,8 @@ class _MapViewState extends State<MapView> {
   void initState() {
     super.initState();
     _mapWidget = CommonMapView(
+      controller: _mapViewController,
+      showMyLocationButton: false,
       onCenterChanged: _onMapCenterChanged,
       onCameraMoving: _onMapCameraMoving,
       onCameraIdle: _onMapCameraIdle,
@@ -541,6 +544,10 @@ class _MapViewState extends State<MapView> {
   String? _thumbnailForSpace(Map<String, dynamic> space) {
     final thumbnailRaw = space['thumbnail'];
     final thumbnailMap = thumbnailRaw is Map<String, dynamic> ? thumbnailRaw : null;
+    final imageIdRaw = space['imageId'];
+    final imageIdMap = imageIdRaw is Map<String, dynamic> ? imageIdRaw : null;
+    final imageRaw = space['image'];
+    final imageMap = imageRaw is Map<String, dynamic> ? imageRaw : null;
     final feed = space['feed'];
     final feedMap = feed is Map<String, dynamic> ? feed : null;
     final images = (feedMap?['images'] ?? space['images']);
@@ -552,6 +559,12 @@ class _MapViewState extends State<MapView> {
         thumbnailMap?['cdnUrl'] as String? ??
         thumbnailMap?['fileUrl'] as String? ??
         space['thumbnailUrl'] as String? ??
+        imageIdMap?['cdnUrl'] as String? ??
+        imageIdMap?['fileUrl'] as String? ??
+        imageIdMap?['thumbnailUrl'] as String? ??
+        imageMap?['cdnUrl'] as String? ??
+        imageMap?['fileUrl'] as String? ??
+        imageMap?['thumbnailUrl'] as String? ??
         firstImage?['thumbnailUrl'] as String? ??
         firstImage?['cdnUrl'] as String? ??
         firstImage?['fileUrl'] as String?;
@@ -667,7 +680,7 @@ class _MapViewState extends State<MapView> {
                 }
                 Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (_) => LivespaceDetailView(space: single.space),
+                    builder: (_) => PlacebookDetailView(space: single.space),
                   ),
                 );
               },
@@ -1343,8 +1356,7 @@ class _MapViewState extends State<MapView> {
     _screenScale = (mediaSize.shortestSide / 375).clamp(0.85, 1.3);
     final topSafe = MediaQuery.of(context).padding.top;
     const navigationBottomOffset = 56.0;
-    const chipTopOffset = navigationBottomOffset + 8;
-    const chipBlockHeight = 44.0;
+    const chipTopOffset = navigationBottomOffset;
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.dark,
       child: Scaffold(
@@ -1374,6 +1386,14 @@ class _MapViewState extends State<MapView> {
                         return _mapWidget;
                       },
                     ),
+                  ),
+                ),
+                Positioned(
+                  right: 16,
+                  bottom: 16,
+                  child: _MapFloatingButton(
+                    icon: Icons.my_location,
+                    onTap: () => _mapViewController.moveToMyLocation(),
                   ),
                 ),
                 Positioned(
@@ -1531,6 +1551,44 @@ class _AppearScaleInState extends State<_AppearScaleIn>
     return ScaleTransition(
       scale: _scale,
       child: widget.child,
+    );
+  }
+}
+
+class _MapFloatingButton extends StatelessWidget {
+  const _MapFloatingButton({
+    required this.icon,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.18),
+              blurRadius: 8,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        alignment: Alignment.center,
+        child: Icon(
+          icon,
+          size: 18,
+          color: Colors.black,
+        ),
+      ),
     );
   }
 }

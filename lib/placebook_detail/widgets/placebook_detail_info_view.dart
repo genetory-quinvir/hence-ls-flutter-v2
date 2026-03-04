@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
-class LivespaceDetailInfoView extends StatelessWidget {
-  const LivespaceDetailInfoView({
+class PlacebookDetailInfoView extends StatelessWidget {
+  const PlacebookDetailInfoView({
     super.key,
     required this.title,
     required this.place,
