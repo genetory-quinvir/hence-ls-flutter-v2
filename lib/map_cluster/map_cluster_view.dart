@@ -190,7 +190,7 @@ class _MapClusterViewState extends State<MapClusterView> {
     final feeds = feedEntries.map((entry) => entry.feed).toList();
     final title = _isFeedType
         ? '피드 ${feedEntries.length}개'
-        : '라이브스페이스 ${widget.items.length}개';
+        : '장소 ${widget.items.length}개';
 
     return Container(
       decoration: const BoxDecoration(

@@ -20,18 +20,17 @@ class CommonPlaceMarker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const borderWidth = 1.0;
-    final hasMemory = imageBytes != null && imageBytes!.isNotEmpty;
-    final hasUrl = imageUrl != null && imageUrl!.trim().isNotEmpty;
-    final hasThumbnail = hasMemory || hasUrl;
+    const borderWidth = 1.5;
     final marker = Container(
       width: size,
       height: size,
-      decoration: BoxDecoration(
+      decoration: const ShapeDecoration(
         color: Colors.white,
-        shape: BoxShape.circle,
-        border: Border.all(color: Colors.white, width: borderWidth),
-        boxShadow: const [
+        shape: ContinuousRectangleBorder(
+          borderRadius: BorderRadius.all(Radius.circular(24)),
+          side: BorderSide(color: Colors.white, width: borderWidth),
+        ),
+        shadows: [
           BoxShadow(
             color: Color(0x2E000000),
             blurRadius: 8,
@@ -41,7 +40,12 @@ class CommonPlaceMarker extends StatelessWidget {
       ),
       child: Padding(
         padding: const EdgeInsets.all(borderWidth),
-        child: ClipOval(
+        child: ClipPath(
+          clipper: ShapeBorderClipper(
+            shape: ContinuousRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+          ),
           child: CommonImageView(
             memoryBytes: imageBytes,
             networkUrl: imageUrl,
@@ -70,7 +74,7 @@ class CommonPlaceMarker extends StatelessWidget {
               style: TextStyle(
                 fontFamily: 'Pretendard',
                 fontSize: 12,
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w700,
                 foreground: Paint()
                   ..style = PaintingStyle.stroke
                   ..strokeWidth = 4

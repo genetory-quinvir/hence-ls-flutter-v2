@@ -22,6 +22,7 @@ class CommonTextFieldView extends StatefulWidget {
     this.prefixIcon,
     this.enabled = true,
     this.darkStyle = false,
+    this.backgroundColor,
   });
 
   final TextEditingController? controller;
@@ -42,7 +43,8 @@ class CommonTextFieldView extends StatefulWidget {
   final Widget? prefixIcon;
   final bool enabled;
   final bool darkStyle;
-
+  final Color? backgroundColor;
+  
   @override
   State<CommonTextFieldView> createState() => _CommonTextFieldViewState();
 }
@@ -62,7 +64,7 @@ class _CommonTextFieldViewState extends State<CommonTextFieldView> {
     _ownsFocusNode = widget.focusNode == null;
     _controller.addListener(_handleChange);
     _focusNode.addListener(_handleChange);
-  }
+  } 
 
   @override
   void didUpdateWidget(covariant CommonTextFieldView oldWidget) {
@@ -124,8 +126,8 @@ class _CommonTextFieldViewState extends State<CommonTextFieldView> {
     const double headerHeight = 20;
     const double inputHeight = 44;
     const double headerGap = 4;
-    final containerColor =
-        widget.darkStyle ? const Color(0xFF1E1E1E) : const Color(0xFFF2F2F2);
+    final containerColor = widget.backgroundColor ??
+        (widget.darkStyle ? const Color(0xFF1E1E1E) : const Color(0xFFF2F2F2));
     final labelColor =
         widget.darkStyle ? const Color(0xFFBDBDBD) : const Color(0xFF757575);
     final hintColor = widget.hintColor ??

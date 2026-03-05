@@ -31,7 +31,7 @@ class _ProfileNotSignedViewState extends State<ProfileNotSignedView> {
       '내 주변에서 벌어지는 일들을\n실시간으로 확인하세요',
       '내가 남긴 흔적들을\n아카이빙으로 만나보세요',
       '다양한 스페이스의 이야기들을\n한눈에 살펴보세요',
-      '라이브스페이스를 열고,\n지금 이 순간을 함께하세요',
+      '장소를 열고,\n지금 이 순간을 함께하세요',
     ];
     const subtitles = [
       '지도에서 다양한 스페이스와\n실시간 상황을 한눈에 확인할 수 있어요.',

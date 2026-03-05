@@ -37,9 +37,9 @@ class _MapListViewState extends State<MapListView> {
     final rawType = item['type'] as String?;
     if (rawType != null) {
       final type = rawType.toUpperCase();
-      if (type == 'FEED' || type == 'LIVESPACE') return type;
+      if (type == 'FEED' || type == 'PLACE') return type;
     }
-    return 'LIVESPACE';
+    return 'PLACE';
   }
 
   double _distanceMeters({

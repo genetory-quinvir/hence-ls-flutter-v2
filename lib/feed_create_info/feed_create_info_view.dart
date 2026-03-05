@@ -92,7 +92,7 @@ class _FeedCreateInfoViewState extends State<FeedCreateInfoView> {
       _contentController.text = widget.initialContent!.trim();
     }
     final nickname = AuthStore.instance.currentUser.value?.nickname ?? '';
-    _defaultTitle = nickname.isNotEmpty ? '$nickname의 라이브스페이스' : '라이브스페이스';
+    _defaultTitle = nickname.isNotEmpty ? '$nickname의 장소' : '장소';
     if (!widget.isFeedMode) {
       _titleController.text = widget.initialContent?.trim() ?? '';
     }
@@ -328,7 +328,7 @@ class _FeedCreateInfoViewState extends State<FeedCreateInfoView> {
           longitude: _selectedLongitude,
           latitude: _selectedLatitude,
           hashtags: hashtags,
-          type: widget.isFeedMode ? 'FEED' : 'LIVESPACE',
+          type: widget.isFeedMode ? 'FEED' : 'PLACE',
         );
       } else {
         final files = <File>[];
@@ -354,7 +354,7 @@ class _FeedCreateInfoViewState extends State<FeedCreateInfoView> {
                   ? title
                   : _defaultTitle),
           hashtags: hashtags,
-          type: widget.isFeedMode ? 'FEED' : 'LIVESPACE',
+          type: widget.isFeedMode ? 'FEED' : 'PLACE',
         );
         if (!widget.isFeedMode) {
           final data = createdJson?['data'];
@@ -363,7 +363,7 @@ class _FeedCreateInfoViewState extends State<FeedCreateInfoView> {
             if (created is Map<String, dynamic>) ...created,
             'id': (created is Map<String, dynamic> ? created['id'] : null) ??
                 DateTime.now().microsecondsSinceEpoch.toString(),
-            'type': 'LIVESPACE',
+            'type': 'PLACE',
             'title': (title != null && title.isNotEmpty) ? title : _defaultTitle,
             'content': content,
             'placeName': placeName,
@@ -478,7 +478,7 @@ class _FeedCreateInfoViewState extends State<FeedCreateInfoView> {
                       children: [
                         Center(
                           child: Text(
-                            isFeedMode ? '피드 올리기' : '라이브스페이스 만들기',
+                            isFeedMode ? '피드 올리기' : '장소 만들기',
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w600,
@@ -687,7 +687,7 @@ class _FeedCreateInfoViewState extends State<FeedCreateInfoView> {
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
                   child: CommonRoundedButton(
-                    title: isFeedMode ? '피드 올리기' : '라이브스페이스 만들기',
+                    title: isFeedMode ? '피드 올리기' : '장소 만들기',
                     onTap: _submitFeed,
                     height: 50,
                     radius: 12,

@@ -11,6 +11,7 @@ class MapNavigationView extends StatelessWidget {
     this.onPopularTap,
     this.onAddressTap,
     this.rightText,
+    this.useSafeArea = true,
   });
 
   final int selectedIndex;
@@ -18,6 +19,7 @@ class MapNavigationView extends StatelessWidget {
   final VoidCallback? onPopularTap;
   final VoidCallback? onAddressTap;
   final String? rightText;
+  final bool useSafeArea;
 
   @override
   Widget build(BuildContext context) {
@@ -34,91 +36,89 @@ class MapNavigationView extends StatelessWidget {
       fontWeight: FontWeight.w800,
     );
 
-    return SafeArea(
-      bottom: false,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: SizedBox(
-          height: 36,
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    CommonInkWell(
-                      onTap: onPopularTap,
-                      child: _TabLabel(
-                        title: '공유 지도',
-                        selected: selectedIndex == 1,
-                        selectedStyle: selectedStyle,
-                        unselectedStyle: unselectedStyle,
-                      ),
+    final content = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: SizedBox(
+        height: 36,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CommonInkWell(
+                    onTap: onPopularTap,
+                    child: _TabLabel(
+                      title: '공유 지도',
+                      selected: selectedIndex == 1,
+                      selectedStyle: selectedStyle,
+                      unselectedStyle: unselectedStyle,
                     ),
-                    const SizedBox(width: 16),
-                    CommonInkWell(
-                      onTap: onLatestTap,
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          _TabLabel(
-                            title: '내 지도',
-                            selected: selectedIndex == 0,
-                            selectedStyle: selectedStyle,
-                            unselectedStyle: unselectedStyle,
-                          ),
-                        ],
-                      ),
+                  ),
+                  const SizedBox(width: 16),
+                  CommonInkWell(
+                    onTap: onLatestTap,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _TabLabel(
+                          title: '내 지도',
+                          selected: selectedIndex == 0,
+                          selectedStyle: selectedStyle,
+                          unselectedStyle: unselectedStyle,
+                        ),
+                      ],
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-              if (rightText != null && rightText!.trim().isNotEmpty)
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: CommonInkWell(
-                    onTap: onAddressTap,
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 170),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          Transform.translate(
-                            offset: const Offset(0, 1),
-                            child: Icon(
-                              PhosphorIconsFill.mapPin,
-                              size: 12,
+            ),
+            if (rightText != null && rightText!.trim().isNotEmpty)
+              Align(
+                alignment: Alignment.centerRight,
+                child: CommonInkWell(
+                  onTap: onAddressTap,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 170),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        Transform.translate(
+                          offset: const Offset(0, 1),
+                          child: Icon(
+                            PhosphorIconsFill.mapPin,
+                            size: 12,
+                            color: Colors.black,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Flexible(
+                          child: Text(
+                            rightText!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.right,
+                            style: TextStyle(
+                              fontFamily: 'Pretendard',
+                              fontSize: 12,
+                              fontWeight: FontWeight.w400,
                               color: Colors.black,
                             ),
                           ),
-                          const SizedBox(width: 4),
-                          Flexible(
-                            child: Text(
-                              rightText!,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              textAlign: TextAlign.right,
-                              style: TextStyle(
-                                fontFamily: 'Pretendard',
-                                fontSize: 12,
-                                fontWeight: FontWeight.w400,
-                                color: Colors.black,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
-            ],
-          ),
+              ),
+          ],
         ),
       ),
     );
+    return useSafeArea ? SafeArea(bottom: false, child: content) : content;
   }
 }
 

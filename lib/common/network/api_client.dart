@@ -862,7 +862,7 @@ class ApiClient {
     final query = <String, String>{
       'dir': dir,
       'limit': '$limit',
-      'type': 'LIVESPACE',
+      'type': 'PLACE',
     };
     if (cursor != null && cursor.isNotEmpty) {
       query['cursor'] = cursor;

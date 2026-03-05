@@ -5,6 +5,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
+import 'package:hence_ls_flutter_v2/common/widgets/common_inkwell.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../common/location/naver_location_service.dart';
@@ -17,10 +18,14 @@ import '../common/widgets/common_map_view.dart';
 import '../common/widgets/common_place_marker.dart';
 import '../common/widgets/common_place_cluster_marker.dart';
 import '../common/widgets/common_login_guard.dart';
+import '../common/widgets/common_textfield_view.dart';
+import '../common/widgets/common_handle_list_sheet.dart';
+import '../common/widgets/common_place_list_item_view.dart';
 import '../map_cluster/map_cluster_view.dart';
 import '../placebook_detail/placebook_detail_view.dart';
 import 'widgets/map_navigation_view.dart';
 import 'map_filter/map_filter_view.dart';
+import '../common/navigation/root_navigator.dart';
 
 class MapView extends StatefulWidget {
   const MapView({super.key});
@@ -29,7 +34,7 @@ class MapView extends StatefulWidget {
   State<MapView> createState() => _MapViewState();
 }
 
-class _MapViewState extends State<MapView> {
+class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
   static const double _focusMarkerRadiusMeters = 1200;
   static const double _liveClusterDistancePx = 52;
   static const double _clusterMaxZoom = 18.0;
@@ -37,8 +42,7 @@ class _MapViewState extends State<MapView> {
   int _selectedIndex = 1;
   String? _selectedCategoryId;
   List<String> _selectedThemeIds = const [];
-  String _selectedListSort = '최신순';
-  String _selectedListKind = 'LIVESPACE';
+  String _selectedListSort = '거리순';
   String _centerPlaceText = '';
   final ScrollController _chipScrollController = ScrollController();
   Timer? _reverseGeocodeDebounce;
@@ -50,6 +54,7 @@ class _MapViewState extends State<MapView> {
   bool _isUpdatingMarkerPoints = false;
   bool _pendingMarkerPointUpdate = false;
   Map<String, NPoint> _liveMarkerPoints = const {};
+  Map<String, NPoint> _clusterCenterPoints = const {};
   bool _showLiveMarkers = true;
   bool _isCameraMoving = false;
   bool _skipNextCameraIdleFetch = false;
@@ -62,6 +67,8 @@ class _MapViewState extends State<MapView> {
   double _screenScale = 1.0;
   double _mapViewportWidth = 0;
   double _mapViewportHeight = 0;
+  double _lastViewportWidth = 0;
+  double _lastViewportHeight = 0;
   late final Widget _mapWidget;
   final CommonMapViewController _mapViewController = CommonMapViewController();
   List<Map<String, dynamic>> _categoryFilters = const [];
@@ -73,6 +80,11 @@ class _MapViewState extends State<MapView> {
   MapFocusRequest? _pendingMapFocusRequest;
   Map<String, dynamic>? _optimisticCreatedSpace;
   DateTime? _optimisticCreatedAt;
+  Timer? _mapToggleToastTimer;
+  String _mapToggleToastMessage = '';
+  bool _isMapToggleToastVisible = false;
+  int _mapToggleToastSequence = 0;
+  bool _skipToastOutAnimation = false;
 
   Map<String, dynamic> _normalizePlaceItem(Map<String, dynamic> item) {
     final next = Map<String, dynamic>.from(item);
@@ -249,17 +261,127 @@ class _MapViewState extends State<MapView> {
   void dispose() {
     HomeTabController.mapFocusRequest.removeListener(_mapFocusListener);
     _reverseGeocodeDebounce?.cancel();
+    _mapToggleToastTimer?.cancel();
     _chipScrollController.dispose();
     super.dispose();
   }
 
+  void _triggerMapToggleToast(String message) {
+    _mapToggleToastTimer?.cancel();
+    if (_isMapToggleToastVisible) {
+      setState(() {
+        _skipToastOutAnimation = true;
+        _isMapToggleToastVisible = false;
+      });
+      Future.microtask(() {
+        if (!mounted) return;
+        setState(() {
+          _skipToastOutAnimation = false;
+          _mapToggleToastMessage = message;
+          _isMapToggleToastVisible = true;
+          _mapToggleToastSequence += 1;
+        });
+      });
+    } else {
+      setState(() {
+        _mapToggleToastMessage = message;
+        _isMapToggleToastVisible = true;
+        _mapToggleToastSequence += 1;
+      });
+    }
+    _mapToggleToastTimer = Timer(const Duration(milliseconds: 1400), () {
+      if (!mounted) return;
+      setState(() => _isMapToggleToastVisible = false);
+    });
+  }
+
   void _resetMapFiltersToDefault() {
     setState(() {
-      _selectedListSort = '최신순';
+      _selectedListSort = '거리순';
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _centerChip(animated: false);
     });
+  }
+
+  List<Map<String, dynamic>> _sortedListSpaces() {
+    final spaces = List<Map<String, dynamic>>.from(_typeScopedSpaces);
+    if (_selectedListSort == '인기순') {
+      spaces.sort((a, b) {
+        final aLikes = (a['likeCount'] as num?)?.toInt() ?? 0;
+        final bLikes = (b['likeCount'] as num?)?.toInt() ?? 0;
+        if (aLikes != bLikes) return bLikes.compareTo(aLikes);
+        final aComments = (a['commentCount'] as num?)?.toInt() ?? 0;
+        final bComments = (b['commentCount'] as num?)?.toInt() ?? 0;
+        return bComments.compareTo(aComments);
+      });
+      return spaces;
+    }
+    if (_selectedListSort == '거리순') {
+      final center = _lastCenter;
+      if (center == null) return spaces;
+      spaces.sort((a, b) {
+        final aLat = (a['latitude'] as num?)?.toDouble();
+        final aLng = (a['longitude'] as num?)?.toDouble();
+        final bLat = (b['latitude'] as num?)?.toDouble();
+        final bLng = (b['longitude'] as num?)?.toDouble();
+        final aHas = aLat != null && aLng != null;
+        final bHas = bLat != null && bLng != null;
+        if (!aHas && !bHas) return 0;
+        if (!aHas) return 1;
+        if (!bHas) return -1;
+        final aDist = _distanceMeters(
+          lat1: center.latitude,
+          lng1: center.longitude,
+          lat2: aLat!,
+          lng2: aLng!,
+        );
+        final bDist = _distanceMeters(
+          lat1: center.latitude,
+          lng1: center.longitude,
+          lat2: bLat!,
+          lng2: bLng!,
+        );
+        return aDist.compareTo(bDist);
+      });
+    }
+    return spaces;
+  }
+
+  Widget _buildListSortToggle() {
+    const options = ['거리순', '인기순'];
+    return Row(
+      children: [
+        for (var i = 0; i < options.length; i++) ...[
+          if (i != 0)
+            Container(
+              width: 1,
+              height: 12,
+              margin: const EdgeInsets.symmetric(horizontal: 8),
+              color: const Color(0x33000000),
+            ),
+          GestureDetector(
+            onTap: () {
+              if (_selectedListSort == options[i]) return;
+              setState(() => _selectedListSort = options[i]);
+            },
+            behavior: HitTestBehavior.opaque,
+            child: Text(
+              options[i],
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: _selectedListSort == options[i]
+                    ? FontWeight.w700
+                    : FontWeight.w500,
+                color: _selectedListSort == options[i]
+                    ? Colors.black
+                    : const Color(0x88000000),
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
   }
 
   Future<void> _loadCategoryFilters() async {
@@ -310,7 +432,7 @@ class _MapViewState extends State<MapView> {
     final normalized = <String, dynamic>{
       ...raw,
       'id': raw['id'] ?? 'created_${DateTime.now().microsecondsSinceEpoch}',
-      'type': 'LIVESPACE',
+      'type': 'PLACE',
       'latitude': lat,
       'longitude': lng,
     };
@@ -520,9 +642,48 @@ class _MapViewState extends State<MapView> {
         final point = await controller.latLngToScreenLocation(NLatLng(lat, lng));
         nextPoints[_markerIdForSpace(space, i)] = point;
       }
+      final markerEntries = <({
+        String markerId,
+        String type,
+        NPoint point,
+        String? thumbnailUrl,
+        Map<String, dynamic> space,
+        bool isFocused,
+        double lat,
+        double lng,
+      })>[];
+      for (var i = 0; i < _typeScopedSpaces.length; i += 1) {
+        final space = _typeScopedSpaces[i];
+        final type = _spaceType(space);
+        final markerId = _markerIdForSpace(space, i);
+        final point = nextPoints[markerId];
+        if (point == null) continue;
+        final lat = (space['latitude'] as num?)?.toDouble();
+        final lng = (space['longitude'] as num?)?.toDouble();
+        if (lat == null || lng == null) continue;
+        final isFocused = _isWithinFocusRadius(lat: lat, lng: lng);
+        markerEntries.add((
+          markerId: markerId,
+          type: type,
+          point: point,
+          thumbnailUrl: _thumbnailForSpace(space),
+          space: space,
+          isFocused: isFocused,
+          lat: lat,
+          lng: lng,
+        ));
+      }
+      final clusters = _buildLiveMarkerClusters(markerEntries);
+      final nextClusterCenters = <String, NPoint>{};
+      for (final cluster in clusters) {
+        final point =
+            await controller.latLngToScreenLocation(cluster.centerLatLng);
+        nextClusterCenters[cluster.clusterId] = point;
+      }
       if (mounted) {
         setState(() {
           _liveMarkerPoints = nextPoints;
+          _clusterCenterPoints = nextClusterCenters;
           if (_selectedLiveMarkerId != null &&
               !_liveMarkerPoints.containsKey(_selectedLiveMarkerId)) {
             _selectedLiveMarkerId = null;
@@ -627,13 +788,17 @@ class _MapViewState extends State<MapView> {
       ));
     }
     final clusters = _buildLiveMarkerClusters(markerEntries);
-    final displayCenters = {for (final cluster in clusters) cluster.clusterId: cluster.center};
+    final displayCenters = _clusterCenterPoints.isNotEmpty
+        ? _clusterCenterPoints
+        : {for (final cluster in clusters) cluster.clusterId: cluster.center};
     final primaryClusterId = _primaryClusterIdForCenter(clusters);
     final markerItems = <({String id, Widget child})>[];
     final clusterItems = <({String id, Widget child})>[];
     for (final cluster in clusters) {
       final single = cluster.members.length == 1 ? cluster.members.first : null;
-      final displayCenter = single?.point ?? displayCenters[cluster.clusterId] ?? cluster.center;
+      final displayCenter =
+          single?.point ?? displayCenters[cluster.clusterId] ?? cluster.center;
+      final adjustedCenter = displayCenter;
       final clusterThumbnailUrl = cluster.members
           .map((member) => member.thumbnailUrl)
           .whereType<String>()
@@ -645,15 +810,19 @@ class _MapViewState extends State<MapView> {
           (cluster.clusterId == primaryClusterId ||
               cluster.clusterId == _selectedLiveMarkerId);
       final title = single == null ? '${cluster.members.length}' : _titleForSpace(single.space);
-      final hasLabel = title.isNotEmpty;
-      final itemWidth = hasLabel ? labelWidth : markerSize;
-      final itemHeight = markerSize + (hasLabel ? labelHeight : 0);
+      final hasLabel = single != null && title.isNotEmpty;
+      final clusterSize = single == null
+          ? CommonPlaceClusterMarker.stackSizeFor(markerSize)
+          : markerSize;
+      final itemWidth = hasLabel ? labelWidth : clusterSize;
+      final itemHeight = clusterSize + (hasLabel ? labelHeight : 0);
+      final markerCenterOffset = (single == null ? clusterSize : markerSize) / 2;
       final item = (
         id: cluster.clusterId,
         child: Positioned(
           key: ValueKey(cluster.clusterId),
-          left: displayCenter.x - itemWidth / 2,
-          top: displayCenter.y - markerSize / 2,
+          left: adjustedCenter.x - itemWidth / 2,
+          top: adjustedCenter.y - markerCenterOffset,
           child: SizedBox(
             width: itemWidth,
             height: itemHeight,
@@ -821,9 +990,11 @@ class _MapViewState extends State<MapView> {
       final sumLat = members.fold<double>(0, (sum, it) => sum + it.lat);
       final sumLng = members.fold<double>(0, (sum, it) => sum + it.lng);
       final centerLatLng = NLatLng(sumLat / members.length, sumLng / members.length);
+      final memberIds = members.map((member) => member.markerId).toList()
+        ..sort();
       final clusterId = members.length == 1
-          ? members.first.markerId
-          : 'cluster_${members.first.markerId}_${members.length}';
+          ? memberIds.first
+          : 'cluster_${memberIds.join("_")}';
       clusters.add(
         _LiveMarkerCluster(
           clusterId: clusterId,
@@ -967,6 +1138,21 @@ class _MapViewState extends State<MapView> {
   }
 
   double _toRadians(double degree) => degree * (math.pi / 180);
+
+  String? _distanceLabelForSpace({required double? lat, required double? lng}) {
+    final center = _lastCenter;
+    if (center == null || lat == null || lng == null) return null;
+    final meters = _distanceMeters(
+      lat1: center.latitude,
+      lng1: center.longitude,
+      lat2: lat,
+      lng2: lng,
+    );
+    if (meters.isNaN || meters.isInfinite) return null;
+    if (meters < 1000) return '${meters.round()}m';
+    final km = meters / 1000;
+    return '${km.toStringAsFixed(1)}km';
+  }
 
   bool _shouldFetchPlacebook({
     required NLatLng center,
@@ -1142,29 +1328,7 @@ class _MapViewState extends State<MapView> {
                   Padding(
                     padding: const EdgeInsets.only(left: 8, right: 12),
                     child: GestureDetector(
-                      onTap: () async {
-                        final result = await showModalBottomSheet<Map<String, dynamic>?>(
-                          context: context,
-                          isScrollControlled: true,
-                          backgroundColor: Colors.white,
-                          shape: const RoundedRectangleBorder(
-                            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-                          ),
-                          builder: (_) => MapFilterView(
-                            categories: _categoryFilters,
-                            selectedCategoryId: _selectedCategoryId,
-                            selectedThemeIds: _selectedThemeIds,
-                          ),
-                        );
-                        if (!mounted || result == null) return;
-                        setState(() {
-                          _selectedCategoryId = result['categoryId'] as String?;
-                          _selectedThemeIds =
-                              (result['themeIds'] as List<String>? ?? const []);
-                        });
-                        _updateLiveMarkerPoints();
-                        _fetchPlacebookSpaces();
-                      },
+                      onTap: _openMapFilter,
                       child: Stack(
                         clipBehavior: Clip.none,
                         children: [
@@ -1196,7 +1360,7 @@ class _MapViewState extends State<MapView> {
                           if (showFilterBadge)
                             Positioned(
                               top: -8,
-                              right: -10,
+                              right: -14,
                               child: Container(
                                 padding:
                                     const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -1320,6 +1484,29 @@ class _MapViewState extends State<MapView> {
     );
   }
 
+  Future<void> _openMapFilter() async {
+    final result = await showModalBottomSheet<Map<String, dynamic>?>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => MapFilterView(
+        categories: _categoryFilters,
+        selectedCategoryId: _selectedCategoryId,
+        selectedThemeIds: _selectedThemeIds,
+      ),
+    );
+    if (!mounted || result == null) return;
+    setState(() {
+      _selectedCategoryId = result['categoryId'] as String?;
+      _selectedThemeIds = (result['themeIds'] as List<String>? ?? const []);
+    });
+    _updateLiveMarkerPoints();
+    _fetchPlacebookSpaces();
+  }
+
   Widget _buildListKindButton({
     required String title,
     required bool selected,
@@ -1353,9 +1540,13 @@ class _MapViewState extends State<MapView> {
   @override
   Widget build(BuildContext context) {
     final mediaSize = MediaQuery.of(context).size;
+    const mapBottomInset = 160.0 - 16.0;
     _screenScale = (mediaSize.shortestSide / 375).clamp(0.85, 1.3);
     final topSafe = MediaQuery.of(context).padding.top;
-    const navigationBottomOffset = 56.0;
+    const searchBarHeight = 50.0;
+    const searchBarVerticalPadding = 8.0;
+    const navigationBottomOffset =
+        searchBarHeight + (searchBarVerticalPadding * 2);
     const chipTopOffset = navigationBottomOffset;
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.dark,
@@ -1368,10 +1559,10 @@ class _MapViewState extends State<MapView> {
               clipBehavior: Clip.none,
               children: [
                 Positioned(
-                  top: topSafe + navigationBottomOffset,
+                  top: 0,
                   left: 0,
                   right: 0,
-                  bottom: 0,
+                  bottom: mapBottomInset,
                   child: _animatedLayer(
                     visible: true,
                     hiddenOffset: const Offset(-0.04, 0),
@@ -1383,33 +1574,45 @@ class _MapViewState extends State<MapView> {
                         if (constraints.maxHeight > 0) {
                           _mapViewportHeight = constraints.maxHeight;
                         }
+                        final widthChanged =
+                            (_mapViewportWidth - _lastViewportWidth).abs() > 0.5;
+                        final heightChanged =
+                            (_mapViewportHeight - _lastViewportHeight).abs() > 0.5;
+                        if (widthChanged || heightChanged) {
+                          _lastViewportWidth = _mapViewportWidth;
+                          _lastViewportHeight = _mapViewportHeight;
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (!mounted) return;
+                            _updateLiveMarkerPoints();
+                          });
+                        }
                         return _mapWidget;
                       },
                     ),
                   ),
                 ),
                 Positioned(
-                  right: 16,
-                  bottom: 16,
-                  child: _MapFloatingButton(
-                    icon: Icons.my_location,
-                    onTap: () => _mapViewController.moveToMyLocation(),
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: mapBottomInset,
+                  child: IgnorePointer(
+                    ignoring: false,
+                    child: _animatedLayer(
+                      visible: true,
+                      hiddenOffset: const Offset(-0.04, 0),
+                      child: _buildAnimatedLiveMarkerOverlay(),
+                    ),
                   ),
                 ),
                 Positioned(
-                  top: topSafe + navigationBottomOffset,
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  child: IgnorePointer(
-                    ignoring: false,
-                  child: _animatedLayer(
-                    visible: true,
-                    hiddenOffset: const Offset(-0.04, 0),
-                    child: _buildAnimatedLiveMarkerOverlay(),
+                  right: 16,
+                  bottom: mapBottomInset + 32,
+                  child: _MapFloatingButton(
+                    icon: PhosphorIconsFill.navigationArrow,
+                    onTap: () => _mapViewController.moveToMyLocation(),
                   ),
-                    ),
-                  ),
+                ),
               ],
             ),
             Positioned(
@@ -1419,19 +1622,7 @@ class _MapViewState extends State<MapView> {
               child: IgnorePointer(
                 child: Container(
                   height: topSafe + 150,
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Color(0xFFFFFFFF),
-                        Color(0xFFFFFFFF),
-                        Color(0xFFFFFFFF),
-                        Color(0xddFFFFFF),
-                        Color(0x00FFFFFF),
-                      ],
-                    ),
-                  ),
+                  color: Colors.transparent,
                 ),
               ),
             ),
@@ -1439,24 +1630,206 @@ class _MapViewState extends State<MapView> {
               top: 0,
               left: 0,
               right: 0,
-              child: MapNavigationView(
-                selectedIndex: _selectedIndex,
-                onLatestTap: _onMyMapTap,
-                onPopularTap: () => _onTabSelected(1),
-                onAddressTap: () async {
-                  await _onMyMapTap();
-                  if (!AuthStore.instance.isSignedIn.value) return;
-                  await Future<void>.delayed(const Duration(milliseconds: 50));
-                  _recenterToLastCenter();
-                },
-                rightText: _centerPlaceText,
+              child: SafeArea(
+                bottom: false,
+                child: Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(
+                        16,
+                        searchBarVerticalPadding,
+                        16,
+                        searchBarVerticalPadding,
+                      ),
+                      child: Row(
+                        children: [
+                          Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              _MapToggleButton(
+                                icon: PhosphorIconsBold.magnifyingGlass,
+                                isSharedMap: false,
+                                isLight: true,
+                                onTap: _openMapFilter,
+                              ),
+                              Positioned(
+                                top: -8,
+                                right: -14,
+                                child: AnimatedSwitcher(
+                                  duration: const Duration(milliseconds: 220),
+                                  switchInCurve: Curves.easeOutBack,
+                                  switchOutCurve: Curves.easeInCubic,
+                                  transitionBuilder: (child, animation) {
+                                    return ScaleTransition(
+                                      scale: animation,
+                                      child: FadeTransition(
+                                        opacity: animation,
+                                        child: child,
+                                      ),
+                                    );
+                                  },
+                                  child: (_selectedThemeIds.isNotEmpty ||
+                                          (_selectedCategoryId != null &&
+                                              _selectedCategoryId!.isNotEmpty))
+                                      ? KeyedSubtree(
+                                          key: ValueKey(
+                                            _selectedThemeIds.isNotEmpty
+                                                ? _selectedThemeIds.length
+                                                : 1,
+                                          ),
+                                          child: _MapFilterBadge(
+                                            text: _selectedThemeIds.isNotEmpty
+                                                ? '${_selectedThemeIds.length}'
+                                                : '1',
+                                          ),
+                                        )
+                                      : const SizedBox.shrink(),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const Spacer(),
+                          _MapToggleHorizontal(
+                            isSharedMap: _selectedIndex == 1,
+                            onSharedTap: () {
+                              if (_selectedIndex == 1) return;
+                              _onTabSelected(1);
+                              _triggerMapToggleToast('공유 지도를 보여줄게요!');
+                            },
+                            onMyTap: () {
+                              if (_selectedIndex == 0) return;
+                              _onMyMapTap();
+                              _triggerMapToggleToast('내 지도를 보여줄게요!');
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox.shrink(),
+                  ],
+                ),
               ),
             ),
             Positioned(
               top: topSafe + chipTopOffset,
               left: 0,
               right: 0,
-              child: _buildFilterChips(),
+              child: const SizedBox.shrink(),
+            ),
+            Positioned(
+              left: 24,
+              right: 24,
+              top: MediaQuery.of(context).padding.top + 8,
+              child: IgnorePointer(
+                ignoring: true,
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 900),
+                reverseDuration: _skipToastOutAnimation
+                    ? Duration.zero
+                    : const Duration(milliseconds: 350),
+                  switchInCurve: Curves.elasticOut,
+                  switchOutCurve: Curves.easeInCubic,
+                  transitionBuilder: (child, animation) {
+                    final offsetTween = Tween<Offset>(
+                      begin: const Offset(0, -3.0),
+                      end: Offset.zero,
+                    );
+                    return SlideTransition(
+                      position: offsetTween.animate(animation),
+                      child: child,
+                    );
+                  },
+                  child: _isMapToggleToastVisible
+                      ? Container(
+                          key: ValueKey('toast-${_mapToggleToastSequence}'),
+                        constraints: const BoxConstraints(minHeight: 50),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 8,
+                          ),
+                          decoration: const ShapeDecoration(
+                            color: Colors.black,
+                            shape: ContinuousRectangleBorder(
+                              borderRadius: BorderRadius.all(
+                                Radius.circular(24),
+                              ),
+                            ),
+                          ),
+                          alignment: Alignment.center,
+                          child: Text(
+                            _mapToggleToastMessage,
+                            textAlign: TextAlign.center,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontFamily: 'Pretendard',
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
+                          ),
+                        )
+                      : const SizedBox.shrink(),
+                ),
+              ),
+            ),
+            Positioned.fill(
+              child: Align(
+                alignment: Alignment.bottomCenter,
+                child: CommonHandleListOverlay(
+                  peekHeight: 160,
+                  initialChildSize: 0.0,
+                  title: '${_typeScopedSpaces.length}개의 장소 발견!',
+                  count: null,
+                  trailing: _buildListSortToggle(),
+                  items: _sortedListSpaces().map((space) {
+                    final lat = (space['latitude'] as num?)?.toDouble();
+                    final lng = (space['longitude'] as num?)?.toDouble();
+                    final title = _titleForSpace(space);
+                    final placeName = (space['address'] ??
+                            space['placeName'] ??
+                            space['location'] ??
+                            '') as String;
+                    String? _pickTitle(dynamic raw) {
+                      if (raw is Map<String, dynamic>) {
+                        final title = raw['title'];
+                        if (title is String && title.trim().isNotEmpty) {
+                          return title.trim();
+                        }
+                      }
+                      if (raw is String && raw.trim().isNotEmpty) {
+                        return raw.trim();
+                      }
+                      return null;
+                    }
+                    final categoryText =
+                        _pickTitle(space['category']) ?? _pickTitle(space['categoryTitle']);
+                    final themeText =
+                        _pickTitle(space['theme']) ?? _pickTitle(space['themeTitle']);
+                    final commentCount = (space['commentCount'] as num?)?.toInt() ?? 0;
+                    final likeCount = (space['likeCount'] as num?)?.toInt() ?? 0;
+                    final dateText =
+                        (space['createdAt'] ?? space['updatedAt'] ?? '') as String;
+                    return CommonPlaceListItemView(
+                      thumbnailUrl: _thumbnailForSpace(space) ?? '',
+                      title: title.isNotEmpty ? title : '장소',
+                      address: placeName,
+                      commentCount: commentCount,
+                      likeCount: likeCount,
+                      categoryText: categoryText,
+                      themeText: themeText,
+                      distanceText: _distanceLabelForSpace(lat: lat, lng: lng),
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => PlacebookDetailView(space: space),
+                          ),
+                        );
+                      },
+                    );
+                  }).toList(),
+                ),
+              ),
             ),
           ],
         ),
@@ -1505,6 +1878,185 @@ class _PlaceDotMarker extends StatelessWidget {
             BorderSide(color: Colors.white, width: 2),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _MapToggleButton extends StatelessWidget {
+  const _MapToggleButton({
+    required this.isSharedMap,
+    this.icon,
+    this.isLight = false,
+    required this.onTap,
+  });
+
+  final bool isSharedMap;
+  final IconData? icon;
+  final bool isLight;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        width: 50,
+        height: 50,
+        decoration: ShapeDecoration(
+          color: isLight ? Colors.white : Colors.black,
+          shape: ContinuousRectangleBorder(
+            borderRadius: const BorderRadius.all(Radius.circular(20)),
+            side: BorderSide(
+              color: isLight ? const Color(0x1A000000) : Colors.black,
+            ),
+          ),
+          shadows: const [
+            BoxShadow(
+              color: Color(0x14000000),
+              blurRadius: 12,
+              offset: Offset(0, 4),
+            ),
+          ],
+        ),
+        alignment: Alignment.center,
+        child: Icon(
+          icon ??
+              (isSharedMap
+                  ? PhosphorIconsBold.usersThree
+                  : PhosphorIconsBold.user),
+          size: 20,
+          color: isLight ? Colors.black : Colors.white,
+        ),
+      ),
+    );
+  }
+}
+
+class _MapFilterBadge extends StatelessWidget {
+  const _MapFilterBadge({
+    required this.text,
+  });
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final isSingle = text.length <= 1;
+    final content = Text(
+      text,
+      style: const TextStyle(
+        fontFamily: 'Pretendard',
+        fontSize: 14,
+        fontWeight: FontWeight.w700,
+        color: Colors.white,
+      ),
+      textAlign: TextAlign.center,
+    );
+    return Container(
+      width: isSingle ? 28 : null,
+      height: 28,
+      padding: isSingle
+          ? EdgeInsets.zero
+          : const EdgeInsets.symmetric(horizontal: 8),
+      decoration: BoxDecoration(
+        color: Colors.black,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: Colors.white,
+          width: 2,
+        ),
+      ),
+      alignment: Alignment.center,
+      child: content,
+    );
+  }
+}
+
+class _MapToggleSegmentButton extends StatelessWidget {
+  const _MapToggleSegmentButton({
+    required this.isActive,
+    required this.icon,
+    required this.onTap,
+  });
+
+  final bool isActive;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final background = isActive ? Colors.black : Colors.transparent;
+    final iconColor = isActive ? Colors.white : Colors.black;
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        width: 42,
+        height: 42,
+        decoration: ShapeDecoration(
+          color: background,
+          shape: const ContinuousRectangleBorder(
+            borderRadius: BorderRadius.all(Radius.circular(20)),
+          ),
+        ),
+        alignment: Alignment.center,
+        child: Icon(
+          icon,
+          size: 16,
+          color: iconColor,
+        ),
+      ),
+    );
+  }
+}
+
+class _MapToggleHorizontal extends StatelessWidget {
+  const _MapToggleHorizontal({
+    required this.isSharedMap,
+    required this.onSharedTap,
+    required this.onMyTap,
+  });
+
+  final bool isSharedMap;
+  final VoidCallback onSharedTap;
+  final VoidCallback onMyTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 50,
+      padding: const EdgeInsets.all(4),
+      decoration: ShapeDecoration(
+        color: Colors.white,
+        shape: const ContinuousRectangleBorder(
+          borderRadius: BorderRadius.all(Radius.circular(24)),
+          side: BorderSide(color: Color(0x1A000000)),
+        ),
+        shadows: const [
+          BoxShadow(
+            color: Color(0x14000000),
+            blurRadius: 12,
+            offset: Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _MapToggleSegmentButton(
+            isActive: isSharedMap,
+            icon: PhosphorIconsBold.globe,
+            onTap: onSharedTap,
+          ),
+          const SizedBox(width: 6),
+          _MapToggleSegmentButton(
+            isActive: !isSharedMap,
+            icon: PhosphorIconsBold.user,
+            onTap: onMyTap,
+          ),
+        ],
       ),
     );
   }
@@ -1569,23 +2121,26 @@ class _MapFloatingButton extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 40,
-        height: 40,
-        decoration: BoxDecoration(
+        width: 50,
+        height: 50,
+        decoration: const ShapeDecoration(
           color: Colors.white,
-          shape: BoxShape.circle,
-          boxShadow: [
+          shape: ContinuousRectangleBorder(
+            borderRadius: BorderRadius.all(Radius.circular(20)),
+            side: BorderSide(color: Color(0x1A000000)),
+          ),
+          shadows: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.18),
-              blurRadius: 8,
-              offset: const Offset(0, 3),
+              color: Color(0x14000000),
+              blurRadius: 12,
+              offset: Offset(0, 4),
             ),
           ],
         ),
         alignment: Alignment.center,
         child: Icon(
           icon,
-          size: 18,
+          size: 20,
           color: Colors.black,
         ),
       ),

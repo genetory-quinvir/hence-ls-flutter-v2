@@ -18,7 +18,7 @@ class LivespaceCreateView extends StatelessWidget {
             CommonNavigationView(
               left: const Icon(Icons.close, size: 22, color: Colors.black),
               onLeftTap: () => Navigator.of(context).pop(),
-              title: '라이브스페이스 만들기',
+              title: '장소 만들기',
               backgroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(horizontal: 12),
               height: 52,
@@ -26,7 +26,7 @@ class LivespaceCreateView extends StatelessWidget {
             const Expanded(
               child: Center(
                 child: Text(
-                  'TODO: 라이브스페이스 생성 화면',
+                  'TODO: 장소 생성 화면',
                   style: TextStyle(
                     fontSize: 14,
                     color: Color(0xFF757575),

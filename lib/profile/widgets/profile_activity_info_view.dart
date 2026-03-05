@@ -106,7 +106,7 @@ class ProfileActivityInfoView extends StatelessWidget {
           const SizedBox(height: 16),
           _DotRow(
             text:
-                '라이브스페이스 만들기, 피드 작성, 체크인 등 다양한 활동을 점수로 계산해요.',
+                '장소 만들기, 피드 작성, 체크인 등 다양한 활동을 점수로 계산해요.',
           ),
           const SizedBox(height: 8),
           _DotRow(
