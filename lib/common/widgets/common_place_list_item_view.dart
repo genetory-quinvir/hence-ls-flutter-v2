@@ -32,10 +32,10 @@ class CommonPlaceListItemView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final safeTitle = title.trim().isEmpty ? '장소' : title.trim();
-    final safeAddress = address.trim();
-    final safeCategory = categoryText?.trim() ?? '';
+    final safeAddress =
+        address.trim().isEmpty ? '장소 등록 안됨' : address.trim();
     final safeTheme = themeText?.trim() ?? '';
-    final hasMetaLine = safeCategory.isNotEmpty || safeTheme.isNotEmpty;
+    final hasMetaLine = safeTheme.isNotEmpty;
     const metaStyle = TextStyle(
       fontFamily: 'Pretendard',
       fontSize: 12,
@@ -85,24 +85,21 @@ class CommonPlaceListItemView extends StatelessWidget {
                     Padding(
                       padding: const EdgeInsets.only(top: 2),
                       child: Text(
-                        safeCategory.isNotEmpty && safeTheme.isNotEmpty
-                            ? '$safeCategory · $safeTheme'
-                            : (safeCategory.isNotEmpty ? safeCategory : safeTheme),
+                        safeTheme,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: metaStyle,
                       ),
                     ),
-                  if (safeAddress.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 2),
-                      child: Text(
-                        safeAddress,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: metaStyle,
-                      ),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      safeAddress,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: metaStyle,
                     ),
+                  ),
                   const SizedBox(height: 6),
                   Row(
                     children: [

@@ -176,7 +176,7 @@ class _HandleListTitle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final text = count != null ? '$title $count' : title;
-    final match = RegExp(r'^(\d+)(개의 장소 발견!?)$').firstMatch(text);
+    final match = RegExp(r'^(\d+)( 개의 장소를 발견했어요!?)$').firstMatch(text);
     if (match != null) {
       final number = match.group(1) ?? '';
       final suffix = match.group(2) ?? '';

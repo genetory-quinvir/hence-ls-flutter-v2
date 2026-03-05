@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:hence_ls_flutter_v2/common/widgets/common_inkwell.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../common/state/placebook_cache.dart';
@@ -195,14 +196,37 @@ class _MapFilterViewState extends State<MapFilterView> {
                 padding: EdgeInsets.only(
                   top: MediaQuery.of(context).padding.top + 16,
                 ),
-                child: CommonNavigationView(
-                  title: '필터',
-                  right: const Icon(
-                    PhosphorIconsRegular.x,
-                    size: 20,
-                    color: Colors.black,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Row(
+                    children: [
+                      const Text(
+                        '필터',
+                        style: TextStyle(
+                          fontFamily: 'Pretendard',
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.black,
+                        ),
+                      ),
+                      const Spacer(),
+                      CommonInkWell(
+                        onTap: () => Navigator.of(context).maybePop(),
+                        borderRadius: BorderRadius.circular(999),
+                        child: const SizedBox(
+                          width: 36,
+                          height: 36,
+                          child: Center(
+                            child: Icon(
+                              PhosphorIconsRegular.x,
+                              size: 20,
+                              color: Colors.black,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                  onRightTap: () => Navigator.of(context).maybePop(),
                 ),
               ),
               Expanded(

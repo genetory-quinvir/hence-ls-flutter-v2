@@ -38,15 +38,12 @@ class PlacebookListEmptyView extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: Image.asset(
-                    'assets/images/img_place_placeholder.webp',
-                    width: 64,
-                    height: 40,
-                    fit: BoxFit.cover,
-                  ),
+                const Icon(
+                  PhosphorIconsRegular.stackPlus,
+                  size: 28,
+                  color: Color(0xFF9E9E9E),
                 ),
+                const SizedBox(height: 6),
                 const Text(
                   '등록된 장소가 없어요',
                   maxLines: 1,

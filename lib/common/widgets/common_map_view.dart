@@ -3,6 +3,7 @@ import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import '../../main.dart';
 import 'common_alert_view.dart';
 
 class CommonMapView extends StatefulWidget {
@@ -18,6 +19,7 @@ class CommonMapView extends StatefulWidget {
     this.showMyLocationButton = true,
     this.onCreateLiveSpace,
     this.onMapReady,
+    this.onMyLocationChanged,
   });
 
   final CommonMapViewController? controller;
@@ -30,6 +32,7 @@ class CommonMapView extends StatefulWidget {
   final bool showMyLocationButton;
   final VoidCallback? onCreateLiveSpace;
   final ValueChanged<NaverMapController>? onMapReady;
+  final ValueChanged<NLatLng>? onMyLocationChanged;
 
   @override
   State<CommonMapView> createState() => _CommonMapViewState();
@@ -58,6 +61,7 @@ class _CommonMapViewState extends State<CommonMapView> {
 
   NaverMapController? _controller;
   NOverlayImage? _myLocationIcon;
+  NOverlayImage? _myLocationSubIcon;
   bool _didAutoPromptLocationPermission = false;
   bool _isFetchingMyLocation = false;
 
@@ -206,19 +210,30 @@ class _CommonMapViewState extends State<CommonMapView> {
     overlay.setIsVisible(true);
     _myLocationIcon ??= await NOverlayImage.fromWidget(
       context: context,
-      size: const Size(16, 16),
+      size: const Size(18, 18),
       widget: Container(
-        width: 16,
-        height: 16,
+        width: 18,
+        height: 18,
         decoration: BoxDecoration(
-          color: Colors.blue[600],
+          color: MyApp.primary200,
           shape: BoxShape.circle,
-          border: Border.all(color: Colors.white, width: 2),
+          border: Border.all(color: Colors.white, width: 3),
         ),
       ),
     );
+    _myLocationSubIcon ??= await NOverlayImage.fromWidget(
+      context: context,
+      size: const Size(18, 18),
+      widget: const Icon(
+        Icons.navigation,
+        size: 18,
+        color: MyApp.primary200,
+      ),
+    );
     overlay.setIcon(_myLocationIcon!);
-    overlay.setIconSize(const Size(16, 16));
+    overlay.setIconSize(const Size(18, 18));
+    overlay.setSubIcon(_myLocationSubIcon!);
+    overlay.setSubIconSize(const Size(18, 18));
   }
 
   Future<bool> _ensureLocationPermission({bool autoPrompt = false}) async {
@@ -299,6 +314,14 @@ class _CommonMapViewState extends State<CommonMapView> {
       final overlay = controller.getLocationOverlay();
       overlay.setIsVisible(true);
       overlay.setPosition(target);
+      widget.onMyLocationChanged?.call(target);
+      overlay.setCircleColor(Colors.transparent);
+      overlay.setCircleOutlineWidth(0);
+      overlay.setCircleRadius(0);
+      if (_myLocationSubIcon != null) {
+        overlay.setSubIcon(_myLocationSubIcon!);
+        overlay.setSubIconSize(const Size(18, 18));
+      }
 
       if (moveCamera) {
         await controller.updateCamera(

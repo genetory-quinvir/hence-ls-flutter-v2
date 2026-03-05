@@ -1463,6 +1463,18 @@ class ApiClient {
     return _extractPlacebookItems(json);
   }
 
+  static Future<List<Map<String, dynamic>>> fetchPlacebookThemesSimple() async {
+    final uri = Uri.parse('$baseUrl/api/v1/placebook/themes/simple');
+    _logRequest('GET', uri);
+    final response = await http.get(uri, headers: _headers());
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Placebook themes simple request failed: ${response.statusCode}');
+    }
+    final json = jsonDecode(response.body);
+    return _extractPlacebookItems(json);
+  }
+
   static Future<Map<String, dynamic>> createPlacebookPlace({
     required String themeId,
     required String title,

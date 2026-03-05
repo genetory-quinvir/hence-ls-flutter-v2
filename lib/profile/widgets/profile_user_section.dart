@@ -194,8 +194,8 @@ class _ProfileUserContent extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         fontFamily: 'Pretendard',
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
                         color: Colors.black,
                       ),
                     ),
@@ -311,12 +311,6 @@ class _ProfileUserContent extends StatelessWidget {
               ],
             ],
           ),
-          if (introduction.isNotEmpty) ...[
-            const SizedBox(height: 20),
-            _IntroductionText(
-              introduction: introduction,
-            ),
-          ],
           if (showFollowActions) ...[
             const SizedBox(height: 16),
             Row(
@@ -353,6 +347,12 @@ class _ProfileUserContent extends StatelessWidget {
               ],
             ),
           ],
+          if (introduction.isNotEmpty) ...[
+            const SizedBox(height: 20),
+            _IntroductionText(
+              introduction: introduction,
+            ),
+          ],
         ],
       ),
     );
@@ -387,17 +387,6 @@ class _StatItem extends StatelessWidget {
       crossAxisAlignment:
           alignCenter ? CrossAxisAlignment.center : CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          textAlign: alignCenter ? TextAlign.center : TextAlign.left,
-          style: const TextStyle(
-            fontFamily: 'Pretendard',
-            fontSize: 12,
-            fontWeight: FontWeight.w400,
-            color: Color(0xFF8E8E8E),
-          ),
-        ),
-        const SizedBox(height: 2),
         SizedBox(
           width: double.infinity,
           child: Text(
@@ -405,10 +394,21 @@ class _StatItem extends StatelessWidget {
             textAlign: alignCenter ? TextAlign.center : TextAlign.left,
             style: const TextStyle(
               fontFamily: 'Pretendard',
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
               color: Colors.black,
             ),
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          textAlign: alignCenter ? TextAlign.center : TextAlign.left,
+          style: const TextStyle(
+            fontFamily: 'Pretendard',
+            fontSize: 14,
+            fontWeight: FontWeight.w400,
+            color: Color(0xFF8E8E8E),
           ),
         ),
       ],
@@ -429,7 +429,7 @@ class _IntroductionTextState extends State<_IntroductionText> {
             text: widget.introduction,
             style: TextStyle(
               fontFamily: 'Pretendard',
-              fontSize: 14,
+              fontSize: 16,
               fontWeight: FontWeight.w400,
               color: Colors.grey[800],
             ),
@@ -456,7 +456,7 @@ class _IntroductionTextState extends State<_IntroductionText> {
                   : TextOverflow.ellipsis,
               style: TextStyle(
                 fontFamily: 'Pretendard',
-                fontSize: 14,
+                fontSize: 16,
                 fontWeight: FontWeight.w400,
                 color: Colors.grey[800],
               ),
@@ -472,7 +472,7 @@ class _IntroductionTextState extends State<_IntroductionText> {
                     _expanded ? '숨기기' : '더보기',
                     style: TextStyle(
                       fontFamily: 'Pretendard',
-                      fontSize: 14,
+                      fontSize: 16,
                       fontWeight: FontWeight.w400,
                       color: Colors.black,
                     ),

@@ -146,13 +146,9 @@ class _PlacebookDetailProfileViewState extends State<PlacebookDetailProfileView>
                         ),
                       ),
                       const SizedBox(height: 6),
-                      if ((widget.categoryLabel ?? '').trim().isNotEmpty ||
-                          (widget.themeLabel ?? '').trim().isNotEmpty)
+                      if ((widget.themeLabel ?? '').trim().isNotEmpty)
                         Text(
-                          [
-                            (widget.categoryLabel ?? '').trim(),
-                            (widget.themeLabel ?? '').trim(),
-                          ].where((value) => value.isNotEmpty).join(' · '),
+                          (widget.themeLabel ?? '').trim(),
                           style: const TextStyle(
                             fontFamily: 'Pretendard',
                             fontSize: 13,

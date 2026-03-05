@@ -26,8 +26,9 @@ class _PlacebookListViewState extends State<PlacebookListView> {
   int _createdCount = 0;
   int _favoriteCount = 0;
   int _totalCount = 0;
+  String _selectedThemeSort = 'asc';
   late final VoidCallback _tabListener;
-  final Map<String, ScrollController> _categoryScrollControllers = {};
+  final ScrollController _listController = ScrollController();
 
   @override
   void initState() {
@@ -48,34 +49,23 @@ class _PlacebookListViewState extends State<PlacebookListView> {
   @override
   void dispose() {
     HomeTabController.currentIndex.removeListener(_tabListener);
-    for (final controller in _categoryScrollControllers.values) {
-      controller.dispose();
-    }
+    _listController.dispose();
     super.dispose();
   }
 
-  ScrollController _controllerForCategory(String id) {
-    return _categoryScrollControllers.putIfAbsent(
-      id,
-      () => ScrollController(),
-    );
-  }
-
   void _scrollToTop() {
-    for (final controller in _categoryScrollControllers.values) {
-      if (!controller.hasClients) continue;
-      controller.animateTo(
-        0,
-        duration: const Duration(milliseconds: 200),
-        curve: Curves.easeOut,
-      );
-    }
+    if (!_listController.hasClients) return;
+    _listController.animateTo(
+      0,
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeOut,
+    );
   }
 
 
   Future<void> _loadPlacebookData() async {
     final categories = await PlacebookCache.loadCategories();
-    final themes = await PlacebookCache.loadThemes();
+    final themes = await ApiClient.fetchPlacebookThemesSimple();
     final places = await ApiClient.fetchMyPlacebookMyPlaces();
     if (!mounted) return;
     setState(() {
@@ -114,30 +104,17 @@ class _PlacebookListViewState extends State<PlacebookListView> {
 
   @override
   Widget build(BuildContext context) {
-    final placesByTheme = _groupPlacesByTheme();
-    final categories = _categories
+    final themes = _themes
         .whereType<Map<String, dynamic>>()
         .where((item) => item['isActive'] != false)
         .toList()
       ..sort((a, b) {
-        final aOrder = (a['sortOrder'] as num?)?.toInt() ?? 0;
-        final bOrder = (b['sortOrder'] as num?)?.toInt() ?? 0;
-        return aOrder.compareTo(bOrder);
+        final aTitle = _themeTitle(a).toLowerCase();
+        final bTitle = _themeTitle(b).toLowerCase();
+        final compare = aTitle.compareTo(bTitle);
+        return _selectedThemeSort == 'asc' ? compare : -compare;
       });
-    final themesByCategory = <String, List<Map<String, dynamic>>>{};
-    for (final theme in _themes) {
-      if (theme['isActive'] == false) continue;
-      final categoryId = theme['categoryId']?.toString() ?? '';
-      if (categoryId.isEmpty) continue;
-      themesByCategory.putIfAbsent(categoryId, () => []).add(theme);
-    }
-    for (final entry in themesByCategory.entries) {
-      entry.value.sort((a, b) {
-        final aOrder = (a['sortOrder'] as num?)?.toInt() ?? 0;
-        final bOrder = (b['sortOrder'] as num?)?.toInt() ?? 0;
-        return aOrder.compareTo(bOrder);
-      });
-    }
+    final placesByTheme = _groupPlacesByTheme();
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -152,402 +129,171 @@ class _PlacebookListViewState extends State<PlacebookListView> {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 ),
               )
-            : categories.isEmpty
-                ? const _EmptyState(
-                    title: '도감이 비어있어요',
-                    description: '카테고리/테마 정보를 불러오지 못했어요.',
-                  )
-                : DefaultTabController(
-                    length: categories.length,
-                    child: NestedScrollView(
-                      headerSliverBuilder: (context, innerBoxIsScrolled) {
-                        return [
-                          SliverToBoxAdapter(
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 16, vertical: 16),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                Row(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.center,
-                                  children: [
-                                    const Expanded(
-                                      child: Text(
-                                        '내 도감',
-                                        textAlign: TextAlign.left,
-                                        style: TextStyle(
-                                          color: Colors.black,
-                                          fontFamily: 'Pretendard',
-                                          fontSize: 20,
-                                          fontWeight: FontWeight.w800,
-                                        ),
-                                      ),
-                                    ),
-                                    CommonInkWell(
-                                      onTap: () {},
-                                      borderRadius: BorderRadius.circular(20),
-                                      child: const SizedBox(
-                                        width: 36,
-                                        height: 36,
-                                        child: Icon(
-                                          PhosphorIconsRegular.magnifyingGlass,
-                                          size: 20,
-                                          color: Colors.black,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                  const SizedBox(height: 16),
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: _CountChip(
-                                          label: '내가 등록한 장소',
-                                          value: _createdCount,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 10),
-                                      Expanded(
-                                        child: _CountChip(
-                                          label: '즐겨찾기한 장소',
-                                          value: _favoriteCount,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 10),
-                                      Expanded(
-                                        child: _CountChip(
-                                          label: '모은 장소',
-                                          value: _totalCount,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        const SliverToBoxAdapter(child: SizedBox.shrink()),
-                        SliverPersistentHeader(
-                          pinned: true,
-                          delegate: _TabBarHeaderDelegate(
-                            TabBar(
-                              isScrollable: true,
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 16),
-                              indicatorPadding: EdgeInsets.zero,
-                              labelPadding: const EdgeInsets.only(right: 24),
-                              tabAlignment: TabAlignment.start,
-                              splashFactory: NoSplash.splashFactory,
-                              overlayColor: WidgetStateProperty.all(
-                                  Colors.transparent),
-                              labelColor: Colors.black,
-                              unselectedLabelColor: const Color(0xFFB0B0B0),
-                              indicator: const UnderlineTabIndicator(
-                                borderSide: BorderSide(
-                                    color: Colors.black, width: 2),
-                                borderRadius: BorderRadius.zero,
-                              ),
-                              labelStyle: const TextStyle(
-                                fontFamily: 'Pretendard',
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                              ),
-                              unselectedLabelStyle: const TextStyle(
-                                fontFamily: 'Pretendard',
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
-                              ),
-                              tabs: [
-                                for (final category in categories)
-                                  Tab(
-                                    text: (category['name'] as String?) ??
-                                        (category['title'] as String?) ??
-                                        '카테고리',
-                                  ),
-                              ],
-                            ),
+            : ListView(
+                controller: _listController,
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      const Expanded(
+                        child: Text(
+                          '내 도감',
+                          textAlign: TextAlign.left,
+                          style: TextStyle(
+                            color: Colors.black,
+                            fontFamily: 'Pretendard',
+                            fontSize: 24,
+                            fontWeight: FontWeight.w800,
                           ),
                         ),
-                        ];
-                      },
-                      body: TabBarView(
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  RichText(
+                    text: TextSpan(
+                      style: const TextStyle(
+                        fontFamily: 'Pretendard',
+                        fontSize: 14,
+                        fontWeight: FontWeight.w400,
+                        color: Colors.black,
+                      ),
+                      children: [
+                        TextSpan(
+                          text: '$_createdCount',
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const TextSpan(text: ' 개의 장소를 '),
+                        const TextSpan(
+                          text: '등록',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const TextSpan(text: '했고,'),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  RichText(
+                    text: TextSpan(
+                      style: const TextStyle(
+                        fontFamily: 'Pretendard',
+                        fontSize: 14,
+                        fontWeight: FontWeight.w400,
+                        color: Colors.black,
+                      ),
+                      children: [
+                        TextSpan(
+                          text: '$_favoriteCount',
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const TextSpan(text: ' 개의 장소를 '),
+                        const TextSpan(
+                          text: '즐겨찾기',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const TextSpan(text: ' 했어요!'),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      const Text(
+                        '테마 리스트',
+                        style: TextStyle(
+                          fontFamily: 'Pretendard',
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.black,
+                        ),
+                      ),
+                      const Spacer(),
+                      Row(
                         children: [
-                          for (final category in categories)
-                            ListView(
-                              controller: _controllerForCategory(
-                                category['id']?.toString() ?? '',
+                          GestureDetector(
+                            onTap: () {
+                              if (_selectedThemeSort == 'asc') return;
+                              setState(() => _selectedThemeSort = 'asc');
+                            },
+                            behavior: HitTestBehavior.opaque,
+                            child: Text(
+                              '가나다순',
+                              style: TextStyle(
+                                fontFamily: 'Pretendard',
+                                fontSize: 13,
+                                fontWeight: _selectedThemeSort == 'asc'
+                                    ? FontWeight.w700
+                                    : FontWeight.w500,
+                                color: _selectedThemeSort == 'asc'
+                                    ? Colors.black
+                                    : const Color(0x88000000),
                               ),
-                              padding: const EdgeInsets.fromLTRB(
-                                  16, 24, 16, 24),
-                              children: [
-                                _CategorySection(
-                                  title: (category['name'] as String?) ??
-                                      (category['title'] as String?) ??
-                                      '카테고리',
-                                  themes: themesByCategory[
-                                          category['id']?.toString() ?? ''] ??
-                                      const [],
-                                  placesByTheme: placesByTheme,
-                                  onCreated: (created) async {
-                                    if (!mounted || created == null) return;
-                                    await _loadPlacebookData();
-                                    if (!mounted) return;
-                                    _scrollToTop();
-                                    if (!mounted) return;
-                                    Navigator.of(context).push(
-                                      MaterialPageRoute(
-                                        builder: (_) =>
-                                            PlacebookDetailView(space: created),
-                                      ),
-                                    );
-                                  },
-                                ),
-                              ],
                             ),
+                          ),
+                          Container(
+                            width: 1,
+                            height: 12,
+                            margin: const EdgeInsets.symmetric(horizontal: 8),
+                            color: const Color(0x33000000),
+                          ),
+                          GestureDetector(
+                            onTap: () {
+                              if (_selectedThemeSort == 'desc') return;
+                              setState(() => _selectedThemeSort = 'desc');
+                            },
+                            behavior: HitTestBehavior.opaque,
+                            child: Text(
+                              '다나가순',
+                              style: TextStyle(
+                                fontFamily: 'Pretendard',
+                                fontSize: 13,
+                                fontWeight: _selectedThemeSort == 'desc'
+                                    ? FontWeight.w700
+                                    : FontWeight.w500,
+                                color: _selectedThemeSort == 'desc'
+                                    ? Colors.black
+                                    : const Color(0x88000000),
+                              ),
+                            ),
+                          ),
                         ],
                       ),
-                    ),
+                    ],
                   ),
-      ),
-    );
-  }
-}
-
-class _TabBarHeaderDelegate extends SliverPersistentHeaderDelegate {
-  _TabBarHeaderDelegate(this.tabBar);
-
-  final TabBar tabBar;
-
-  @override
-  double get minExtent => tabBar.preferredSize.height;
-
-  @override
-  double get maxExtent => tabBar.preferredSize.height;
-
-  @override
-  Widget build(
-    BuildContext context,
-    double shrinkOffset,
-    bool overlapsContent,
-  ) {
-    return Container(
-      color: Colors.white,
-      child: tabBar,
-    );
-  }
-
-  @override
-  bool shouldRebuild(covariant _TabBarHeaderDelegate oldDelegate) {
-    return oldDelegate.tabBar != tabBar;
-  }
-}
-
-class _CategorySection extends StatelessWidget {
-  const _CategorySection({
-    required this.title,
-    required this.themes,
-    required this.placesByTheme,
-    required this.onCreated,
-  });
-
-  final String title;
-  final List<Map<String, dynamic>> themes;
-  final Map<String, List<Map<String, dynamic>>> placesByTheme;
-  final ValueChanged<Map<String, dynamic>?> onCreated;
-
-  @override
-  Widget build(BuildContext context) {
-    if (themes.isEmpty) {
-      return const SizedBox.shrink();
-    }
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (title.trim().isNotEmpty) ...[
-            Text(
-              title,
-              style: const TextStyle(
-                fontFamily: 'Pretendard',
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: Colors.black,
-              ),
-            ),
-            const SizedBox(height: 12),
-          ],
-          for (final theme in themes)
-            _ThemeSection(
-              categoryTitle: title,
-              theme: theme,
-              places: placesByTheme[theme['id']?.toString() ?? ''] ?? const [],
-              onCreated: onCreated,
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ThemeSection extends StatelessWidget {
-  const _ThemeSection({
-    required this.categoryTitle,
-    required this.theme,
-    required this.places,
-    required this.onCreated,
-  });
-
-  final String categoryTitle;
-  final Map<String, dynamic> theme;
-  final List<Map<String, dynamic>> places;
-  final ValueChanged<Map<String, dynamic>?> onCreated;
-
-  @override
-  Widget build(BuildContext context) {
-    final title =
-        (theme['name'] as String?) ?? (theme['title'] as String?) ?? '테마';
-    final subtitle = (theme['subtitle'] as String?)?.trim() ?? '';
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: const TextStyle(
-              fontFamily: 'Pretendard',
-              fontSize: 15,
-              fontWeight: FontWeight.w600,
-              color: Colors.black,
-            ),
-          ),
-          if (subtitle.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            Text(
-              subtitle,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontFamily: 'Pretendard',
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-                color: Color(0xFF9E9E9E),
-              ),
-            ),
-          ],
-          const SizedBox(height: 14),
-          if (places.isEmpty)
-            PlacebookListEmptyView(
-              themeTitle: title,
-              onTap: () async {
-                final result =
-                    await showCupertinoModalPopup<Map<String, dynamic>>(
-                  context: context,
-                  builder: (_) => SizedBox.expand(
-                    child: PlacebookCreateView(
-                      categoryTitle: categoryTitle,
-                      themeTitle: title,
-                      themeId: theme['id']?.toString(),
+                  const SizedBox(height: 12),
+                  for (final theme in themes) ...[
+                    _ThemeSection(
+                      theme: theme,
+                      places: placesByTheme[theme['id']?.toString() ?? ''] ??
+                          const [],
+                      onCreated: (created) async {
+                        if (!mounted || created == null) return;
+                        await _loadPlacebookData();
+                        if (!mounted) return;
+                        _scrollToTop();
+                        if (!mounted) return;
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => PlacebookDetailView(space: created),
+                          ),
+                        );
+                      },
                     ),
-                  ),
-                );
-                onCreated(result);
-              },
-            )
-          else
-            SizedBox(
-              height: 100,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                physics: const BouncingScrollPhysics(),
-                itemCount: places.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 12),
-                itemBuilder: (context, index) {
-                  return _RegisteredPlaceCard(place: places[index]);
-                },
+                    const SizedBox(height: 24),
+                  ],
+                ],
               ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _RegisteredPlaceCard extends StatelessWidget {
-  const _RegisteredPlaceCard({
-    required this.place,
-  });
-
-  final Map<String, dynamic> place;
-
-  @override
-  Widget build(BuildContext context) {
-    final title = (place['title'] as String?) ??
-        (place['name'] as String?) ??
-        '장소';
-    final thumbnailUrl = _resolvePlaceImageUrl(place);
-    final favoriteCount = (place['favoriteCount'] as num?)?.toInt() ?? 0;
-    final commentCount = (place['commentCount'] as num?)?.toInt() ?? 0;
-    final address = (place['address'] as String?) ??
-        (place['placeName'] as String?) ??
-        '';
-    return PlacebookListItemView(
-      title: title,
-      thumbnailUrl: thumbnailUrl,
-      favoriteCount: favoriteCount,
-      commentCount: commentCount,
-      address: address,
-      onTap: () {},
-    );
-  }
-}
-
-class _EmptyState extends StatelessWidget {
-  const _EmptyState({
-    required this.title,
-    required this.description,
-  });
-
-  final String title;
-  final String description;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 48),
-      child: Column(
-        children: [
-          const Icon(
-            PhosphorIconsRegular.bookOpen,
-            size: 32,
-            color: Color(0xFFBDBDBD),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            title,
-            style: const TextStyle(
-              fontFamily: 'Pretendard',
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF616161),
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            description,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontFamily: 'Pretendard',
-              fontSize: 12,
-              fontWeight: FontWeight.w400,
-              color: Color(0xFF9E9E9E),
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -582,6 +328,108 @@ String _resolvePlaceImageUrl(Map<String, dynamic> place) {
       (firstImage?['fileUrl'] as String?) ??
       (firstImage?['thumbnailUrl'] as String?) ??
       '';
+}
+
+String _themeTitle(Map<String, dynamic> theme) {
+  return (theme['title'] as String?) ??
+      (theme['name'] as String?) ??
+      '테마';
+}
+
+class _ThemeSection extends StatelessWidget {
+  const _ThemeSection({
+    required this.theme,
+    required this.places,
+    required this.onCreated,
+  });
+
+  final Map<String, dynamic> theme;
+  final List<Map<String, dynamic>> places;
+  final ValueChanged<Map<String, dynamic>?> onCreated;
+
+  @override
+  Widget build(BuildContext context) {
+    final title = _themeTitle(theme);
+    final subtitle = (theme['subtitle'] as String?)?.trim() ?? '';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            fontFamily: 'Pretendard',
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+            color: Colors.black,
+          ),
+        ),
+        if (subtitle.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Text(
+            subtitle,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontFamily: 'Pretendard',
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: Color(0xFF9E9E9E),
+            ),
+          ),
+        ],
+        const SizedBox(height: 14),
+        if (places.isEmpty)
+          PlacebookListEmptyView(
+            themeTitle: title,
+            onTap: () async {
+              final result = await showCupertinoModalPopup<Map<String, dynamic>>(
+                context: context,
+                builder: (_) => SizedBox.expand(
+                  child: PlacebookCreateView(
+                    categoryTitle: '',
+                    themeTitle: title,
+                    themeId: theme['id']?.toString(),
+                  ),
+                ),
+              );
+              onCreated(result);
+            },
+          )
+        else
+          SizedBox(
+            height: 100,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              itemCount: places.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 12),
+              itemBuilder: (context, index) {
+                final place = places[index];
+                final title = (place['title'] as String?) ??
+                    (place['name'] as String?) ??
+                    '장소';
+                final thumbnailUrl = _resolvePlaceImageUrl(place);
+                final favoriteCount =
+                    (place['favoriteCount'] as num?)?.toInt() ?? 0;
+                final commentCount =
+                    (place['commentCount'] as num?)?.toInt() ?? 0;
+                final address = (place['address'] as String?) ??
+                    (place['placeName'] as String?) ??
+                    '';
+                return PlacebookListItemView(
+                  title: title,
+                  thumbnailUrl: thumbnailUrl,
+                  favoriteCount: favoriteCount,
+                  commentCount: commentCount,
+                  address: address,
+                  onTap: () {},
+                );
+              },
+            ),
+          ),
+      ],
+    );
+  }
 }
 
 class _CountChip extends StatelessWidget {

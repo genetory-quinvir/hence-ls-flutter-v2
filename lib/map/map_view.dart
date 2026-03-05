@@ -16,6 +16,7 @@ import '../common/network/api_client.dart';
 import '../common/state/placebook_cache.dart';
 import '../common/widgets/common_map_view.dart';
 import '../common/widgets/common_place_marker.dart';
+import '../common/widgets/common_empty_view.dart';
 import '../common/widgets/common_place_cluster_marker.dart';
 import '../common/widgets/common_login_guard.dart';
 import '../common/widgets/common_textfield_view.dart';
@@ -61,6 +62,7 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
   bool _isProgrammaticMove = false;
   String? _selectedLiveMarkerId;
   NLatLng? _lastCenter;
+  NLatLng? _lastMyLocation;
   double? _lastZoom;
   NLatLng? _lastFetchCenter;
   double? _lastFetchZoom;
@@ -69,6 +71,9 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
   double _mapViewportHeight = 0;
   double _lastViewportWidth = 0;
   double _lastViewportHeight = 0;
+  static const String _radiusOverlayId = 'api-radius';
+  NCircleOverlay? _radiusOverlay;
+  bool _showRadiusOverlay = false;
   late final Widget _mapWidget;
   final CommonMapViewController _mapViewController = CommonMapViewController();
   List<Map<String, dynamic>> _categoryFilters = const [];
@@ -160,8 +165,8 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
     setState(() => _isLoadingNear = true);
     try {
       final center = _lastCenter ?? const NLatLng(37.5665, 126.9780);
-      final radiusKm =
-          (_radiusKmForScreen() ?? 10.0).clamp(1.0, 500.0);
+      final radiusKm = _radiusKmForScreen() ?? 10.0;
+      await _updateRadiusOverlay(center: center);
       const limit = 200;
       const orderBy = 'createdAt';
       const order = 'DESC';
@@ -232,11 +237,17 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
     _mapWidget = CommonMapView(
       controller: _mapViewController,
       showMyLocationButton: false,
+      onMyLocationChanged: (location) {
+        _lastMyLocation = location;
+      },
       onCenterChanged: _onMapCenterChanged,
       onCameraMoving: _onMapCameraMoving,
       onCameraIdle: _onMapCameraIdle,
       onMapReady: (controller) {
         _mapController = controller;
+        controller
+            .getCameraPosition()
+            .then((camera) => _updateRadiusOverlay(center: camera.target));
         final pending = _pendingMapFocusRequest;
         if (pending != null) {
           _focusToCreatedLivespace(pending);
@@ -611,12 +622,46 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
 
   double? _radiusKmForScreen() {
     final controller = _mapController;
-    if (controller == null || _mapViewportHeight <= 0) return null;
-    final halfHeight = _mapViewportHeight / 2;
+    if (controller == null || _mapViewportWidth <= 0) return null;
+    final halfWidth = _mapViewportWidth / 2;
     final metersPerDp = controller.getMeterPerDp();
-    final meters = metersPerDp * halfHeight;
+    final meters = metersPerDp * halfWidth;
     if (meters.isNaN || meters.isInfinite || meters <= 0) return null;
     return meters / 1000;
+  }
+
+
+  Future<void> _updateRadiusOverlay({NLatLng? center}) async {
+    final controller = _mapController;
+    if (controller == null) return;
+    if (!_showRadiusOverlay) {
+      final existing = _radiusOverlay;
+      if (existing != null) {
+        await controller.deleteOverlay(existing.info);
+        _radiusOverlay = null;
+      }
+      return;
+    }
+    final target = center ?? _lastCenter;
+    if (target == null) return;
+    final radiusKm = _radiusKmForScreen() ?? 10.0;
+    final radiusMeters = radiusKm * 1000;
+    final overlay = _radiusOverlay;
+    if (overlay == null) {
+      final created = NCircleOverlay(
+        id: _radiusOverlayId,
+        center: target,
+        radius: radiusMeters,
+        color: Colors.blue.withOpacity(0.12),
+        outlineColor: Colors.blue.withOpacity(0.35),
+        outlineWidth: 1.2,
+      );
+      _radiusOverlay = created;
+      await controller.addOverlay(created);
+    } else {
+      overlay.setCenter(target);
+      overlay.setRadius(radiusMeters);
+    }
   }
 
 
@@ -1140,11 +1185,11 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
   double _toRadians(double degree) => degree * (math.pi / 180);
 
   String? _distanceLabelForSpace({required double? lat, required double? lng}) {
-    final center = _lastCenter;
-    if (center == null || lat == null || lng == null) return null;
+    final location = _lastMyLocation;
+    if (location == null || lat == null || lng == null) return null;
     final meters = _distanceMeters(
-      lat1: center.latitude,
-      lng1: center.longitude,
+      lat1: location.latitude,
+      lng1: location.longitude,
       lat2: lat,
       lng2: lng,
     );
@@ -1203,6 +1248,7 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
         final camera = await controller.getCameraPosition();
         _lastCenter = camera.target;
         _lastZoom = camera.zoom;
+        await _updateRadiusOverlay(center: camera.target);
         if (!_shouldFetchPlacebook(center: camera.target, zoom: camera.zoom)) {
           triggeredFetch = false;
         } else {
@@ -1336,6 +1382,7 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
                             duration: const Duration(milliseconds: 180),
                             curve: Curves.easeOut,
                             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                            alignment: Alignment.centerLeft,
                             decoration: BoxDecoration(
                               color: Colors.white,
                               borderRadius: BorderRadius.circular(999),
@@ -1349,6 +1396,7 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
                             ),
                             child: Text(
                               filterLabel,
+                              textAlign: TextAlign.left,
                               style: TextStyle(
                                 fontFamily: 'Pretendard',
                                 fontSize: 13,
@@ -1779,10 +1827,18 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
                 child: CommonHandleListOverlay(
                   peekHeight: 160,
                   initialChildSize: 0.0,
-                  title: '${_typeScopedSpaces.length}개의 장소 발견!',
+                  title: '${_typeScopedSpaces.length} 개의 장소를 발견했어요!',
                   count: null,
                   trailing: _buildListSortToggle(),
-                  items: _sortedListSpaces().map((space) {
+                  items: _sortedListSpaces().isEmpty
+                      ? const [
+                          CommonEmptyView(
+                            message: '표시할 장소가 없습니다.',
+                            showButton: false,
+                            height: 80,
+                          ),
+                        ]
+                      : _sortedListSpaces().map((space) {
                     final lat = (space['latitude'] as num?)?.toDouble();
                     final lng = (space['longitude'] as num?)?.toDouble();
                     final title = _titleForSpace(space);
@@ -1902,21 +1958,18 @@ class _MapToggleButton extends StatelessWidget {
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: Container(
-        width: 50,
-        height: 50,
+        width: 48,
+        height: 48,
         decoration: ShapeDecoration(
           color: isLight ? Colors.white : Colors.black,
-          shape: ContinuousRectangleBorder(
-            borderRadius: const BorderRadius.all(Radius.circular(20)),
-            side: BorderSide(
-              color: isLight ? const Color(0x1A000000) : Colors.black,
-            ),
+          shape: const ContinuousRectangleBorder(
+            borderRadius: BorderRadius.all(Radius.circular(20)),
           ),
           shadows: const [
             BoxShadow(
               color: Color(0x14000000),
-              blurRadius: 12,
-              offset: Offset(0, 4),
+              blurRadius: 14,
+              offset: Offset(0, 6),
             ),
           ],
         ),
@@ -2026,19 +2079,18 @@ class _MapToggleHorizontal extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 50,
+      height: 48,
       padding: const EdgeInsets.all(4),
       decoration: ShapeDecoration(
         color: Colors.white,
         shape: const ContinuousRectangleBorder(
           borderRadius: BorderRadius.all(Radius.circular(24)),
-          side: BorderSide(color: Color(0x1A000000)),
         ),
         shadows: const [
           BoxShadow(
             color: Color(0x14000000),
-            blurRadius: 12,
-            offset: Offset(0, 4),
+            blurRadius: 14,
+            offset: Offset(0, 6),
           ),
         ],
       ),
@@ -2121,19 +2173,18 @@ class _MapFloatingButton extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 50,
-        height: 50,
+        width: 48,
+        height: 48,
         decoration: const ShapeDecoration(
           color: Colors.white,
           shape: ContinuousRectangleBorder(
             borderRadius: BorderRadius.all(Radius.circular(20)),
-            side: BorderSide(color: Color(0x1A000000)),
           ),
           shadows: [
             BoxShadow(
               color: Color(0x14000000),
-              blurRadius: 12,
-              offset: Offset(0, 4),
+              blurRadius: 14,
+              offset: Offset(0, 6),
             ),
           ],
         ),
