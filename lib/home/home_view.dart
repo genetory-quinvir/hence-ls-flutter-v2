@@ -49,13 +49,14 @@ class _HomeViewState extends State<HomeView> {
       value: statusBarStyle,
       child: Scaffold(
         backgroundColor: Colors.white,
+        extendBody: true,
         resizeToAvoidBottomInset: false,
         body: IndexedStack(
           index: _currentIndex,
           children: const [
             FeaturedView(),
             MapView(),
-            PlacebookListView(),
+            _PlacebookListWrapper(),
             SafeArea(top: true, bottom: true, child: NotificationView()),
             SafeArea(bottom: true, child: ProfileView()),
           ],
@@ -92,6 +93,22 @@ class _HomeViewState extends State<HomeView> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _PlacebookListWrapper extends StatelessWidget {
+  const _PlacebookListWrapper();
+
+  @override
+  Widget build(BuildContext context) {
+    final data = MediaQuery.of(context);
+    return MediaQuery(
+      data: data.copyWith(
+        padding: data.padding.copyWith(bottom: 0),
+        viewPadding: data.viewPadding.copyWith(bottom: 0),
+      ),
+      child: const PlacebookListView(),
     );
   }
 }

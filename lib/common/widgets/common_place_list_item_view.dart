@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:figma_squircle/figma_squircle.dart';
+import 'package:hence_ls_flutter_v2/main.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import 'common_image_view.dart';
@@ -16,6 +17,7 @@ class CommonPlaceListItemView extends StatelessWidget {
     this.categoryText,
     this.themeText,
     this.distanceText,
+    this.favorited = false,
     this.onTap,
   });
 
@@ -27,6 +29,7 @@ class CommonPlaceListItemView extends StatelessWidget {
   final String? categoryText;
   final String? themeText;
   final String? distanceText;
+  final bool favorited;
   final VoidCallback? onTap;
 
   @override
@@ -36,6 +39,7 @@ class CommonPlaceListItemView extends StatelessWidget {
         address.trim().isEmpty ? '장소 등록 안됨' : address.trim();
     final safeTheme = themeText?.trim() ?? '';
     final hasMetaLine = safeTheme.isNotEmpty;
+    final rotationDegrees = _thumbnailRotationDegrees(safeTitle, safeAddress);
     const metaStyle = TextStyle(
       fontFamily: 'Pretendard',
       fontSize: 12,
@@ -49,19 +53,62 @@ class CommonPlaceListItemView extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            ClipSmoothRect(
-              radius: SmoothBorderRadius(
-                cornerRadius: 12,
-                cornerSmoothing: 1,
-              ),
-              child: SizedBox(
-                width: 72,
-                height: 72,
-                child: CommonImageView(
-                  networkUrl: thumbnailUrl,
-                  fit: BoxFit.cover,
-                  backgroundColor: const Color(0xFFF2F2F2),
-                ),
+            Transform.rotate(
+              angle: _degreesToRadians(rotationDegrees),
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Container(
+                    width: 72,
+                    height: 72,
+                    decoration: ShapeDecoration(
+                      shape: SmoothRectangleBorder(
+                        borderRadius: SmoothBorderRadius(
+                          cornerRadius: 12,
+                          cornerSmoothing: 1,
+                        ),
+                        side: const BorderSide(color: Colors.white, width: 4),
+                      ),
+                      shadows: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.08),
+                          blurRadius: 20,
+                          offset: const Offset(0, 0),
+                        ),
+                      ],
+                    ),
+                    child: ClipSmoothRect(
+                      radius: SmoothBorderRadius(
+                        cornerRadius: 8,
+                        cornerSmoothing: 1,
+                      ),
+                      child: CommonImageView(
+                        networkUrl: thumbnailUrl,
+                        fit: BoxFit.cover,
+                        backgroundColor: const Color(0xFFF2F2F2),
+                      ),
+                    ),
+                  ),
+                  if (favorited)
+                    Positioned(
+                      top: -6,
+                      right: -6,
+                      child: Container(
+                        width: 28,
+                        height: 28,
+                        decoration: BoxDecoration(
+                          color: Colors.black,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: Colors.white, width: 2),
+                        ),
+                        child: const Icon(
+                          PhosphorIconsFill.bookmarkSimple,
+                          size: 14,
+                          color: MyApp.primary200,
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
             const SizedBox(width: 12),
@@ -111,7 +158,7 @@ class CommonPlaceListItemView extends StatelessWidget {
                       if (distanceText != null && distanceText!.isNotEmpty)
                         const SizedBox(width: 12),
                       const Icon(
-                        PhosphorIconsRegular.chatCircle,
+                        PhosphorIconsBold.chatCircle,
                         size: 15,
                         color: Color(0xFF757575),
                       ),
@@ -122,7 +169,7 @@ class CommonPlaceListItemView extends StatelessWidget {
                       ),
                       const SizedBox(width: 12),
                       const Icon(
-                        PhosphorIconsRegular.heart,
+                        PhosphorIconsBold.heart,
                         size: 15,
                         color: Color(0xFF757575),
                       ),
@@ -141,4 +188,14 @@ class CommonPlaceListItemView extends StatelessWidget {
       ),
     );
   }
+
+  double _thumbnailRotationDegrees(String title, String address) {
+    final seed = title.hashCode ^ address.hashCode;
+    final magnitude = 2 + (seed.abs() % 4); // 2~5
+    final sign = seed.isEven ? 1 : -1;
+    return magnitude * sign.toDouble();
+  }
+
+  double _degreesToRadians(double degrees) =>
+      degrees * (3.141592653589793 / 180);
 }

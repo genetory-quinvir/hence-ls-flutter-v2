@@ -520,13 +520,13 @@ class _CommonFeedItemViewState extends State<CommonFeedItemView> {
                 ),
                 const SizedBox(height: 24),
                 _ActionIcon(
-                  icon: PhosphorIconsRegular.chatCircle,
+                  icon: PhosphorIconsBold.chatCircle,
                   count: _commentCount,
                   onTap: () => _openComments(context),
                 ),
                 const SizedBox(height: 24),
                 _ActionIcon(
-                  icon: PhosphorIconsRegular.shareNetwork,
+                  icon: PhosphorIconsBold.shareNetwork,
                   count: 0,
                   onTap: () {},
                 ),

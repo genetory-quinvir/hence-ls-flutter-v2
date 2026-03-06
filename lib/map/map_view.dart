@@ -29,7 +29,16 @@ import 'map_filter/map_filter_view.dart';
 import '../common/navigation/root_navigator.dart';
 
 class MapView extends StatefulWidget {
-  const MapView({super.key});
+  const MapView({
+    super.key,
+    this.showFilterButton = true,
+    this.useBottomSafeArea = true,
+    this.fixedThemeIds,
+  });
+
+  final bool showFilterButton;
+  final bool useBottomSafeArea;
+  final List<String>? fixedThemeIds;
 
   @override
   State<MapView> createState() => _MapViewState();
@@ -48,6 +57,7 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
   final ScrollController _chipScrollController = ScrollController();
   Timer? _reverseGeocodeDebounce;
   bool _isLoadingNear = false;
+  bool _pendingFilterFetch = false;
   bool _isLoginPromptVisible = false;
   bool _awaitingFetchMarkers = false;
   List<Map<String, dynamic>> _nearSpaces = const [];
@@ -82,6 +92,8 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
   static const String _filterLabel = '필터';
   late final Map<String, GlobalKey> _chipKeys;
   late final VoidCallback _mapFocusListener;
+  late final VoidCallback _mapFilterListener;
+  late final VoidCallback _tabIndexListener;
   MapFocusRequest? _pendingMapFocusRequest;
   Map<String, dynamic>? _optimisticCreatedSpace;
   DateTime? _optimisticCreatedAt;
@@ -171,7 +183,7 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
       const orderBy = 'createdAt';
       const order = 'DESC';
       final categoryId = _selectedCategoryId;
-      final themeIds = _selectedThemeIds.isNotEmpty ? _selectedThemeIds : null;
+      final themeIds = _effectiveThemeIds.isNotEmpty ? _effectiveThemeIds : null;
       final spaces = _selectedIndex == 1
           ? await ApiClient.fetchTopPlacebookThemes(
               latitude: center.latitude,
@@ -212,6 +224,12 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
       }
     } finally {
       if (mounted) setState(() => _isLoadingNear = false);
+      if (_pendingFilterFetch) {
+        _pendingFilterFetch = false;
+        if (mounted) {
+          _fetchPlacebookSpaces();
+        }
+      }
     }
   }
 
@@ -230,10 +248,21 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
 
   List<Map<String, dynamic>> get _typeScopedSpaces => _nearSpaces;
 
+  List<String> get _effectiveThemeIds {
+    final fixed = widget.fixedThemeIds;
+    if (fixed != null && fixed.isNotEmpty) {
+      return fixed;
+    }
+    return _selectedThemeIds;
+  }
 
   @override
   void initState() {
     super.initState();
+    final fixed = widget.fixedThemeIds;
+    if (fixed != null && fixed.isNotEmpty) {
+      _selectedThemeIds = List<String>.from(fixed);
+    }
     _mapWidget = CommonMapView(
       controller: _mapViewController,
       showMyLocationButton: false,
@@ -256,7 +285,21 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
       },
     );
     _mapFocusListener = _handleMapFocusRequest;
+    _mapFilterListener = _handleMapFilterRequest;
     HomeTabController.mapFocusRequest.addListener(_mapFocusListener);
+    HomeTabController.mapFilterRequest.addListener(_mapFilterListener);
+    _tabIndexListener = () {
+      if (HomeTabController.currentIndex.value == 1) {
+        _handleMapFilterRequest();
+      }
+    };
+    HomeTabController.currentIndex.addListener(_tabIndexListener);
+    if (HomeTabController.mapFilterRequest.value != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _handleMapFilterRequest();
+      });
+    }
     _chipKeys = <String, GlobalKey>{};
     _loadCategoryFilters();
     _loadThemeFilters();
@@ -269,8 +312,22 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
   }
 
   @override
+  void didUpdateWidget(covariant MapView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final fixed = widget.fixedThemeIds;
+    final oldFixed = oldWidget.fixedThemeIds;
+    if (fixed != oldFixed) {
+      if (fixed != null && fixed.isNotEmpty) {
+        _selectedThemeIds = List<String>.from(fixed);
+      }
+    }
+  }
+
+  @override
   void dispose() {
     HomeTabController.mapFocusRequest.removeListener(_mapFocusListener);
+    HomeTabController.mapFilterRequest.removeListener(_mapFilterListener);
+    HomeTabController.currentIndex.removeListener(_tabIndexListener);
     _reverseGeocodeDebounce?.cancel();
     _mapToggleToastTimer?.cancel();
     _chipScrollController.dispose();
@@ -579,6 +636,33 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
     _focusToCreatedLivespace(request, consumeRequest: true);
   }
 
+  void _handleMapFilterRequest() {
+    final request = HomeTabController.mapFilterRequest.value;
+    if (request == null) return;
+    if (HomeTabController.currentIndex.value != 1) return;
+    if (request.selectMyMap && _selectedIndex != 0) {
+      setState(() => _selectedIndex = 0);
+    }
+    setState(() {
+      _selectedCategoryId = request.categoryId;
+      if (widget.fixedThemeIds == null || widget.fixedThemeIds!.isEmpty) {
+        _selectedThemeIds = request.themeIds;
+      }
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _centerChip(animated: false);
+      _updateLiveMarkerPoints();
+      if (_isLoadingNear) {
+        _pendingFilterFetch = true;
+        return;
+      }
+      _fetchPlacebookSpaces();
+    });
+    if (identical(HomeTabController.mapFilterRequest.value, request)) {
+      HomeTabController.mapFilterRequest.value = null;
+    }
+  }
+
   Future<void> _forceRefreshLiveMarkers() async {
     if (!mounted) return;
     setState(() {
@@ -591,6 +675,23 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
     await _updateLiveMarkerPoints();
     if (!mounted) return;
     setState(() => _showLiveMarkers = true);
+  }
+
+  Future<void> _zoomBy(double delta) async {
+    final controller = _mapController;
+    if (controller == null) return;
+    try {
+      final camera = await controller.getCameraPosition();
+      final nextZoom = (camera.zoom + delta).clamp(1.0, 20.0);
+      await controller.updateCamera(
+        NCameraUpdate.withParams(
+          target: camera.target,
+          zoom: nextZoom,
+        ),
+      );
+    } catch (_) {
+      // Ignore transient map camera errors.
+    }
   }
 
   void _onMapCenterChanged(NLatLng center) {
@@ -761,19 +862,38 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
         images is List && images.isNotEmpty && images.first is Map<String, dynamic>
             ? images.first as Map<String, dynamic>
             : null;
-    return (thumbnailRaw is String ? thumbnailRaw : null) ??
-        thumbnailMap?['cdnUrl'] as String? ??
-        thumbnailMap?['fileUrl'] as String? ??
-        space['thumbnailUrl'] as String? ??
-        imageIdMap?['cdnUrl'] as String? ??
-        imageIdMap?['fileUrl'] as String? ??
-        imageIdMap?['thumbnailUrl'] as String? ??
-        imageMap?['cdnUrl'] as String? ??
-        imageMap?['fileUrl'] as String? ??
-        imageMap?['thumbnailUrl'] as String? ??
-        firstImage?['thumbnailUrl'] as String? ??
-        firstImage?['cdnUrl'] as String? ??
-        firstImage?['fileUrl'] as String?;
+    return _firstValidImageUrl([
+      thumbnailRaw is String ? thumbnailRaw : null,
+      thumbnailMap?['cdnUrl'] as String?,
+      thumbnailMap?['fileUrl'] as String?,
+      space['thumbnailUrl'] as String?,
+      imageIdMap?['cdnUrl'] as String?,
+      imageIdMap?['fileUrl'] as String?,
+      imageIdMap?['thumbnailUrl'] as String?,
+      imageMap?['cdnUrl'] as String?,
+      imageMap?['fileUrl'] as String?,
+      imageMap?['thumbnailUrl'] as String?,
+      firstImage?['thumbnailUrl'] as String?,
+      firstImage?['cdnUrl'] as String?,
+      firstImage?['fileUrl'] as String?,
+    ]);
+  }
+
+  String? _firstValidImageUrl(Iterable<String?> candidates) {
+    for (final candidate in candidates) {
+      final cleaned = _cleanImageUrl(candidate);
+      if (cleaned != null) return cleaned;
+    }
+    return null;
+  }
+
+  String? _cleanImageUrl(String? url) {
+    if (url == null) return null;
+    final trimmed = url.trim();
+    if (trimmed.isEmpty) return null;
+    if (trimmed.toLowerCase() == 'null') return null;
+    if (trimmed.toLowerCase() == 'undefined') return null;
+    return trimmed;
   }
 
   String _spaceType(Map<String, dynamic> space) {
@@ -844,13 +964,12 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
       final displayCenter =
           single?.point ?? displayCenters[cluster.clusterId] ?? cluster.center;
       final adjustedCenter = displayCenter;
-      final clusterThumbnailUrl = cluster.members
+      final clusterThumbnailUrls = cluster.members
           .map((member) => member.thumbnailUrl)
           .whereType<String>()
-          .firstWhere(
-            (url) => url.trim().isNotEmpty,
-            orElse: () => '',
-          );
+          .map((url) => url.trim())
+          .where((url) => url.isNotEmpty)
+          .toList();
       final isPrimarySingle = single != null &&
           (cluster.clusterId == primaryClusterId ||
               cluster.clusterId == _selectedLiveMarkerId);
@@ -913,7 +1032,7 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
                     child: single == null
                         ? CommonPlaceClusterMarker(
                             count: cluster.members.length,
-                            imageUrl: clusterThumbnailUrl,
+                            imageUrls: clusterThumbnailUrls,
                             size: markerSize,
                             title: title,
                           )
@@ -922,6 +1041,10 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
                                 imageUrl: single.thumbnailUrl,
                                 size: markerSize,
                                 title: title,
+                                isFavorited:
+                                    (single.space['favorited'] as bool?) ??
+                                        (single.space['isFavorited'] as bool?) ??
+                                        false,
                               )
                             : const Center(
                                 child: _PlaceDotMarker(),
@@ -1303,7 +1426,8 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
   }
 
   String? _activeChipId() {
-    if (_selectedThemeIds.length == 1) return _selectedThemeIds.first;
+    final themeIds = _effectiveThemeIds;
+    if (themeIds.length == 1) return themeIds.first;
     return _selectedCategoryId;
   }
 
@@ -1355,8 +1479,9 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
 
   Widget _buildFilterChips() {
     final themeChips = _themeChipFilters;
-    final filterCount = _selectedThemeIds.isNotEmpty
-        ? _selectedThemeIds.length
+    final effectiveThemeIds = _effectiveThemeIds;
+    final filterCount = effectiveThemeIds.isNotEmpty
+        ? effectiveThemeIds.length
         : (_selectedCategoryId != null && _selectedCategoryId!.isNotEmpty ? 1 : 0);
     final showFilterBadge = filterCount > 0;
     final filterLabel = _filterLabel;
@@ -1371,67 +1496,70 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
               clipBehavior: Clip.none,
               child: Row(
                 children: [
-                  Padding(
-                    padding: const EdgeInsets.only(left: 8, right: 12),
-                    child: GestureDetector(
-                      onTap: _openMapFilter,
-                      child: Stack(
-                        clipBehavior: Clip.none,
-                        children: [
-                          AnimatedContainer(
-                            duration: const Duration(milliseconds: 180),
-                            curve: Curves.easeOut,
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                            alignment: Alignment.centerLeft,
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(999),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.18),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 3),
+                  if (widget.showFilterButton)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 8, right: 12),
+                      child: GestureDetector(
+                        onTap: _openMapFilter,
+                        child: Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            AnimatedContainer(
+                              duration: const Duration(milliseconds: 180),
+                              curve: Curves.easeOut,
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                              alignment: Alignment.centerLeft,
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(999),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.18),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 3),
+                                  ),
+                                ],
+                              ),
+                              child: Text(
+                                filterLabel,
+                                textAlign: TextAlign.left,
+                                style: TextStyle(
+                                  fontFamily: 'Pretendard',
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.black,
                                 ),
-                              ],
-                            ),
-                            child: Text(
-                              filterLabel,
-                              textAlign: TextAlign.left,
-                              style: TextStyle(
-                                fontFamily: 'Pretendard',
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.black,
                               ),
                             ),
-                          ),
-                          if (showFilterBadge)
-                            Positioned(
-                              top: -8,
-                              right: -14,
-                              child: Container(
-                                padding:
-                                    const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: Colors.black,
-                                  borderRadius: BorderRadius.circular(999),
-                                  border: Border.all(color: Colors.white, width: 2),
-                                ),
-                                child: Text(
-                                  '$filterCount',
-                                  style: const TextStyle(
-                                    fontFamily: 'Pretendard',
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w700,
-                                    color: Colors.white,
+                            if (showFilterBadge)
+                              Positioned(
+                                top: -8,
+                                right: -14,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black,
+                                    borderRadius: BorderRadius.circular(999),
+                                    border: Border.all(color: Colors.white, width: 2),
+                                  ),
+                                  child: Text(
+                                    '$filterCount',
+                                    style: const TextStyle(
+                                      fontFamily: 'Pretendard',
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w700,
+                                      color: Colors.white,
+                                    ),
                                   ),
                                 ),
                               ),
-                            ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
-                  ),
                   if (themeChips.isEmpty)
                     Padding(
                       padding: const EdgeInsets.only(right: 8),
@@ -1458,8 +1586,8 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
                       final themeId = theme['id']?.toString() ?? '';
                       final displayLabel = (theme['title'] as String?) ?? '';
                       final selected = themeId.isNotEmpty &&
-                          _selectedThemeIds.length == 1 &&
-                          _selectedThemeIds.first == themeId;
+                          effectiveThemeIds.length == 1 &&
+                          effectiveThemeIds.first == themeId;
                       return Padding(
                         padding: const EdgeInsets.only(right: 8),
                         child: KeyedSubtree(
@@ -1467,6 +1595,10 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
                           child: GestureDetector(
                             onTap: () async {
                               if (themeId.isEmpty) return;
+                              if (widget.fixedThemeIds != null &&
+                                  widget.fixedThemeIds!.isNotEmpty) {
+                                return;
+                              }
                               setState(() {
                                 if (selected) {
                                   _selectedThemeIds = const [];
@@ -1543,13 +1675,15 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
       builder: (_) => MapFilterView(
         categories: _categoryFilters,
         selectedCategoryId: _selectedCategoryId,
-        selectedThemeIds: _selectedThemeIds,
+        selectedThemeIds: _effectiveThemeIds,
       ),
     );
     if (!mounted || result == null) return;
     setState(() {
       _selectedCategoryId = result['categoryId'] as String?;
-      _selectedThemeIds = (result['themeIds'] as List<String>? ?? const []);
+      if (widget.fixedThemeIds == null || widget.fixedThemeIds!.isEmpty) {
+        _selectedThemeIds = (result['themeIds'] as List<String>? ?? const []);
+      }
     });
     _updateLiveMarkerPoints();
     _fetchPlacebookSpaces();
@@ -1656,9 +1790,19 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
                 Positioned(
                   right: 16,
                   bottom: mapBottomInset + 32,
-                  child: _MapFloatingButton(
-                    icon: PhosphorIconsFill.navigationArrow,
-                    onTap: () => _mapViewController.moveToMyLocation(),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _MapZoomButton(
+                        onZoomIn: () => _zoomBy(1),
+                        onZoomOut: () => _zoomBy(-1),
+                      ),
+                      const SizedBox(height: 12),
+                      _MapFloatingButton(
+                        icon: PhosphorIconsFill.navigationArrow,
+                        onTap: () => _mapViewController.moveToMyLocation(),
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -1691,51 +1835,6 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
                       ),
                       child: Row(
                         children: [
-                          Stack(
-                            clipBehavior: Clip.none,
-                            children: [
-                              _MapToggleButton(
-                                icon: PhosphorIconsBold.magnifyingGlass,
-                                isSharedMap: false,
-                                isLight: true,
-                                onTap: _openMapFilter,
-                              ),
-                              Positioned(
-                                top: -8,
-                                right: -14,
-                                child: AnimatedSwitcher(
-                                  duration: const Duration(milliseconds: 220),
-                                  switchInCurve: Curves.easeOutBack,
-                                  switchOutCurve: Curves.easeInCubic,
-                                  transitionBuilder: (child, animation) {
-                                    return ScaleTransition(
-                                      scale: animation,
-                                      child: FadeTransition(
-                                        opacity: animation,
-                                        child: child,
-                                      ),
-                                    );
-                                  },
-                                  child: (_selectedThemeIds.isNotEmpty ||
-                                          (_selectedCategoryId != null &&
-                                              _selectedCategoryId!.isNotEmpty))
-                                      ? KeyedSubtree(
-                                          key: ValueKey(
-                                            _selectedThemeIds.isNotEmpty
-                                                ? _selectedThemeIds.length
-                                                : 1,
-                                          ),
-                                          child: _MapFilterBadge(
-                                            text: _selectedThemeIds.isNotEmpty
-                                                ? '${_selectedThemeIds.length}'
-                                                : '1',
-                                          ),
-                                        )
-                                      : const SizedBox.shrink(),
-                                ),
-                              ),
-                            ],
-                          ),
                           const Spacer(),
                           _MapToggleHorizontal(
                             isSharedMap: _selectedIndex == 1,
@@ -1827,6 +1926,7 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
                 child: CommonHandleListOverlay(
                   peekHeight: 160,
                   initialChildSize: 0.0,
+                  useBottomSafeArea: widget.useBottomSafeArea,
                   title: '${_typeScopedSpaces.length} 개의 장소를 발견했어요!',
                   count: null,
                   trailing: _buildListSortToggle(),
@@ -1866,6 +1966,9 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
                     final likeCount = (space['likeCount'] as num?)?.toInt() ?? 0;
                     final dateText =
                         (space['createdAt'] ?? space['updatedAt'] ?? '') as String;
+                    final favorited = (space['favorited'] as bool?) ??
+                        (space['isFavorited'] as bool?) ??
+                        false;
                     return CommonPlaceListItemView(
                       thumbnailUrl: _thumbnailForSpace(space) ?? '',
                       title: title.isNotEmpty ? title : '장소',
@@ -1875,6 +1978,7 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
                       categoryText: categoryText,
                       themeText: themeText,
                       distanceText: _distanceLabelForSpace(lat: lat, lng: lng),
+                      favorited: favorited,
                       onTap: () {
                         Navigator.of(context).push(
                           MaterialPageRoute(
@@ -1958,8 +2062,8 @@ class _MapToggleButton extends StatelessWidget {
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: Container(
-        width: 48,
-        height: 48,
+        width: 44,
+        height: 44,
         decoration: ShapeDecoration(
           color: isLight ? Colors.white : Colors.black,
           shape: const ContinuousRectangleBorder(
@@ -2046,8 +2150,8 @@ class _MapToggleSegmentButton extends StatelessWidget {
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: Container(
-        width: 42,
-        height: 42,
+        width: 40,
+        height: 40,
         decoration: ShapeDecoration(
           color: background,
           shape: const ContinuousRectangleBorder(
@@ -2057,7 +2161,7 @@ class _MapToggleSegmentButton extends StatelessWidget {
         alignment: Alignment.center,
         child: Icon(
           icon,
-          size: 16,
+          size: 20,
           color: iconColor,
         ),
       ),
@@ -2079,7 +2183,7 @@ class _MapToggleHorizontal extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 48,
+      height: 44,
       padding: const EdgeInsets.all(4),
       decoration: ShapeDecoration(
         color: Colors.white,
@@ -2099,7 +2203,7 @@ class _MapToggleHorizontal extends StatelessWidget {
         children: [
           _MapToggleSegmentButton(
             isActive: isSharedMap,
-            icon: PhosphorIconsBold.globe,
+            icon: PhosphorIconsBold.globeHemisphereEast,
             onTap: onSharedTap,
           ),
           const SizedBox(width: 6),
@@ -2173,8 +2277,8 @@ class _MapFloatingButton extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 48,
-        height: 48,
+        width: 44,
+        height: 44,
         decoration: const ShapeDecoration(
           color: Colors.white,
           shape: ContinuousRectangleBorder(
@@ -2194,6 +2298,67 @@ class _MapFloatingButton extends StatelessWidget {
           size: 20,
           color: Colors.black,
         ),
+      ),
+    );
+  }
+}
+
+class _MapZoomButton extends StatelessWidget {
+  const _MapZoomButton({
+    required this.onZoomIn,
+    required this.onZoomOut,
+  });
+
+  final VoidCallback onZoomIn;
+  final VoidCallback onZoomOut;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 44,
+      height: 88,
+      decoration: const ShapeDecoration(
+        color: Colors.white,
+        shape: ContinuousRectangleBorder(
+          borderRadius: BorderRadius.all(Radius.circular(20)),
+        ),
+        shadows: [
+          BoxShadow(
+            color: Color(0x14000000),
+            blurRadius: 14,
+            offset: Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Expanded(
+            child: CommonInkWell(
+              onTap: onZoomIn,
+              borderRadius: BorderRadius.circular(20),
+              child: const Center(
+                child: Icon(
+                  PhosphorIconsBold.plus,
+                  size: 20,
+                  color: Colors.black,
+                ),
+              ),
+            ),
+          ),
+          Expanded(
+            child: CommonInkWell(
+              onTap: onZoomOut,
+              borderRadius: BorderRadius.circular(20),
+              child: const Center(
+                child: Icon(
+                  PhosphorIconsBold.minus,
+                  size: 20,
+                  color: Colors.black,
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

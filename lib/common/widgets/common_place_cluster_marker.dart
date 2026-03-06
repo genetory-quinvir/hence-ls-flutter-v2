@@ -6,7 +6,7 @@ class CommonPlaceClusterMarker extends StatelessWidget {
   const CommonPlaceClusterMarker({
     super.key,
     required this.count,
-    this.imageUrl,
+    this.imageUrls = const [],
     this.title,
     this.size = 44,
   });
@@ -33,14 +33,23 @@ class CommonPlaceClusterMarker extends StatelessWidget {
   }
 
   final int count;
-  final String? imageUrl;
+  final List<String?> imageUrls;
   final String? title;
   final double size;
 
   @override
   Widget build(BuildContext context) {
     final label = (title?.trim().isNotEmpty ?? false) ? title!.trim() : '$count';
+    final validImages = imageUrls
+        .whereType<String>()
+        .map((url) => url.trim())
+        .where((url) => url.isNotEmpty)
+        .toList();
     final clusterCount = count.clamp(1, 5);
+    final imagesForStack = List<String>.generate(
+      clusterCount,
+      (index) => index < validImages.length ? validImages[index] : '',
+    );
     final sizes = [
       size * 1.0,
       size * 0.9,
@@ -77,7 +86,8 @@ class CommonPlaceClusterMarker extends StatelessWidget {
                 child: Transform.rotate(
                   angle: angles[i],
                   child: CommonPlaceMarker(
-                    imageUrl: imageUrl,
+                    imageUrl:
+                        imagesForStack[i].isNotEmpty ? imagesForStack[i] : null,
                     size: sizes[i],
                   ),
                 ),

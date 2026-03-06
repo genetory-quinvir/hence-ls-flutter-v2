@@ -9,7 +9,11 @@ import '../placebook/widgets/placebook_list_item_view.dart';
 import '../placebook/widgets/placebook_list_empty_view.dart';
 import '../placebook_create/placebook_create_view.dart';
 import '../placebook_detail/placebook_detail_view.dart';
+import '../placebook_collect/placebook_collect_view.dart';
 import '../common/widgets/common_inkwell.dart';
+import '../common/widgets/common_textfield_view.dart';
+import '../common/widgets/common_empty_view.dart';
+import '../common/widgets/common_refresh_view.dart';
 
 class PlacebookListView extends StatefulWidget {
   const PlacebookListView({super.key});
@@ -19,16 +23,22 @@ class PlacebookListView extends StatefulWidget {
 }
 
 class _PlacebookListViewState extends State<PlacebookListView> {
+  static const double _kCommonTabHeight = 66;
   bool _isLoading = true;
+  bool _isRefreshing = false;
   List<Map<String, dynamic>> _categories = const [];
   List<Map<String, dynamic>> _themes = const [];
-  List<Map<String, dynamic>> _registeredPlaces = const [];
+  Map<String, List<Map<String, dynamic>>> _placesByTheme = const {};
   int _createdCount = 0;
   int _favoriteCount = 0;
   int _totalCount = 0;
-  String _selectedThemeSort = 'asc';
+  String _selectedThemeSort = 'places';
+  String _selectedCollection = 'created';
   late final VoidCallback _tabListener;
   final ScrollController _listController = ScrollController();
+  final TextEditingController _searchController = TextEditingController();
+  String _searchText = '';
+  final Map<String, _PlacebookCacheSnapshot> _filterCache = {};
 
   @override
   void initState() {
@@ -50,6 +60,7 @@ class _PlacebookListViewState extends State<PlacebookListView> {
   void dispose() {
     HomeTabController.currentIndex.removeListener(_tabListener);
     _listController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -62,64 +73,143 @@ class _PlacebookListViewState extends State<PlacebookListView> {
     );
   }
 
+  void _handleSearchChanged(String value) {
+    setState(() => _searchText = value);
+  }
 
-  Future<void> _loadPlacebookData() async {
+  Future<void> _loadPlacebookData({
+    String? filter,
+    String? themeOrderBy,
+    String? themeOrderBy2,
+    bool forceRefresh = false,
+  }) async {
+    final activeFilter = filter ?? _selectedCollection;
+    final activeThemeOrderBy = themeOrderBy ?? _themeOrderBy(_selectedThemeSort);
+    final activeThemeOrderBy2 =
+        themeOrderBy2 ?? _themeOrderBy2(_selectedThemeSort);
+    final cacheKey =
+        '$activeFilter|$activeThemeOrderBy|${activeThemeOrderBy2 ?? ''}';
+    if (!forceRefresh) {
+      final cached = _filterCache[cacheKey];
+      if (cached != null && mounted) {
+        setState(() {
+          _categories = cached.categories;
+          _themes = cached.themes;
+          _placesByTheme = cached.placesByTheme;
+          _isLoading = false;
+          _isRefreshing = false;
+        });
+        return;
+      }
+    }
+    if (mounted) {
+      final hasData = _themes.isNotEmpty || _placesByTheme.isNotEmpty;
+      setState(() {
+        if (hasData) {
+          _isRefreshing = true;
+        } else {
+          _isLoading = true;
+        }
+      });
+    }
     final categories = await PlacebookCache.loadCategories();
-    final themes = await ApiClient.fetchPlacebookThemesSimple();
-    final places = await ApiClient.fetchMyPlacebookMyPlaces();
+    final response = await ApiClient.fetchMyPlacebookThemes(
+      filter: _collectionFilter(activeFilter),
+      themeOrderBy: activeThemeOrderBy,
+      themeOrderBy2: activeThemeOrderBy2,
+      placeOrderBy: 'createdAt',
+      themeLimit: 100,
+      themePage: 1,
+      placeLimit: 50,
+      placePage: 1,
+      includeTotal: 0,
+    );
+    final items = _extractItems(response);
+    final themes = <Map<String, dynamic>>[];
+    final placesByTheme = <String, List<Map<String, dynamic>>>{};
+    for (final item in items) {
+      final rawTheme = item['theme'];
+      final rawThemeId = item['themeId'];
+      Map<String, dynamic>? theme;
+      if (rawTheme is Map<String, dynamic>) {
+        theme = _resolveThemeData(rawTheme);
+      } else if (rawThemeId is Map<String, dynamic>) {
+        theme = _resolveThemeData(rawThemeId);
+      }
+      if (theme == null) continue;
+      final themeId = _themeId(theme);
+      if (themeId.isEmpty) continue;
+      themes.add(theme);
+      final rawPlaces = item['places'];
+      final placeList = rawPlaces is List
+          ? rawPlaces.whereType<Map<String, dynamic>>().toList()
+          : <Map<String, dynamic>>[];
+      placesByTheme[themeId] =
+          placeList.map(_resolvePlaceData).toList(growable: false);
+    }
     if (!mounted) return;
     setState(() {
       _categories = categories;
       _themes = themes;
-      _registeredPlaces = places;
+      _placesByTheme = placesByTheme;
       _isLoading = false;
+      _isRefreshing = false;
     });
+    _filterCache[cacheKey] = _PlacebookCacheSnapshot(
+      categories: categories,
+      themes: themes,
+      placesByTheme: placesByTheme,
+    );
     await _loadPlacebookInfo();
   }
 
   Future<void> _loadPlacebookInfo() async {
     debugPrint('[PLACEBOOK] load my-places/info');
-    final info = await ApiClient.fetchMyPlacebookMyPlacesInfo();
-    if (!mounted) return;
-    setState(() {
-      _createdCount = (info['createdCount'] as num?)?.toInt() ?? 0;
-      _favoriteCount = (info['favoriteCount'] as num?)?.toInt() ?? 0;
-      _totalCount = (info['totalCount'] as num?)?.toInt() ?? 0;
-    });
-  }
-
-  Map<String, List<Map<String, dynamic>>> _groupPlacesByTheme() {
-    final grouped = <String, List<Map<String, dynamic>>>{};
-    for (final place in _registeredPlaces) {
-      final themeId = place['themeId']?.toString() ??
-          (place['theme'] is Map
-              ? (place['theme'] as Map)['id']?.toString()
-              : '') ??
-          '';
-      if (themeId.isEmpty) continue;
-      grouped.putIfAbsent(themeId, () => []).add(place);
+    try {
+      final info = await ApiClient.fetchMyPlacebookMyPlacesInfo();
+      if (!mounted) return;
+      setState(() {
+        _createdCount = (info['createdCount'] as num?)?.toInt() ?? 0;
+        _favoriteCount = (info['favoriteCount'] as num?)?.toInt() ?? 0;
+        _totalCount = (info['totalCount'] as num?)?.toInt() ?? 0;
+      });
+    } catch (e) {
+      debugPrint('[PLACEBOOK] info load failed: $e');
+      if (!mounted) return;
+      setState(() {
+        _createdCount = _createdCount;
+        _favoriteCount = _favoriteCount;
+        _totalCount = _totalCount;
+      });
     }
-    return grouped;
   }
 
   @override
   Widget build(BuildContext context) {
+    final rootViewPadding =
+        MediaQueryData.fromView(View.of(context)).viewPadding.bottom;
     final themes = _themes
         .whereType<Map<String, dynamic>>()
         .where((item) => item['isActive'] != false)
-        .toList()
-      ..sort((a, b) {
-        final aTitle = _themeTitle(a).toLowerCase();
-        final bTitle = _themeTitle(b).toLowerCase();
-        final compare = aTitle.compareTo(bTitle);
-        return _selectedThemeSort == 'asc' ? compare : -compare;
-      });
-    final placesByTheme = _groupPlacesByTheme();
+        .toList();
+    if (_selectedThemeSort == 'title') {
+      themes.sort((a, b) =>
+          _themeTitle(a).toLowerCase().compareTo(_themeTitle(b).toLowerCase()));
+    }
+    final filteredPlacesByTheme =
+        _applySearchFilter(themes, _placesByTheme, _searchText);
+    final filteredThemes = _searchText.trim().isEmpty
+        ? themes
+        : themes
+            .where((theme) => filteredPlacesByTheme.containsKey(_themeId(theme)))
+            .toList();
 
     return Scaffold(
       backgroundColor: Colors.white,
+      extendBody: true,
       resizeToAvoidBottomInset: false,
       body: SafeArea(
+        top: true,
         bottom: false,
         child: _isLoading
             ? const Center(
@@ -129,175 +219,207 @@ class _PlacebookListViewState extends State<PlacebookListView> {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 ),
               )
-            : ListView(
-                controller: _listController,
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      const Expanded(
-                        child: Text(
-                          '내 도감',
-                          textAlign: TextAlign.left,
-                          style: TextStyle(
-                            color: Colors.black,
-                            fontFamily: 'Pretendard',
-                            fontSize: 24,
-                            fontWeight: FontWeight.w800,
-                          ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                        child: Row(
+                          children: [
+                        _CollectionChip(
+                          label: '전체',
+                          selected: _selectedCollection == 'all',
+                          badgeCount: _totalCount,
+                          onTap: () {
+                            if (_selectedCollection == 'all') return;
+                            setState(() => _selectedCollection = 'all');
+                            _loadPlacebookData(
+                              filter: 'all',
+                              themeOrderBy: _themeOrderBy(_selectedThemeSort),
+                              themeOrderBy2: _themeOrderBy2(_selectedThemeSort),
+                            );
+                            _scrollToTop();
+                          },
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  RichText(
-                    text: TextSpan(
-                      style: const TextStyle(
-                        fontFamily: 'Pretendard',
-                        fontSize: 14,
-                        fontWeight: FontWeight.w400,
-                        color: Colors.black,
-                      ),
-                      children: [
-                        TextSpan(
-                          text: '$_createdCount',
-                          style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w800,
-                          ),
+                        const SizedBox(width: 12),
+                        _CollectionChip(
+                          label: '직접 저장한',
+                          selected: _selectedCollection == 'created',
+                          badgeCount: _createdCount,
+                          onTap: () {
+                            if (_selectedCollection == 'created') return;
+                            setState(() => _selectedCollection = 'created');
+                            _loadPlacebookData(
+                              filter: 'created',
+                              themeOrderBy: _themeOrderBy(_selectedThemeSort),
+                              themeOrderBy2: _themeOrderBy2(_selectedThemeSort),
+                            );
+                            _scrollToTop();
+                          },
                         ),
-                        const TextSpan(text: ' 개의 장소를 '),
-                        const TextSpan(
-                          text: '등록',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w800,
-                          ),
+                        const SizedBox(width: 12),
+                        _CollectionChip(
+                          label: '즐겨찾기한',
+                          selected: _selectedCollection == 'favorites',
+                          badgeCount: _favoriteCount,
+                          onTap: () {
+                            if (_selectedCollection == 'favorites') return;
+                            setState(() => _selectedCollection = 'favorites');
+                            _loadPlacebookData(
+                              filter: 'favorites',
+                              themeOrderBy: _themeOrderBy(_selectedThemeSort),
+                              themeOrderBy2: _themeOrderBy2(_selectedThemeSort),
+                            );
+                            _scrollToTop();
+                          },
                         ),
-                        const TextSpan(text: '했고,'),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  RichText(
-                    text: TextSpan(
-                      style: const TextStyle(
-                        fontFamily: 'Pretendard',
-                        fontSize: 14,
-                        fontWeight: FontWeight.w400,
-                        color: Colors.black,
-                      ),
-                      children: [
-                        TextSpan(
-                          text: '$_favoriteCount',
-                          style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        const TextSpan(text: ' 개의 장소를 '),
-                        const TextSpan(
-                          text: '즐겨찾기',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        const TextSpan(text: ' 했어요!'),
                       ],
                     ),
                   ),
                   const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      const Text(
-                        '테마 리스트',
-                        style: TextStyle(
-                          fontFamily: 'Pretendard',
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.black,
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: CommonTextFieldView(
+                      controller: _searchController,
+                      hintText: '검색',
+                      textInputAction: TextInputAction.search,
+                      onChanged: _handleSearchChanged,
+                      prefixIcon: const Icon(
+                        PhosphorIconsRegular.magnifyingGlass,
+                        size: 18,
+                        color: Color(0xFF9E9E9E),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Row(
+                      children: [
+                        const Spacer(),
+                        Row(
+                          children: [
+                            GestureDetector(
+                              onTap: () {
+                            if (_selectedThemeSort == 'places') return;
+                            setState(() => _selectedThemeSort = 'places');
+                            _loadPlacebookData(
+                              filter: _selectedCollection,
+                              themeOrderBy: _themeOrderBy('places'),
+                              themeOrderBy2: _themeOrderBy2('places'),
+                            );
+                          },
+                          behavior: HitTestBehavior.opaque,
+                          child: Text(
+                            '장소 순',
+                            style: TextStyle(
+                              fontFamily: 'Pretendard',
+                              fontSize: 13,
+                              fontWeight: _selectedThemeSort == 'places'
+                                  ? FontWeight.w700
+                                  : FontWeight.w500,
+                              color: _selectedThemeSort == 'places'
+                                  ? Colors.black
+                                  : const Color(0x88000000),
+                            ),
+                          ),
                         ),
-                      ),
-                      const Spacer(),
-                      Row(
-                        children: [
-                          GestureDetector(
-                            onTap: () {
-                              if (_selectedThemeSort == 'asc') return;
-                              setState(() => _selectedThemeSort = 'asc');
-                            },
-                            behavior: HitTestBehavior.opaque,
-                            child: Text(
-                              '가나다순',
-                              style: TextStyle(
-                                fontFamily: 'Pretendard',
-                                fontSize: 13,
-                                fontWeight: _selectedThemeSort == 'asc'
-                                    ? FontWeight.w700
-                                    : FontWeight.w500,
-                                color: _selectedThemeSort == 'asc'
-                                    ? Colors.black
-                                    : const Color(0x88000000),
-                              ),
+                            Container(
+                              width: 1,
+                              height: 12,
+                              margin:
+                                  const EdgeInsets.symmetric(horizontal: 8),
+                              color: const Color(0x33000000),
+                            ),
+                            GestureDetector(
+                              onTap: () {
+                            if (_selectedThemeSort == 'title') return;
+                            setState(() => _selectedThemeSort = 'title');
+                            _loadPlacebookData(
+                              filter: _selectedCollection,
+                              themeOrderBy: _themeOrderBy('title'),
+                              themeOrderBy2: _themeOrderBy2('title'),
+                            );
+                          },
+                          behavior: HitTestBehavior.opaque,
+                          child: Text(
+                            '가나다순',
+                            style: TextStyle(
+                              fontFamily: 'Pretendard',
+                              fontSize: 13,
+                              fontWeight: _selectedThemeSort == 'title'
+                                  ? FontWeight.w700
+                                  : FontWeight.w500,
+                              color: _selectedThemeSort == 'title'
+                                  ? Colors.black
+                                  : const Color(0x88000000),
                             ),
                           ),
-                          Container(
-                            width: 1,
-                            height: 12,
-                            margin: const EdgeInsets.symmetric(horizontal: 8),
-                            color: const Color(0x33000000),
-                          ),
-                          GestureDetector(
-                            onTap: () {
-                              if (_selectedThemeSort == 'desc') return;
-                              setState(() => _selectedThemeSort = 'desc');
-                            },
-                            behavior: HitTestBehavior.opaque,
-                            child: Text(
-                              '다나가순',
-                              style: TextStyle(
-                                fontFamily: 'Pretendard',
-                                fontSize: 13,
-                                fontWeight: _selectedThemeSort == 'desc'
-                                    ? FontWeight.w700
-                                    : FontWeight.w500,
-                                color: _selectedThemeSort == 'desc'
-                                    ? Colors.black
-                                    : const Color(0x88000000),
-                              ),
                             ),
-                          ),
-                        ],
-                      ),
-                    ],
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 12),
-                  for (final theme in themes) ...[
-                    _ThemeSection(
-                      theme: theme,
-                      places: placesByTheme[theme['id']?.toString() ?? ''] ??
-                          const [],
-                      onCreated: (created) async {
-                        if (!mounted || created == null) return;
-                        await _loadPlacebookData();
-                        if (!mounted) return;
-                        _scrollToTop();
-                        if (!mounted) return;
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => PlacebookDetailView(space: created),
+                  Expanded(
+                    child: filteredThemes.isEmpty
+                        ? const CommonEmptyView(
+                            message: '검색 결과가 없습니다.',
+                            showButton: false,
+                          )
+                        : CommonRefreshView(
+                            onRefresh: () => _loadPlacebookData(
+                              filter: _selectedCollection,
+                              forceRefresh: true,
+                            ),
+                            topPadding: 12,
+                            notificationPredicate: (notification) =>
+                                notification.metrics.axis == Axis.vertical,
+                            child: ListView.separated(
+                              controller: _listController,
+                              padding: EdgeInsets.only(
+                                bottom: _kCommonTabHeight +
+                                    rootViewPadding +
+                                    MediaQuery.of(context).viewInsets.bottom,
+                              ),
+                              itemCount: filteredThemes.length,
+                              separatorBuilder: (_, __) =>
+                                  const SizedBox(height: 24),
+                              itemBuilder: (context, index) {
+                                final theme = filteredThemes[index];
+                                return _ThemeSection(
+                                  theme: theme,
+                                  places: filteredPlacesByTheme[_themeId(theme)] ??
+                                      const [],
+                                  onCreated: (created) async {
+                                    if (!mounted || created == null) return;
+                                    await _loadPlacebookData(
+                                      filter: _selectedCollection,
+                                    );
+                                    if (!mounted) return;
+                                    _scrollToTop();
+                                    if (!mounted) return;
+                                    Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (_) => PlacebookDetailView(
+                                          space: created,
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                );
+                              },
+                            ),
                           ),
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 24),
-                  ],
+                  ),
                 ],
               ),
       ),
     );
   }
 }
+
 
 String _resolvePlaceImageUrl(Map<String, dynamic> place) {
   final thumbnailRaw = place['thumbnail'];
@@ -330,10 +452,132 @@ String _resolvePlaceImageUrl(Map<String, dynamic> place) {
       '';
 }
 
+List<Map<String, dynamic>> _extractItems(Map<String, dynamic> json) {
+  final items = json['items'];
+  if (items is List) {
+    return items.whereType<Map<String, dynamic>>().toList();
+  }
+  final data = json['data'];
+  if (data is Map<String, dynamic>) {
+    final nestedItems = data['items'];
+    if (nestedItems is List) {
+      return nestedItems.whereType<Map<String, dynamic>>().toList();
+    }
+  }
+  return const [];
+}
+
+String _collectionFilter(String key) {
+  switch (key) {
+    case 'all':
+      return 'all';
+    case 'favorites':
+      return 'favorites';
+    case 'created':
+    default:
+      return 'created';
+  }
+}
+
+String _themeOrderBy(String key) {
+  switch (key) {
+    case 'title':
+      return 'title';
+    case 'places':
+    default:
+      return 'hasPlaces';
+  }
+}
+
+String? _themeOrderBy2(String key) {
+  return 'title';
+}
+
+Map<String, dynamic> _resolveThemeData(Map<String, dynamic> theme) {
+  final idMap = theme['id'];
+  if (idMap is Map<String, dynamic>) {
+    return {...idMap, ...theme};
+  }
+  return theme;
+}
+
+Map<String, dynamic> _resolvePlaceData(Map<String, dynamic> place) {
+  final idMap = place['id'];
+  if (idMap is Map<String, dynamic>) {
+    return {...idMap, ...place};
+  }
+  return place;
+}
+
+String _themeId(Map<String, dynamic> theme) {
+  final id = theme['id'];
+  if (id is String) return id;
+  if (id is Map<String, dynamic>) {
+    final inner = id['id'];
+    if (inner != null) return inner.toString();
+  }
+  final themeId = theme['themeId'];
+  return themeId?.toString() ?? '';
+}
+
 String _themeTitle(Map<String, dynamic> theme) {
-  return (theme['title'] as String?) ??
+  final title = (theme['title'] as String?) ??
       (theme['name'] as String?) ??
       '테마';
+  return title.trim().isEmpty ? '테마' : title.trim();
+}
+
+String _themeSubtitle(Map<String, dynamic> theme) {
+  final subtitle = theme['subtitle'];
+  if (subtitle is String) {
+    return subtitle.trim();
+  }
+  return '';
+}
+
+Map<String, List<Map<String, dynamic>>> _applySearchFilter(
+  List<Map<String, dynamic>> themes,
+  Map<String, List<Map<String, dynamic>>> placesByTheme,
+  String query,
+) {
+  final keyword = query.trim().toLowerCase();
+  if (keyword.isEmpty) {
+    return placesByTheme;
+  }
+
+  bool contains(String? source) {
+    if (source == null) return false;
+    return source.toLowerCase().contains(keyword);
+  }
+
+  final filtered = <String, List<Map<String, dynamic>>>{};
+  for (final theme in themes) {
+    final themeId = _themeId(theme);
+    if (themeId.isEmpty) continue;
+    final themeMatches = contains(_themeTitle(theme)) ||
+        contains(_themeSubtitle(theme));
+    final places = placesByTheme[themeId] ?? const [];
+    if (themeMatches) {
+      filtered[themeId] = places;
+      continue;
+    }
+    final matchedPlaces = <Map<String, dynamic>>[];
+    for (final place in places) {
+      final title = (place['title'] as String?) ??
+          (place['name'] as String?) ??
+          '';
+      final address = (place['address'] as String?) ??
+          (place['placeName'] as String?) ??
+          '';
+      if (contains(title) || contains(address)) {
+        matchedPlaces.add(place);
+      }
+    }
+    if (matchedPlaces.isNotEmpty) {
+      filtered[themeId] = matchedPlaces;
+    }
+  }
+  return filtered;
 }
 
 class _ThemeSection extends StatelessWidget {
@@ -350,23 +594,66 @@ class _ThemeSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final title = _themeTitle(theme);
-    final subtitle = (theme['subtitle'] as String?)?.trim() ?? '';
+    final subtitle = _themeSubtitle(theme);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          title,
-          style: const TextStyle(
-            fontFamily: 'Pretendard',
-            fontSize: 18,
-            fontWeight: FontWeight.w700,
-            color: Colors.black,
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            children: [
+              Expanded(
+                child: Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        title,
+                        style: const TextStyle(
+                          fontFamily: 'Pretendard',
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.black,
+                        ),
+                      ),
+                    ),
+                    if (places.isNotEmpty) ...[
+                      const SizedBox(width: 4),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 7.5,
+                          vertical: 2,
+                        ),
+                        height: 24,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: Colors.black,
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(color: Colors.white, width: 2),
+                        ),
+                        child: Text(
+                          places.length.toString(),
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontFamily: 'Pretendard',
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: 4),
+            ],
           ),
         ),
-        if (subtitle.isNotEmpty) ...[
-          const SizedBox(height: 6),
-          Text(
-            subtitle,
+        const SizedBox(height: 2),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Text(
+            subtitle.isNotEmpty ? subtitle : '내용 없음',
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(
@@ -376,112 +663,201 @@ class _ThemeSection extends StatelessWidget {
               color: Color(0xFF9E9E9E),
             ),
           ),
-        ],
+        ),
         const SizedBox(height: 14),
-        if (places.isEmpty)
-          PlacebookListEmptyView(
-            themeTitle: title,
-            onTap: () async {
-              final result = await showCupertinoModalPopup<Map<String, dynamic>>(
-                context: context,
-                builder: (_) => SizedBox.expand(
-                  child: PlacebookCreateView(
-                    categoryTitle: '',
-                    themeTitle: title,
-                    themeId: theme['id']?.toString(),
+        SizedBox(
+          height: places.isEmpty ? 72 : 100,
+          child: Stack(
+            children: [
+              ListView.separated(
+                scrollDirection: Axis.horizontal,
+                physics: const AlwaysScrollableScrollPhysics(
+                  parent: BouncingScrollPhysics(),
+                ),
+                padding: const EdgeInsets.fromLTRB(16, 0, 64, 0),
+                itemCount: places.isEmpty ? 1 : places.length + 1,
+                separatorBuilder: (_, __) => const SizedBox(width: 12),
+                itemBuilder: (context, index) {
+                  if (index == 0) {
+                    return SizedBox(
+                      height: 72,
+                      child: Align(
+                        alignment: Alignment.center,
+                        child: PlacebookListEmptyView(
+                          themeTitle: title,
+                          onTap: () async {
+                            final result =
+                                await showCupertinoModalPopup<Map<String, dynamic>>(
+                              context: context,
+                              builder: (_) => SizedBox.expand(
+                                child: PlacebookCreateView(
+                                  categoryTitle: '',
+                                  themeTitle: title,
+                                  themeId: _themeId(theme),
+                                ),
+                              ),
+                            );
+                            onCreated(result);
+                          },
+                        ),
+                      ),
+                    );
+                  }
+                  final place = places[index - 1];
+                  final placeTitle = (place['title'] as String?) ??
+                      (place['name'] as String?) ??
+                      '장소';
+                  final thumbnailUrl = _resolvePlaceImageUrl(place);
+                  final favoriteCount =
+                      (place['favoriteCount'] as num?)?.toInt() ?? 0;
+                  final commentCount =
+                      (place['commentCount'] as num?)?.toInt() ?? 0;
+                  final isFavorited = (place['favorited'] as bool?) ??
+                      (place['isFavorited'] as bool?) ??
+                      false;
+                  final address = (place['address'] as String?) ??
+                      (place['placeName'] as String?) ??
+                      '';
+                  return PlacebookListItemView(
+                    title: placeTitle,
+                    thumbnailUrl: thumbnailUrl,
+                    favoriteCount: favoriteCount,
+                    commentCount: commentCount,
+                    address: address,
+                    isFavorited: isFavorited,
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => PlacebookDetailView(space: place),
+                        ),
+                      );
+                    },
+                  );
+                },
+              ),
+              Positioned(
+                right: 16,
+                top: 0,
+                bottom: 0,
+                child: Center(
+                  child: CommonInkWell(
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => PlacebookCollectView(
+                            themeId: _themeId(theme),
+                            themeTitle: title,
+                          ),
+                        ),
+                      );
+                    },
+                    borderRadius: BorderRadius.circular(999),
+                    child: Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.9),
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.12),
+                            blurRadius: 12,
+                            offset: const Offset(0, 0),
+                          ),
+                        ],
+                      ),
+                      child: const Icon(
+                        PhosphorIconsBold.caretRight,
+                        size: 16,
+                        color: Colors.black,
+                      ),
+                    ),
                   ),
                 ),
-              );
-              onCreated(result);
-            },
-          )
-        else
-          SizedBox(
-            height: 100,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              physics: const BouncingScrollPhysics(),
-              itemCount: places.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 12),
-              itemBuilder: (context, index) {
-                final place = places[index];
-                final title = (place['title'] as String?) ??
-                    (place['name'] as String?) ??
-                    '장소';
-                final thumbnailUrl = _resolvePlaceImageUrl(place);
-                final favoriteCount =
-                    (place['favoriteCount'] as num?)?.toInt() ?? 0;
-                final commentCount =
-                    (place['commentCount'] as num?)?.toInt() ?? 0;
-                final address = (place['address'] as String?) ??
-                    (place['placeName'] as String?) ??
-                    '';
-                return PlacebookListItemView(
-                  title: title,
-                  thumbnailUrl: thumbnailUrl,
-                  favoriteCount: favoriteCount,
-                  commentCount: commentCount,
-                  address: address,
-                  onTap: () {},
-                );
-              },
-            ),
+              ),
+            ],
           ),
+        ),
       ],
     );
   }
 }
 
-class _CountChip extends StatelessWidget {
-  const _CountChip({
+class _CollectionChip extends StatelessWidget {
+  const _CollectionChip({
     required this.label,
-    required this.value,
+    required this.selected,
+    required this.onTap,
+    this.badgeCount = 0,
   });
 
   final String label;
-  final int value;
+  final bool selected;
+  final VoidCallback onTap;
+  final int badgeCount;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF2F2F2),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+    return CommonInkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(999),
+      child: Stack(
+        clipBehavior: Clip.none,
         children: [
-          Align(
-            alignment: Alignment.centerLeft,
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            decoration: BoxDecoration(
+              color: selected ? Colors.black : const Color(0xFFF2F2F2),
+              borderRadius: BorderRadius.circular(999),
+            ),
             child: Text(
               label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
+              style: TextStyle(
                 fontFamily: 'Pretendard',
-                fontSize: 12,
-                fontWeight: FontWeight.w400,
-                color: Color(0xFF616161),
+                fontSize: 16,
+                fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                color: selected ? Colors.white : Colors.black,
               ),
             ),
           ),
-          const SizedBox(height: 4),
-          Align(
-            alignment: Alignment.centerRight,
-            child: Text(
-              '$value',
-              style: const TextStyle(
-                fontFamily: 'Pretendard',
-                fontSize: 20,
-                fontWeight: FontWeight.w800,
-                color: Colors.black,
+          if (badgeCount > 0)
+            Positioned(
+              top: -6,
+              right: -6,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.black,
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: Colors.white, width: 2),
+                ),
+                child: Text(
+                  badgeCount.toString(),
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontFamily: 'Pretendard',
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                ),
               ),
             ),
-          ),
         ],
       ),
     );
   }
+}
+
+class _PlacebookCacheSnapshot {
+  const _PlacebookCacheSnapshot({
+    required this.categories,
+    required this.themes,
+    required this.placesByTheme,
+  });
+
+  final List<Map<String, dynamic>> categories;
+  final List<Map<String, dynamic>> themes;
+  final Map<String, List<Map<String, dynamic>>> placesByTheme;
 }

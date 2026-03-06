@@ -14,6 +14,18 @@ class MapFocusRequest {
   final Map<String, dynamic>? createdSpace;
 }
 
+class MapFilterRequest {
+  const MapFilterRequest({
+    this.categoryId,
+    this.themeIds = const [],
+    this.selectMyMap = true,
+  });
+
+  final String? categoryId;
+  final List<String> themeIds;
+  final bool selectMyMap;
+}
+
 class HomeTabController {
   HomeTabController._();
 
@@ -24,6 +36,8 @@ class HomeTabController {
       ValueNotifier<bool>(false);
   static final ValueNotifier<MapFocusRequest?> mapFocusRequest =
       ValueNotifier<MapFocusRequest?>(null);
+  static final ValueNotifier<MapFilterRequest?> mapFilterRequest =
+      ValueNotifier<MapFilterRequest?>(null);
 
   static void switchTo(int index) {
     currentIndex.value = index;
@@ -53,6 +67,18 @@ class HomeTabController {
       longitude: longitude,
       resetFilters: resetFilters,
       createdSpace: createdSpace,
+    );
+  }
+
+  static void requestMapFilter({
+    String? categoryId,
+    List<String> themeIds = const [],
+    bool selectMyMap = true,
+  }) {
+    mapFilterRequest.value = MapFilterRequest(
+      categoryId: categoryId,
+      themeIds: themeIds,
+      selectMyMap: selectMyMap,
     );
   }
 }

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -16,6 +17,7 @@ import '../common/media/media_picker_service.dart';
 import '../common/permissions/media_permission_service.dart';
 import '../common/media/media_conversion_service.dart';
 import '../common/widgets/common_title_actionsheet.dart';
+import '../common/location/naver_location_service.dart';
 
 class PlacebookCreateView extends StatefulWidget {
   const PlacebookCreateView({
@@ -67,8 +69,8 @@ class _PlacebookCreateViewState extends State<PlacebookCreateView> {
   TextSpan _buildTitleSpan() {
     final category = (widget.categoryTitle ?? '').trim();
     final theme = (widget.themeTitle ?? '').trim();
-    const baseStyle = TextStyle(fontWeight: FontWeight.w400);
-    const boldStyle = TextStyle(fontWeight: FontWeight.w700);
+    const baseStyle = TextStyle(fontWeight: FontWeight.w400, fontSize: 20);
+    const boldStyle = TextStyle(fontWeight: FontWeight.w700, fontSize: 20);
     if (category.isEmpty && theme.isEmpty) {
       return const TextSpan(
         text: '새로운 장소를\n등록하시겠습니까?',
@@ -79,7 +81,7 @@ class _PlacebookCreateViewState extends State<PlacebookCreateView> {
       return TextSpan(
         children: [
           TextSpan(text: theme, style: boldStyle),
-          const TextSpan(text: ' 장소를\n등록하시겠습니까?', style: baseStyle),
+          const TextSpan(text: '\n테마 장소를 등록하시겠습니까?', style: baseStyle),
         ],
       );
     }
@@ -87,16 +89,16 @@ class _PlacebookCreateViewState extends State<PlacebookCreateView> {
       return TextSpan(
         children: [
           TextSpan(text: category, style: boldStyle),
-          const TextSpan(text: ' 장소를\n등록하시겠습니까?', style: baseStyle),
+          const TextSpan(text: '\n테마 장소를 등록하시겠습니까?', style: baseStyle),
         ],
       );
     }
     return TextSpan(
       children: [
         TextSpan(text: category, style: boldStyle),
-        const TextSpan(text: '의\n', style: baseStyle),
+        const TextSpan(text: '\n', style: baseStyle),
         TextSpan(text: theme, style: boldStyle),
-        const TextSpan(text: ' 장소를\n등록하시겠습니까?', style: baseStyle),
+        const TextSpan(text: '\n테마 장소를 등록하시겠습니까?', style: baseStyle),
       ],
     );
   }
@@ -124,6 +126,7 @@ class _PlacebookCreateBodyState extends State<_PlacebookCreateBody> {
   final TextEditingController _subtitleController = TextEditingController();
   final TextEditingController _addressController = TextEditingController();
   final TextEditingController _hashtagsController = TextEditingController();
+  final FocusNode _addressFocusNode = FocusNode();
   File? _photoPreview;
   Uint8List? _photoPreviewBytes;
   bool _isUploadingPhoto = false;
@@ -136,6 +139,7 @@ class _PlacebookCreateBodyState extends State<_PlacebookCreateBody> {
   double? _selectedLongitude;
   bool _showAdvanced = false;
   bool _canSave = false;
+  Timer? _reverseGeocodeDebounce;
 
   @override
   void initState() {
@@ -147,6 +151,7 @@ class _PlacebookCreateBodyState extends State<_PlacebookCreateBody> {
 
   @override
   void dispose() {
+    _reverseGeocodeDebounce?.cancel();
     _titleController.removeListener(_syncCanSave);
     _contentController.removeListener(_syncCanSave);
     _titleController.dispose();
@@ -154,6 +159,7 @@ class _PlacebookCreateBodyState extends State<_PlacebookCreateBody> {
     _subtitleController.dispose();
     _addressController.dispose();
     _hashtagsController.dispose();
+    _addressFocusNode.dispose();
     _photoPreview = null;
     _photoPreviewBytes = null;
     super.dispose();
@@ -348,7 +354,24 @@ class _PlacebookCreateBodyState extends State<_PlacebookCreateBody> {
   void _handleMapCenterChanged(NLatLng center) {
     _selectedLatitude = center.latitude;
     _selectedLongitude = center.longitude;
+    _requestAddressForCenter(center);
     _syncCanSave();
+  }
+
+  void _requestAddressForCenter(NLatLng center) {
+    _reverseGeocodeDebounce?.cancel();
+    _reverseGeocodeDebounce = Timer(const Duration(milliseconds: 360), () async {
+      if (_addressFocusNode.hasFocus) return;
+      final address = await NaverLocationService.reverseGeocode(
+        latitude: center.latitude,
+        longitude: center.longitude,
+      );
+      if (!mounted) return;
+      final resolved = address?.trim() ?? '';
+      if (resolved.isEmpty) return;
+      if (_addressFocusNode.hasFocus) return;
+      _addressController.text = resolved;
+    });
   }
 
 
@@ -435,12 +458,12 @@ class _PlacebookCreateBodyState extends State<_PlacebookCreateBody> {
                     ),
                     Center(
                       child: Transform.translate(
-                        offset: const Offset(24, 16),
+                        offset: const Offset(24, 20),
                         child: _MapFloatingButton(
-                          icon: Icons.add_a_photo,
+                          icon: PhosphorIconsBold.imageSquare,
                           onTap: _pickPhoto,
-                          size: 28,
-                          iconSize: 14,
+                          size: 32,
+                          iconSize: 16,
                         ),
                       ),
                     ),
@@ -510,6 +533,7 @@ class _PlacebookCreateBodyState extends State<_PlacebookCreateBody> {
                   hintText: '주소를 입력하세요',
                   maxLength: 120,
                   controller: _addressController,
+                  focusNode: _addressFocusNode,
                 ),
                 const SizedBox(height: 16),
                 CommonTextFieldView(

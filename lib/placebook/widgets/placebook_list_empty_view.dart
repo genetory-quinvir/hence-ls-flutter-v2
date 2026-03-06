@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:figma_squircle/figma_squircle.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../common/widgets/common_inkwell.dart';
@@ -19,96 +20,50 @@ class PlacebookListEmptyView extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(8),
       child: SizedBox(
-        width: double.infinity,
-        height: 100,
-        child: CustomPaint(
-          foregroundPainter: _DashedBorderPainter(
-            color: const Color(0xFFE0E0E0),
-            radius: 8,
-            strokeWidth: 1,
-            dashWidth: 4,
-            dashGap: 6,
-          ),
-          child: Container(
-            decoration: BoxDecoration(
-              color: const Color(0xFFF7F7F7),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                const Icon(
-                  PhosphorIconsRegular.stackPlus,
+        height: 72,
+        child: AspectRatio(
+          aspectRatio: 1,
+          child: Transform.rotate(
+            angle: _degreesToRadians(_rotationDegrees(themeTitle)),
+            child: Container(
+              decoration: ShapeDecoration(
+                color: const Color(0xFFF7F7F7),
+                shape: SmoothRectangleBorder(
+                  borderRadius: SmoothBorderRadius(
+                    cornerRadius: 12,
+                    cornerSmoothing: 1,
+                  ),
+                  side: const BorderSide(color: Colors.white, width: 4),
+                ),
+                shadows: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.08),
+                    blurRadius: 20,
+                    offset: const Offset(0, 0),
+                  ),
+                ],
+              ),
+              child: const Center(
+                child: Icon(
+                  PhosphorIconsBold.plus,
                   size: 28,
                   color: Color(0xFF9E9E9E),
                 ),
-                const SizedBox(height: 6),
-                const Text(
-                  '등록된 장소가 없어요',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontFamily: 'Pretendard',
-                    fontSize: 12,
-                    fontWeight: FontWeight.w400,
-                    color: Color(0xFF9E9E9E),
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
         ),
       ),
     );
   }
-}
 
-class _DashedBorderPainter extends CustomPainter {
-  _DashedBorderPainter({
-    required this.color,
-    required this.radius,
-    required this.strokeWidth,
-    required this.dashWidth,
-    required this.dashGap,
-  });
-
-  final Color color;
-  final double radius;
-  final double strokeWidth;
-  final double dashWidth;
-  final double dashGap;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..strokeWidth = strokeWidth
-      ..style = PaintingStyle.stroke;
-    final rect = Offset.zero & size;
-    final rrect = RRect.fromRectAndRadius(rect, Radius.circular(radius));
-    final path = Path()..addRRect(rrect);
-    final metrics = path.computeMetrics().toList();
-    for (final metric in metrics) {
-      double distance = 0;
-      while (distance < metric.length) {
-        final next = distance + dashWidth;
-        canvas.drawPath(
-          metric.extractPath(distance, next.clamp(0, metric.length)),
-          paint,
-        );
-        distance += dashWidth + dashGap;
-      }
-    }
+  double _rotationDegrees(String seed) {
+    final value = seed.hashCode;
+    final magnitude = 2 + (value.abs() % 4); // 2~5
+    final sign = value.isEven ? 1 : -1;
+    return magnitude * sign.toDouble();
   }
 
-  @override
-  bool shouldRepaint(covariant _DashedBorderPainter oldDelegate) {
-    return oldDelegate.color != color ||
-        oldDelegate.radius != radius ||
-        oldDelegate.strokeWidth != strokeWidth ||
-        oldDelegate.dashWidth != dashWidth ||
-        oldDelegate.dashGap != dashGap;
-  }
+  double _degreesToRadians(double degrees) =>
+      degrees * (3.141592653589793 / 180);
 }

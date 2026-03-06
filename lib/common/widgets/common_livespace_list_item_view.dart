@@ -141,7 +141,7 @@ class CommonLivespaceListItemView extends StatelessWidget {
                                 const SizedBox(width: 12),
                               ],
                               const Icon(
-                                PhosphorIconsRegular.chatCircle,
+                                PhosphorIconsBold.chatCircle,
                                 size: 15,
                                 color: Color(0xFF757575),
                               ),
@@ -157,7 +157,7 @@ class CommonLivespaceListItemView extends StatelessWidget {
                               ),
                               const SizedBox(width: 12),
                               const Icon(
-                                PhosphorIconsRegular.heart,
+                                PhosphorIconsBold.heart,
                                 size: 15,
                                 color: Color(0xFF757575),
                               ),

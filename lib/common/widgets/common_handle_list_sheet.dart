@@ -144,6 +144,7 @@ class CommonHandleListOverlay extends StatefulWidget {
     this.peekHeight = 50,
     this.initialChildSize = 0.35,
     this.maxChildSize = 0.93,
+    this.useBottomSafeArea = true,
     this.onSizeChanged,
     this.onHeightChanged,
   });
@@ -156,6 +157,7 @@ class CommonHandleListOverlay extends StatefulWidget {
   final double peekHeight;
   final double initialChildSize;
   final double maxChildSize;
+  final bool useBottomSafeArea;
   final ValueChanged<double>? onSizeChanged;
   final ValueChanged<double>? onHeightChanged;
 
@@ -287,6 +289,7 @@ class _CommonHandleListOverlayState extends State<CommonHandleListOverlay> {
             widget.initialChildSize.clamp(_minChildSize, maxSize);
         return SafeArea(
           top: false,
+          bottom: widget.useBottomSafeArea,
           child: DraggableScrollableSheet(
             controller: _controller,
             snap: true,
@@ -298,7 +301,7 @@ class _CommonHandleListOverlayState extends State<CommonHandleListOverlay> {
               final isMinimized = _controller.isAttached
                   ? (_controller.size - _minChildSize).abs() < 0.02
                   : (initialSize - _minChildSize).abs() < 0.02;
-              final listPadding = widget.padding.copyWith(bottom: 12);
+              final listPadding = widget.padding.copyWith(bottom: 28);
               final listController = scrollController;
               void handleDragUpdate(DragUpdateDetails details) {
                 if (!_controller.isAttached) return;

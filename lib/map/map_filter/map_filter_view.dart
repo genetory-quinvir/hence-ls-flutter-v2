@@ -2,11 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:hence_ls_flutter_v2/common/widgets/common_inkwell.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
-import '../../common/state/placebook_cache.dart';
 import '../../common/widgets/common_empty_view.dart';
 import '../../common/widgets/common_navigation_view.dart';
 import '../../common/widgets/common_rounded_button.dart';
 import '../../common/widgets/common_textfield_view.dart';
+import '../../common/network/api_client.dart';
+import 'widgets/map_filter_theme_item_view.dart';
 
 class MapFilterView extends StatefulWidget {
   const MapFilterView({
@@ -52,10 +53,10 @@ class _MapFilterViewState extends State<MapFilterView> {
   }
 
   Future<void> _loadThemes() async {
-    final themes = await PlacebookCache.loadThemes();
+    final themes = await ApiClient.fetchPlacebookThemesSimple(orderBy: 'title');
     if (!mounted) return;
     setState(() {
-      _themes = themes;
+      _themes = themes.map(_resolveThemeData).toList();
       if (_selectedThemeIds.isEmpty) {
         _selectedThemeIds
           ..clear()
@@ -65,6 +66,14 @@ class _MapFilterViewState extends State<MapFilterView> {
               .where((id) => id.isNotEmpty));
       }
     });
+  }
+
+  Map<String, dynamic> _resolveThemeData(Map<String, dynamic> theme) {
+    final idMap = theme['id'];
+    if (idMap is Map<String, dynamic>) {
+      return {...idMap, ...theme};
+    }
+    return theme;
   }
 
   List<Map<String, dynamic>> _themesForCategory(String? categoryId) {
@@ -150,13 +159,10 @@ class _MapFilterViewState extends State<MapFilterView> {
 
   @override
   Widget build(BuildContext context) {
-    final items = widget.categories;
     final searchResults =
         _query.trim().isNotEmpty ? _searchThemes() : const <Map<String, dynamic>>[];
+    final displayThemes = _query.trim().isNotEmpty ? searchResults : _themes;
     final categoryTitles = <String, String>{
-      for (final item in items)
-        if ((item['id']?.toString() ?? '').isNotEmpty)
-          (item['id']?.toString() ?? ''): (item['title']?.toString() ?? ''),
     };
     final allThemeIds = _themes
         .map((e) => e['id']?.toString())
@@ -253,14 +259,14 @@ class _MapFilterViewState extends State<MapFilterView> {
                     onChanged: (value) => setState(() => _query = value),
                   ),
                   const SizedBox(height: 12),
-                  if (_query.trim().isNotEmpty) ...[
-                    if (searchResults.isEmpty)
-                      const CommonEmptyView(
-                        message: '검색 결과가 없습니다.',
-                        showButton: false,
-                        height: 200,
-                      )
-                    else ...[
+                  if (_query.trim().isNotEmpty && searchResults.isEmpty)
+                    const CommonEmptyView(
+                      message: '검색 결과가 없습니다.',
+                      showButton: false,
+                      height: 200,
+                    )
+                  else ...[
+                    if (_query.trim().isNotEmpty) ...[
                       _BulkActionButton(
                         title: '결과만 선택',
                         onTap: () => setState(() {
@@ -274,90 +280,33 @@ class _MapFilterViewState extends State<MapFilterView> {
                         }),
                       ),
                       const SizedBox(height: 12),
-                      ...searchResults.map((theme) {
+                    ],
+                    ...displayThemes.map((theme) {
                       final id = theme['id']?.toString() ?? '';
                       final name = theme['title']?.toString() ?? '';
+                      final subtitle = theme['subtitle']?.toString() ?? '';
                       final categoryId = theme['categoryId']?.toString() ?? '';
-                      final categoryTitle = categoryTitles[categoryId]?.trim() ?? '';
+                      final categoryTitle =
+                          categoryTitles[categoryId]?.trim() ?? '';
                       if (id.isEmpty || name.isEmpty) {
                         return const SizedBox.shrink();
                       }
-                      final displayTitle = categoryTitle.isEmpty
-                          ? name
-                          : '$categoryTitle · $name';
+                      final displayTitle =
+                          categoryTitle.isEmpty ? name : '$categoryTitle · $name';
                       final selected = _selectedThemeIds.contains(id);
-                      return _ThemeRow(
-                        title: displayTitle,
-                        selected: selected,
-                        onTap: () => setState(() {
-                          if (selected) {
-                            _selectedThemeIds.remove(id);
-                          } else {
-                            _selectedThemeIds.add(id);
-                          }
-                        }),
-                      );
-                    }),
-                    ],
-                  ] else ...[
-                    ...items.map((item) {
-                      final categoryId = item['id']?.toString() ?? '';
-                      final title = item['title']?.toString() ?? '';
-                      if (categoryId.isEmpty || title.isEmpty) {
-                        return const SizedBox.shrink();
-                      }
-                      final themes = _themesForCategory(categoryId);
-                      final selectedCount = themes
-                          .where((theme) =>
-                              _selectedThemeIds.contains(theme['id']?.toString() ?? ''))
-                          .length;
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 8),
-                        child: _CategoryAccordion(
-                          title: title,
-                          count: themes.length,
-                          selectedCount: selectedCount,
-                          initiallyExpanded: _selectedId == categoryId,
-                          onHeaderTap: () => setState(() => _selectedId = categoryId),
-                          onSelectAll: themes.isEmpty
-                              ? null
-                              : () => setState(() {
-                                    for (final theme in themes) {
-                                      final id = theme['id']?.toString();
-                                      if (id != null && id.isNotEmpty) {
-                                        _selectedThemeIds.add(id);
-                                      }
-                                    }
-                                  }),
-                          onClearAll: themes.isEmpty
-                              ? null
-                              : () => setState(() {
-                                    for (final theme in themes) {
-                                      final id = theme['id']?.toString();
-                                      if (id != null && id.isNotEmpty) {
-                                        _selectedThemeIds.remove(id);
-                                      }
-                                    }
-                                  }),
-                          children: themes.map((theme) {
-                            final id = theme['id']?.toString() ?? '';
-                            final name = theme['title']?.toString() ?? '';
-                            if (id.isEmpty || name.isEmpty) {
-                              return const SizedBox.shrink();
+                        child: MapFilterThemeItemView(
+                          title: displayTitle,
+                          subtitle: subtitle,
+                          selected: selected,
+                          onTap: () => setState(() {
+                            if (selected) {
+                              _selectedThemeIds.remove(id);
+                            } else {
+                              _selectedThemeIds.add(id);
                             }
-                            final selected = _selectedThemeIds.contains(id);
-                            return _ThemeRow(
-                              title: name,
-                              selected: selected,
-                              onTap: () => setState(() {
-                                if (selected) {
-                                  _selectedThemeIds.remove(id);
-                                } else {
-                                  _selectedThemeIds.add(id);
-                                }
-                              }),
-                            );
-                          }).toList(),
+                          }),
                         ),
                       );
                     }),

@@ -1463,8 +1463,13 @@ class ApiClient {
     return _extractPlacebookItems(json);
   }
 
-  static Future<List<Map<String, dynamic>>> fetchPlacebookThemesSimple() async {
-    final uri = Uri.parse('$baseUrl/api/v1/placebook/themes/simple');
+  static Future<List<Map<String, dynamic>>> fetchPlacebookThemesSimple({
+    String? orderBy,
+  }) async {
+    var uri = Uri.parse('$baseUrl/api/v1/placebook/themes/simple');
+    if (orderBy != null && orderBy.isNotEmpty) {
+      uri = uri.replace(queryParameters: {'orderBy': orderBy});
+    }
     _logRequest('GET', uri);
     final response = await http.get(uri, headers: _headers());
     _logResponse(response);
@@ -1473,6 +1478,42 @@ class ApiClient {
     }
     final json = jsonDecode(response.body);
     return _extractPlacebookItems(json);
+  }
+
+  static Future<Map<String, dynamic>> fetchMyPlacebookThemes({
+    required String filter,
+    String themeOrderBy = 'title',
+    String? themeOrderBy2,
+    String placeOrderBy = 'createdAt',
+    int themeLimit = 200,
+    int themePage = 1,
+    int placeLimit = 100,
+    int placePage = 1,
+    int includeTotal = 0,
+  }) async {
+    var uri = Uri.parse('$baseUrl/api/v1/placebook/my-themes');
+    uri = uri.replace(
+      queryParameters: <String, String>{
+        'filter': filter,
+        'themeOrderBy': themeOrderBy,
+        if (themeOrderBy2 != null && themeOrderBy2.isNotEmpty)
+          'themeOrderBy2': themeOrderBy2,
+        'placeOrderBy': placeOrderBy,
+        'themeLimit': '$themeLimit',
+        'themePage': '$themePage',
+        'placeLimit': '$placeLimit',
+        'placePage': '$placePage',
+        'includeTotal': '$includeTotal',
+      },
+    );
+    _logRequest('GET', uri);
+    final response = await http.get(uri, headers: _headers());
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('My placebook themes request failed: ${response.statusCode}');
+    }
+    final json = jsonDecode(response.body);
+    return json is Map<String, dynamic> ? json : <String, dynamic>{};
   }
 
   static Future<Map<String, dynamic>> createPlacebookPlace({
@@ -1496,8 +1537,7 @@ class ApiClient {
       'address': address,
       'latitude': latitude,
       'longitude': longitude,
-      if (imageId != null && imageId.isNotEmpty)
-        'imageId': <String, dynamic>{'id': imageId},
+      if (imageId != null && imageId.isNotEmpty) 'imageId': imageId,
       if (thumbnailUrl != null && thumbnailUrl.isNotEmpty)
         'thumbnailUrl': thumbnailUrl,
       'hashtags': hashtags,
@@ -1546,7 +1586,7 @@ class ApiClient {
       body['hashtags'] = hashtags;
     }
     if (imageId != null && imageId.isNotEmpty) {
-      body['imageId'] = <String, dynamic>{'id': imageId};
+      body['imageId'] = imageId;
     }
     _logJsonRequest('PATCH', uri, body);
     final response = await _sendWithAuthRetry(
