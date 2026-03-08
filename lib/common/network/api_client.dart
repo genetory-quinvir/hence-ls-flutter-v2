@@ -1516,6 +1516,53 @@ class ApiClient {
     return json is Map<String, dynamic> ? json : <String, dynamic>{};
   }
 
+  static Future<Map<String, dynamic>> fetchPlacebookThemesPlaces({
+    String themeOrderBy = 'title',
+    String? themeOrderBy2,
+    String placeOrderBy = 'createdAt',
+    int themeLimit = 200,
+    int themePage = 1,
+    int placeLimit = 4,
+    int placePage = 1,
+    int includeTotal = 1,
+  }) async {
+    var uri = Uri.parse('$baseUrl/api/v1/placebook/themes/places');
+    uri = uri.replace(
+      queryParameters: <String, String>{
+        'themeOrderBy': themeOrderBy,
+        if (themeOrderBy2 != null && themeOrderBy2.isNotEmpty)
+          'themeOrderBy2': themeOrderBy2,
+        'placeOrderBy': placeOrderBy,
+        'themeLimit': '$themeLimit',
+        'themePage': '$themePage',
+        'placeLimit': '$placeLimit',
+        'placePage': '$placePage',
+        'includeTotal': '$includeTotal',
+      },
+    );
+    _logRequest('GET', uri);
+    final response = await http.get(uri, headers: _headers());
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+          'Placebook themes places request failed: ${response.statusCode}');
+    }
+    final json = jsonDecode(response.body);
+    return json is Map<String, dynamic> ? json : <String, dynamic>{};
+  }
+
+  static Future<Map<String, dynamic>> fetchFeatured() async {
+    final uri = Uri.parse('$baseUrl/api/v1/featured');
+    _logRequest('GET', uri);
+    final response = await http.get(uri, headers: _headers());
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Featured request failed: ${response.statusCode}');
+    }
+    final json = jsonDecode(response.body);
+    return json is Map<String, dynamic> ? json : <String, dynamic>{};
+  }
+
   static Future<Map<String, dynamic>> createPlacebookPlace({
     required String themeId,
     required String title,

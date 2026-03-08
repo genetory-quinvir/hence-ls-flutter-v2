@@ -12,6 +12,10 @@ class CommonMapView extends StatefulWidget {
     this.controller,
     this.initialLatitude,
     this.initialLongitude,
+    this.fixedMarkerLatitude,
+    this.fixedMarkerLongitude,
+    this.fixedMarker,
+    this.fixedMarkerSize = const Size(36, 46),
     this.onCenterChanged,
     this.onCameraMoving,
     this.onCameraIdle,
@@ -20,11 +24,16 @@ class CommonMapView extends StatefulWidget {
     this.onCreateLiveSpace,
     this.onMapReady,
     this.onMyLocationChanged,
+    this.forceGesture,
   });
 
   final CommonMapViewController? controller;
   final double? initialLatitude;
   final double? initialLongitude;
+  final double? fixedMarkerLatitude;
+  final double? fixedMarkerLongitude;
+  final Widget? fixedMarker;
+  final Size fixedMarkerSize;
   final ValueChanged<NLatLng>? onCenterChanged;
   final VoidCallback? onCameraMoving;
   final VoidCallback? onCameraIdle;
@@ -33,6 +42,7 @@ class CommonMapView extends StatefulWidget {
   final VoidCallback? onCreateLiveSpace;
   final ValueChanged<NaverMapController>? onMapReady;
   final ValueChanged<NLatLng>? onMyLocationChanged;
+  final bool? forceGesture;
 
   @override
   State<CommonMapView> createState() => _CommonMapViewState();
@@ -54,14 +64,20 @@ class CommonMapViewController {
   Future<void> moveToMyLocation() async {
     await _state?._moveToMyLocation();
   }
+
+  Future<void> zoomBy(double delta) async {
+    await _state?._zoomBy(delta);
+  }
 }
 
 class _CommonMapViewState extends State<CommonMapView> {
   static const String styleId = 'b55d5c20-f158-4e23-851c-55c7d348a2ef';
+  static const String _fixedMarkerId = 'common-fixed-marker';
 
   NaverMapController? _controller;
   NOverlayImage? _myLocationIcon;
   NOverlayImage? _myLocationSubIcon;
+  NMarker? _fixedMarker;
   bool _didAutoPromptLocationPermission = false;
   bool _isFetchingMyLocation = false;
 
@@ -80,6 +96,12 @@ class _CommonMapViewState extends State<CommonMapView> {
     if (oldWidget.controller != widget.controller) {
       oldWidget.controller?._detach(this);
       widget.controller?._attach(this);
+    }
+    if (oldWidget.fixedMarkerLatitude != widget.fixedMarkerLatitude ||
+        oldWidget.fixedMarkerLongitude != widget.fixedMarkerLongitude ||
+        oldWidget.fixedMarker != widget.fixedMarker ||
+        oldWidget.fixedMarkerSize != widget.fixedMarkerSize) {
+      _syncFixedMarker();
     }
   }
 
@@ -104,6 +126,7 @@ class _CommonMapViewState extends State<CommonMapView> {
       alignment: Alignment.center,
       children: [
         NaverMap(
+          forceGesture: widget.forceGesture ?? false,
           options: NaverMapViewOptions(
             customStyleId: styleId,
             initialCameraPosition: initialPosition == null
@@ -117,6 +140,7 @@ class _CommonMapViewState extends State<CommonMapView> {
             _controller = controller;
             _configureLocationOverlay(context);
             _syncMyLocationOverlay();
+            _syncFixedMarker();
             widget.onMapReady?.call(controller);
           },
           onCameraChange: (_, __) {
@@ -198,6 +222,62 @@ class _CommonMapViewState extends State<CommonMapView> {
     final granted = await _ensureLocationPermission();
     if (!granted) return;
     await _syncMyLocationOverlay(moveCamera: true);
+  }
+
+  Future<void> _syncFixedMarker() async {
+    final controller = _controller;
+    if (controller == null) return;
+    final lat = widget.fixedMarkerLatitude;
+    final lng = widget.fixedMarkerLongitude;
+    final markerWidget = widget.fixedMarker;
+    if (lat == null || lng == null || markerWidget == null) {
+      final existing = _fixedMarker;
+      if (existing != null) {
+        await controller.deleteOverlay(existing.info);
+        _fixedMarker = null;
+      }
+      return;
+    }
+    final position = NLatLng(lat, lng);
+    final icon = await NOverlayImage.fromWidget(
+      context: context,
+      size: widget.fixedMarkerSize,
+      widget: markerWidget,
+    );
+    final existing = _fixedMarker;
+    if (existing == null) {
+      final created = NMarker(
+        id: _fixedMarkerId,
+        position: position,
+        icon: icon,
+        size: widget.fixedMarkerSize,
+        anchor: const NPoint(0.5, 1.0),
+      );
+      _fixedMarker = created;
+      await controller.addOverlay(created);
+    } else {
+      existing.setPosition(position);
+      existing.setIcon(icon);
+      existing.setSize(widget.fixedMarkerSize);
+      existing.setAnchor(const NPoint(0.5, 1.0));
+    }
+  }
+
+  Future<void> _zoomBy(double delta) async {
+    final controller = _controller;
+    if (controller == null) return;
+    try {
+      final camera = await controller.getCameraPosition();
+      final nextZoom = (camera.zoom + delta).clamp(1.0, 20.0);
+      await controller.updateCamera(
+        NCameraUpdate.withParams(
+          target: camera.target,
+          zoom: nextZoom,
+        ),
+      );
+    } catch (_) {
+      // Ignore transient map camera errors.
+    }
   }
 
   Future<void> _configureLocationOverlay(BuildContext context) async {

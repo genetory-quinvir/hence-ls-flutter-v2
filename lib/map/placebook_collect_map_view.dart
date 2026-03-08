@@ -20,7 +20,6 @@ import '../common/widgets/common_empty_view.dart';
 import '../common/widgets/common_place_cluster_marker.dart';
 import '../common/widgets/common_login_guard.dart';
 import '../common/widgets/common_textfield_view.dart';
-import '../common/widgets/common_toast_view.dart';
 import '../common/widgets/common_handle_list_sheet.dart';
 import '../common/widgets/common_place_list_item_view.dart';
 import '../map_cluster/map_cluster_view.dart';
@@ -29,8 +28,8 @@ import 'widgets/map_navigation_view.dart';
 import 'map_filter/map_filter_view.dart';
 import '../common/navigation/root_navigator.dart';
 
-class MapView extends StatefulWidget {
-  const MapView({
+class PlacebookCollectMapView extends StatefulWidget {
+  const PlacebookCollectMapView({
     super.key,
     this.showFilterButton = true,
     this.useBottomSafeArea = true,
@@ -42,10 +41,12 @@ class MapView extends StatefulWidget {
   final List<String>? fixedThemeIds;
 
   @override
-  State<MapView> createState() => _MapViewState();
+  State<PlacebookCollectMapView> createState() =>
+      _PlacebookCollectMapViewState();
 }
 
-class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
+class _PlacebookCollectMapViewState extends State<PlacebookCollectMapView>
+    with SingleTickerProviderStateMixin {
   static const double _focusMarkerRadiusMeters = 1200;
   static const double _liveClusterDistancePx = 52;
   static const double _clusterMaxZoom = 18.0;
@@ -314,7 +315,7 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
   }
 
   @override
-  void didUpdateWidget(covariant MapView oldWidget) {
+  void didUpdateWidget(covariant PlacebookCollectMapView oldWidget) {
     super.didUpdateWidget(oldWidget);
     final fixed = widget.fixedThemeIds;
     final oldFixed = oldWidget.fixedThemeIds;
@@ -1755,6 +1756,7 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
     final topSafe = MediaQuery.of(context).padding.top;
     const searchBarHeight = 50.0;
     const searchBarVerticalPadding = 8.0;
+    const toggleTopPadding = 18.0;
     const navigationBottomOffset =
         searchBarHeight + (searchBarVerticalPadding * 2);
     const chipTopOffset = navigationBottomOffset;
@@ -1857,7 +1859,7 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
                     Padding(
                       padding: const EdgeInsets.fromLTRB(
                         16,
-                        searchBarVerticalPadding,
+                        toggleTopPadding,
                         16,
                         searchBarVerticalPadding,
                       ),
@@ -1898,11 +1900,54 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
               top: MediaQuery.of(context).padding.top + 8,
               child: IgnorePointer(
                 ignoring: true,
-                child: CommonToastView(
-                  visible: _isMapToggleToastVisible,
-                  message: _mapToggleToastMessage,
-                  sequence: _mapToggleToastSequence,
-                  skipOutAnimation: _skipToastOutAnimation,
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 900),
+                reverseDuration: _skipToastOutAnimation
+                    ? Duration.zero
+                    : const Duration(milliseconds: 350),
+                  switchInCurve: Curves.elasticOut,
+                  switchOutCurve: Curves.easeInCubic,
+                  transitionBuilder: (child, animation) {
+                    final offsetTween = Tween<Offset>(
+                      begin: const Offset(0, -3.0),
+                      end: Offset.zero,
+                    );
+                    return SlideTransition(
+                      position: offsetTween.animate(animation),
+                      child: child,
+                    );
+                  },
+                  child: _isMapToggleToastVisible
+                      ? Container(
+                          key: ValueKey('toast-${_mapToggleToastSequence}'),
+                        constraints: const BoxConstraints(minHeight: 50),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 8,
+                          ),
+                          decoration: const ShapeDecoration(
+                            color: Colors.black,
+                            shape: ContinuousRectangleBorder(
+                              borderRadius: BorderRadius.all(
+                                Radius.circular(24),
+                              ),
+                            ),
+                          ),
+                          alignment: Alignment.center,
+                          child: Text(
+                            _mapToggleToastMessage,
+                            textAlign: TextAlign.center,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontFamily: 'Pretendard',
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
+                          ),
+                        )
+                      : const SizedBox.shrink(),
                 ),
               ),
             ),

@@ -14,6 +14,7 @@ class PlacebookDetailProfileView extends StatefulWidget {
   const PlacebookDetailProfileView({
     super.key,
     required this.title,
+    required this.locationTitle,
     required this.imageUrls,
     required this.profileImageUrl,
     required this.nickname,
@@ -29,6 +30,7 @@ class PlacebookDetailProfileView extends StatefulWidget {
   });
 
   final String title;
+  final String locationTitle;
   final List<String> imageUrls;
   final String? profileImageUrl;
   final String nickname;
@@ -97,11 +99,12 @@ class _PlacebookDetailProfileViewState extends State<PlacebookDetailProfileView>
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final totalHeight = constraints.maxHeight.isFinite
-            ? constraints.maxHeight
-            : _HeaderSection.defaultHeight + _HeaderSection.titleBlockHeight;
-        final extra = (totalHeight -
-                (_HeaderSection.defaultHeight + _HeaderSection.titleBlockHeight))
+        final baseHeight =
+            _HeaderSection.defaultHeight + _HeaderSection.titleBlockHeight;
+        final totalHeight =
+            constraints.maxHeight.isFinite ? constraints.maxHeight : baseHeight;
+        final desiredGap = 24.0;
+        final extra = (totalHeight - (baseHeight + desiredGap))
             .clamp(0.0, double.infinity)
             .toDouble();
         final headerHeight = _HeaderSection.defaultHeight + extra;
@@ -129,15 +132,15 @@ class _PlacebookDetailProfileViewState extends State<PlacebookDetailProfileView>
                   totalHeight: headerHeight,
                 ),
               ),
-              SizedBox(
-                height: _HeaderSection.titleBlockHeight,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
+                child: SizedBox(
+                  height: _HeaderSection.titleBlockHeight,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        widget.title,
+                        widget.locationTitle,
                         style: const TextStyle(
                           fontFamily: 'Pretendard',
                           fontSize: 20,
@@ -145,7 +148,7 @@ class _PlacebookDetailProfileViewState extends State<PlacebookDetailProfileView>
                           color: Colors.black,
                         ),
                       ),
-                      const SizedBox(height: 6),
+                      const SizedBox(height: 4),
                       if ((widget.themeLabel ?? '').trim().isNotEmpty)
                         Text(
                           (widget.themeLabel ?? '').trim(),
@@ -222,8 +225,8 @@ class _HeaderSection extends StatelessWidget {
   final double imageHeight;
   final double totalHeight;
 
-  static const double overlap = 25;
-  static const double bottomPadding = 12;
+  static const double overlap = 0;
+  static const double bottomPadding = 0;
   static const double defaultHeight = 317;
   static const double titleBlockHeight = 96;
 
@@ -325,146 +328,6 @@ class _HeaderSection extends StatelessWidget {
                 ),
               ),
             ),
-          Positioned(
-            bottom: bottomPadding,
-            left: 40,
-            right: 40,
-            child: Container(
-              height: 50,
-              padding: const EdgeInsets.only(left: 12, right: 12),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(50),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.12),
-                    blurRadius: 12,
-                    offset: const Offset(0, -2),
-                  ),
-                ],
-              ),
-              child: Row(
-                children: [
-                  if (participantCount <= 0)
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.only(left: 4),
-                        child: Text(
-                          '📍 내 도감에 추가해보세요!',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontFamily: 'Pretendard',
-                            fontSize: 14,
-                            fontWeight: FontWeight.w400,
-                            color: Colors.black,
-                          ),
-                        ),
-                      ),
-                    )
-                  else ...[
-                    Builder(
-                      builder: (context) {
-                        const maxVisible = 5;
-                        const size = 28.0;
-                        const overlap = 10.0;
-                        final visible =
-                            participantCount <= maxVisible ? participantCount : maxVisible;
-                        final showPlus = participantCount > maxVisible;
-                        final stackCount = visible + (showPlus ? 1 : 0);
-                        final width = stackCount > 0
-                            ? size + (stackCount - 1) * (size - overlap)
-                            : 0.0;
-                        return SizedBox(
-                          width: width,
-                          height: size,
-                          child: Stack(
-                            clipBehavior: Clip.none,
-                            children: List.generate(stackCount, (index) {
-                              if (showPlus && index == stackCount - 1) {
-                                final extra = participantCount - maxVisible;
-                                return _OverlayCountDot(
-                                  index: index,
-                                  label: '+$extra',
-                                );
-                              }
-                              final user = index < checkinUsers.length
-                                  ? checkinUsers[index]
-                                  : null;
-                              final url = _extractProfileImageUrl(user);
-                              return _OverlayProfileDot(
-                                index: index,
-                                imageUrl: url,
-                              );
-                            }),
-                          ),
-                        );
-                      },
-                    ),
-                  ],
-                  if (participantCount > 0) const Spacer(),
-                  if (participantCount <= 0) const SizedBox(width: 8),
-                  if (isCheckedIn)
-                    CommonInkWell(
-                      onTap: onCheckinTap,
-                      borderRadius: BorderRadius.circular(999),
-                      child: Container(
-                        height: 30,
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF2F2F2),
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        alignment: Alignment.center,
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: const [
-                            Icon(
-                              PhosphorIconsRegular.check,
-                              size: 14,
-                              color: Color(0xFF212121),
-                            ),
-                            SizedBox(width: 4),
-                            Text(
-                              '도감 등록 해제',
-                              style: TextStyle(
-                                fontFamily: 'Pretendard',
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                color: Color(0xFF212121),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  if (!isCheckedIn)
-                    CommonInkWell(
-                      onTap: onCheckinTap,
-                      borderRadius: BorderRadius.circular(999),
-                      child: Container(
-                        height: 30,
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        decoration: BoxDecoration(
-                          color: Colors.black,
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        alignment: Alignment.center,
-                        child: const Text(
-                          '도감 등록',
-                          style: TextStyle(
-                            fontFamily: 'Pretendard',
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ),
         ],
       ),
     );

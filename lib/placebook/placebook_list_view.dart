@@ -6,7 +6,6 @@ import '../common/state/placebook_cache.dart';
 import '../common/network/api_client.dart';
 import '../common/state/home_tab_controller.dart';
 import '../placebook/widgets/placebook_list_item_view.dart';
-import '../placebook/widgets/placebook_list_empty_view.dart';
 import '../placebook_create/placebook_create_view.dart';
 import '../placebook_detail/placebook_detail_view.dart';
 import '../placebook_collect/placebook_collect_view.dart';
@@ -14,6 +13,7 @@ import '../common/widgets/common_inkwell.dart';
 import '../common/widgets/common_textfield_view.dart';
 import '../common/widgets/common_empty_view.dart';
 import '../common/widgets/common_refresh_view.dart';
+import '../common/widgets/common_image_view.dart';
 
 class PlacebookListView extends StatefulWidget {
   const PlacebookListView({super.key});
@@ -29,11 +29,13 @@ class _PlacebookListViewState extends State<PlacebookListView> {
   List<Map<String, dynamic>> _categories = const [];
   List<Map<String, dynamic>> _themes = const [];
   Map<String, List<Map<String, dynamic>>> _placesByTheme = const {};
+  List<String> _searchThumbnails = const [];
+  bool _hasFixedSearchThumbnails = false;
   int _createdCount = 0;
   int _favoriteCount = 0;
   int _totalCount = 0;
   String _selectedThemeSort = 'places';
-  String _selectedCollection = 'created';
+  String _selectedCollection = 'mine';
   late final VoidCallback _tabListener;
   final ScrollController _listController = ScrollController();
   final TextEditingController _searchController = TextEditingController();
@@ -96,6 +98,11 @@ class _PlacebookListViewState extends State<PlacebookListView> {
           _categories = cached.categories;
           _themes = cached.themes;
           _placesByTheme = cached.placesByTheme;
+          if (!_hasFixedSearchThumbnails) {
+            _searchThumbnails =
+                _collectSearchThumbnails(cached.placesByTheme, maxCount: 4);
+            _hasFixedSearchThumbnails = true;
+          }
           _isLoading = false;
           _isRefreshing = false;
         });
@@ -113,20 +120,31 @@ class _PlacebookListViewState extends State<PlacebookListView> {
       });
     }
     final categories = await PlacebookCache.loadCategories();
-    final response = await ApiClient.fetchMyPlacebookThemes(
-      filter: _collectionFilter(activeFilter),
-      themeOrderBy: activeThemeOrderBy,
-      themeOrderBy2: activeThemeOrderBy2,
-      placeOrderBy: 'createdAt',
-      themeLimit: 100,
-      themePage: 1,
-      placeLimit: 50,
-      placePage: 1,
-      includeTotal: 0,
-    );
-    final items = _extractItems(response);
     final themes = <Map<String, dynamic>>[];
     final placesByTheme = <String, List<Map<String, dynamic>>>{};
+    final response = activeFilter == 'all'
+        ? await ApiClient.fetchPlacebookThemesPlaces(
+            themeOrderBy: activeThemeOrderBy,
+            themeOrderBy2: activeThemeOrderBy2,
+            placeOrderBy: 'title',
+            themeLimit: 200,
+            themePage: 1,
+            placeLimit: 4,
+            placePage: 1,
+            includeTotal: 1,
+          )
+        : await ApiClient.fetchMyPlacebookThemes(
+            filter: _collectionFilter(activeFilter),
+            themeOrderBy: activeThemeOrderBy,
+            themeOrderBy2: activeThemeOrderBy2,
+            placeOrderBy: 'title',
+            themeLimit: 200,
+            themePage: 1,
+            placeLimit: 4,
+            placePage: 1,
+            includeTotal: 0,
+          );
+    final items = _extractItems(response);
     for (final item in items) {
       final rawTheme = item['theme'];
       final rawThemeId = item['themeId'];
@@ -152,6 +170,11 @@ class _PlacebookListViewState extends State<PlacebookListView> {
       _categories = categories;
       _themes = themes;
       _placesByTheme = placesByTheme;
+      if (!_hasFixedSearchThumbnails) {
+        _searchThumbnails =
+            _collectSearchThumbnails(placesByTheme, maxCount: 4);
+        _hasFixedSearchThumbnails = true;
+      }
       _isLoading = false;
       _isRefreshing = false;
     });
@@ -171,7 +194,9 @@ class _PlacebookListViewState extends State<PlacebookListView> {
       setState(() {
         _createdCount = (info['createdCount'] as num?)?.toInt() ?? 0;
         _favoriteCount = (info['favoriteCount'] as num?)?.toInt() ?? 0;
-        _totalCount = (info['totalCount'] as num?)?.toInt() ?? 0;
+        _totalCount = (info['publicTotalCount'] as num?)?.toInt() ??
+            (info['totalCount'] as num?)?.toInt() ??
+            0;
       });
     } catch (e) {
       debugPrint('[PLACEBOOK] info load failed: $e');
@@ -222,6 +247,51 @@ class _PlacebookListViewState extends State<PlacebookListView> {
             : Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                      SizedBox(
+                        height: 96,
+                        child: Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            Positioned(
+                              left: 24,
+                              right: 16,
+                              top: 4,
+                              child: _SearchThumbnailStack(
+                                thumbnails: _searchThumbnails,
+                              ),
+                            ),
+                            Positioned(
+                              left: 16,
+                              right: 16,
+                              bottom: 0,
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withValues(alpha: 0.12),
+                                      blurRadius: 16,
+                                      offset: const Offset(0, 0),
+                                    ),
+                                  ],
+                                ),
+                                child: CommonTextFieldView(
+                                  controller: _searchController,
+                                  hintText: '검색',
+                                  textInputAction: TextInputAction.search,
+                                  onChanged: _handleSearchChanged,
+                                  backgroundColor: Colors.white,
+                                  prefixIcon: const Icon(
+                                    PhosphorIconsRegular.magnifyingGlass,
+                                    size: 18,
+                                    color: Color(0xFF9E9E9E),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
                       Padding(
                         padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
                         child: Row(
@@ -241,32 +311,16 @@ class _PlacebookListViewState extends State<PlacebookListView> {
                             _scrollToTop();
                           },
                         ),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: 16),
                         _CollectionChip(
-                          label: '직접 저장한',
-                          selected: _selectedCollection == 'created',
-                          badgeCount: _createdCount,
+                          label: '나의 장소',
+                          selected: _selectedCollection == 'mine',
+                          badgeCount: _createdCount + _favoriteCount,
                           onTap: () {
-                            if (_selectedCollection == 'created') return;
-                            setState(() => _selectedCollection = 'created');
+                            if (_selectedCollection == 'mine') return;
+                            setState(() => _selectedCollection = 'mine');
                             _loadPlacebookData(
-                              filter: 'created',
-                              themeOrderBy: _themeOrderBy(_selectedThemeSort),
-                              themeOrderBy2: _themeOrderBy2(_selectedThemeSort),
-                            );
-                            _scrollToTop();
-                          },
-                        ),
-                        const SizedBox(width: 12),
-                        _CollectionChip(
-                          label: '즐겨찾기한',
-                          selected: _selectedCollection == 'favorites',
-                          badgeCount: _favoriteCount,
-                          onTap: () {
-                            if (_selectedCollection == 'favorites') return;
-                            setState(() => _selectedCollection = 'favorites');
-                            _loadPlacebookData(
-                              filter: 'favorites',
+                              filter: 'mine',
                               themeOrderBy: _themeOrderBy(_selectedThemeSort),
                               themeOrderBy2: _themeOrderBy2(_selectedThemeSort),
                             );
@@ -274,21 +328,6 @@ class _PlacebookListViewState extends State<PlacebookListView> {
                           },
                         ),
                       ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: CommonTextFieldView(
-                      controller: _searchController,
-                      hintText: '검색',
-                      textInputAction: TextInputAction.search,
-                      onChanged: _handleSearchChanged,
-                      prefixIcon: const Icon(
-                        PhosphorIconsRegular.magnifyingGlass,
-                        size: 18,
-                        color: Color(0xFF9E9E9E),
-                      ),
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -376,34 +415,44 @@ class _PlacebookListViewState extends State<PlacebookListView> {
                             topPadding: 12,
                             notificationPredicate: (notification) =>
                                 notification.metrics.axis == Axis.vertical,
-                            child: ListView.separated(
+                            child: GridView.builder(
                               controller: _listController,
                               padding: EdgeInsets.only(
+                                top: 64,
+                                left: 16,
+                                right: 16,
                                 bottom: _kCommonTabHeight +
                                     rootViewPadding +
                                     MediaQuery.of(context).viewInsets.bottom,
                               ),
+                              gridDelegate:
+                                  const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 2,
+                                crossAxisSpacing: 16,
+                                mainAxisSpacing: 64,
+                                childAspectRatio: 2.0,
+                              ),
                               itemCount: filteredThemes.length,
-                              separatorBuilder: (_, __) =>
-                                  const SizedBox(height: 24),
                               itemBuilder: (context, index) {
                                 final theme = filteredThemes[index];
-                                return _ThemeSection(
-                                  theme: theme,
-                                  places: filteredPlacesByTheme[_themeId(theme)] ??
-                                      const [],
-                                  onCreated: (created) async {
-                                    if (!mounted || created == null) return;
-                                    await _loadPlacebookData(
-                                      filter: _selectedCollection,
-                                    );
-                                    if (!mounted) return;
-                                    _scrollToTop();
-                                    if (!mounted) return;
+                                final title = _themeTitle(theme);
+                                final places =
+                                    filteredPlacesByTheme[_themeId(theme)] ??
+                                        const [];
+                                return PlacebookListItemView(
+                                  title: title,
+                                  placeCount: places.length,
+                                  hasPlaces: places.isNotEmpty,
+                                  thumbnails: places
+                                      .map(_resolvePlaceImageUrl)
+                                      .where((url) => url.isNotEmpty)
+                                      .toList(),
+                                  onTap: () async {
                                     Navigator.of(context).push(
                                       MaterialPageRoute(
-                                        builder: (_) => PlacebookDetailView(
-                                          space: created,
+                                        builder: (_) => PlacebookCollectView(
+                                          themeId: _themeId(theme),
+                                          themeTitle: title,
                                         ),
                                       ),
                                     );
@@ -420,36 +469,173 @@ class _PlacebookListViewState extends State<PlacebookListView> {
   }
 }
 
+List<String> _collectSearchThumbnails(
+  Map<String, List<Map<String, dynamic>>> placesByTheme, {
+  int maxCount = 4,
+}) {
+  final urls = <String>[];
+  for (final places in placesByTheme.values) {
+    for (final place in places) {
+      final url = _resolvePlaceImageUrl(place);
+      if (url.isNotEmpty) {
+        urls.add(url);
+      }
+      if (urls.length >= maxCount) return urls;
+    }
+  }
+  return urls;
+}
+
+class _SearchThumbnailStack extends StatelessWidget {
+  const _SearchThumbnailStack({
+    required this.thumbnails,
+  });
+
+  final List<String> thumbnails;
+
+  @override
+  Widget build(BuildContext context) {
+    final filled = List<String>.from(thumbnails);
+    if (filled.length < 4) {
+      filled.addAll(List.filled(4 - filled.length, ''));
+    } else if (filled.length > 4) {
+      filled.length = 4;
+    }
+    return SizedBox(
+      height: 74,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          for (var i = 0; i < filled.length; i++)
+            Positioned(
+              left: i * 36,
+              top: i.isEven ? 0 : 12,
+              child: _SearchThumbnailItem(url: filled[i], index: i),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SearchThumbnailItem extends StatelessWidget {
+  const _SearchThumbnailItem({
+    required this.url,
+    required this.index,
+  });
+
+  final String url;
+  final int index;
+
+  @override
+  Widget build(BuildContext context) {
+    const size = 56.0;
+    final degrees = _rotationDegrees(url, index);
+    return Transform.rotate(
+      angle: degrees * (3.141592653589793 / 180),
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          color: const Color(0xFFF2F2F2),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.white, width: 3),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.12),
+              blurRadius: 12,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(11),
+          child: CommonImageView(
+            networkUrl: url,
+            fit: BoxFit.cover,
+            backgroundColor: const Color(0xFFF2F2F2),
+          ),
+        ),
+      ),
+    );
+  }
+
+  double _rotationDegrees(String seed, int index) {
+    final value = seed.isEmpty ? index : seed.hashCode;
+    final magnitude = 2 + (value.abs() % 4); // 2~5
+    final sign = value.isEven ? 1 : -1;
+    return magnitude * sign.toDouble();
+  }
+}
+
 
 String _resolvePlaceImageUrl(Map<String, dynamic> place) {
+  final idRaw = place['id'];
+  final idMap = idRaw is Map<String, dynamic> ? idRaw : null;
   final thumbnailRaw = place['thumbnail'];
-  final thumbnailMap =
-      thumbnailRaw is Map<String, dynamic> ? thumbnailRaw : null;
+  final thumbnailMap = thumbnailRaw is Map<String, dynamic> ? thumbnailRaw : null;
   final imageIdRaw = place['imageId'];
   final imageIdMap = imageIdRaw is Map<String, dynamic> ? imageIdRaw : null;
   final imageRaw = place['image'];
   final imageMap = imageRaw is Map<String, dynamic> ? imageRaw : null;
-  final images = place['images'];
-  final firstImage =
-      images is List && images.isNotEmpty && images.first is Map<String, dynamic>
-          ? images.first as Map<String, dynamic>
-          : null;
+  final idImageRaw = idMap?['image'];
+  final idImageMap =
+      idImageRaw is Map<String, dynamic> ? idImageRaw : null;
+  final feed = place['feed'];
+  final feedMap = feed is Map<String, dynamic> ? feed : null;
+  final images = feedMap?['images'] ?? place['images'];
+  Map<String, dynamic>? firstImageMap;
+  String? firstImageString;
+  if (images is List && images.isNotEmpty) {
+    final first = images.first;
+    if (first is Map<String, dynamic>) {
+      firstImageMap = first;
+    } else if (first is String) {
+      firstImageString = first;
+    }
+  }
 
-  return (place['thumbnailUrl'] as String?) ??
-      (place['imageUrl'] as String?) ??
-      (thumbnailMap?['cdnUrl'] as String?) ??
-      (thumbnailMap?['fileUrl'] as String?) ??
-      (thumbnailMap?['thumbnailUrl'] as String?) ??
-      (imageIdMap?['cdnUrl'] as String?) ??
-      (imageIdMap?['fileUrl'] as String?) ??
-      (imageIdMap?['thumbnailUrl'] as String?) ??
-      (imageMap?['cdnUrl'] as String?) ??
-      (imageMap?['fileUrl'] as String?) ??
-      (imageMap?['thumbnailUrl'] as String?) ??
-      (firstImage?['cdnUrl'] as String?) ??
-      (firstImage?['fileUrl'] as String?) ??
-      (firstImage?['thumbnailUrl'] as String?) ??
+  return _firstValidImageUrl([
+    thumbnailRaw is String ? thumbnailRaw : null,
+    place['thumbnailUrl'] as String?,
+    place['imageUrl'] as String?,
+    idMap?['thumbnailUrl'] as String?,
+    idMap?['imageUrl'] as String?,
+    thumbnailMap?['cdnUrl'] as String?,
+    thumbnailMap?['fileUrl'] as String?,
+    thumbnailMap?['thumbnailUrl'] as String?,
+    imageIdMap?['cdnUrl'] as String?,
+    imageIdMap?['fileUrl'] as String?,
+    imageIdMap?['thumbnailUrl'] as String?,
+    imageMap?['cdnUrl'] as String?,
+    imageMap?['fileUrl'] as String?,
+    imageMap?['thumbnailUrl'] as String?,
+    idImageMap?['cdnUrl'] as String?,
+    idImageMap?['fileUrl'] as String?,
+    idImageMap?['thumbnailUrl'] as String?,
+    firstImageMap?['thumbnailUrl'] as String?,
+    firstImageMap?['cdnUrl'] as String?,
+    firstImageMap?['fileUrl'] as String?,
+    firstImageString,
+  ]) ??
       '';
+}
+
+String? _firstValidImageUrl(Iterable<String?> candidates) {
+  for (final candidate in candidates) {
+    final cleaned = _cleanImageUrl(candidate);
+    if (cleaned != null) return cleaned;
+  }
+  return null;
+}
+
+String? _cleanImageUrl(String? url) {
+  if (url == null) return null;
+  final trimmed = url.trim();
+  if (trimmed.isEmpty) return null;
+  final lowered = trimmed.toLowerCase();
+  if (lowered == 'null' || lowered == 'undefined') return null;
+  return trimmed;
 }
 
 List<Map<String, dynamic>> _extractItems(Map<String, dynamic> json) {
@@ -470,6 +656,8 @@ List<Map<String, dynamic>> _extractItems(Map<String, dynamic> json) {
 String _collectionFilter(String key) {
   switch (key) {
     case 'all':
+      return 'all';
+    case 'mine':
       return 'all';
     case 'favorites':
       return 'favorites';
@@ -580,209 +768,6 @@ Map<String, List<Map<String, dynamic>>> _applySearchFilter(
   return filtered;
 }
 
-class _ThemeSection extends StatelessWidget {
-  const _ThemeSection({
-    required this.theme,
-    required this.places,
-    required this.onCreated,
-  });
-
-  final Map<String, dynamic> theme;
-  final List<Map<String, dynamic>> places;
-  final ValueChanged<Map<String, dynamic>?> onCreated;
-
-  @override
-  Widget build(BuildContext context) {
-    final title = _themeTitle(theme);
-    final subtitle = _themeSubtitle(theme);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Row(
-            children: [
-              Expanded(
-                child: Row(
-                  children: [
-                    Flexible(
-                      child: Text(
-                        title,
-                        style: const TextStyle(
-                          fontFamily: 'Pretendard',
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.black,
-                        ),
-                      ),
-                    ),
-                    if (places.isNotEmpty) ...[
-                      const SizedBox(width: 4),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 7.5,
-                          vertical: 2,
-                        ),
-                        height: 24,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: Colors.black,
-                          borderRadius: BorderRadius.circular(999),
-                          border: Border.all(color: Colors.white, width: 2),
-                        ),
-                        child: Text(
-                          places.length.toString(),
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            fontFamily: 'Pretendard',
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              const SizedBox(width: 4),
-            ],
-          ),
-        ),
-        const SizedBox(height: 2),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Text(
-            subtitle.isNotEmpty ? subtitle : '내용 없음',
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontFamily: 'Pretendard',
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-              color: Color(0xFF9E9E9E),
-            ),
-          ),
-        ),
-        const SizedBox(height: 14),
-        SizedBox(
-          height: places.isEmpty ? 72 : 100,
-          child: Stack(
-            children: [
-              ListView.separated(
-                scrollDirection: Axis.horizontal,
-                physics: const AlwaysScrollableScrollPhysics(
-                  parent: BouncingScrollPhysics(),
-                ),
-                padding: const EdgeInsets.fromLTRB(16, 0, 64, 0),
-                itemCount: places.isEmpty ? 1 : places.length + 1,
-                separatorBuilder: (_, __) => const SizedBox(width: 12),
-                itemBuilder: (context, index) {
-                  if (index == 0) {
-                    return SizedBox(
-                      height: 72,
-                      child: Align(
-                        alignment: Alignment.center,
-                        child: PlacebookListEmptyView(
-                          themeTitle: title,
-                          onTap: () async {
-                            final result =
-                                await showCupertinoModalPopup<Map<String, dynamic>>(
-                              context: context,
-                              builder: (_) => SizedBox.expand(
-                                child: PlacebookCreateView(
-                                  categoryTitle: '',
-                                  themeTitle: title,
-                                  themeId: _themeId(theme),
-                                ),
-                              ),
-                            );
-                            onCreated(result);
-                          },
-                        ),
-                      ),
-                    );
-                  }
-                  final place = places[index - 1];
-                  final placeTitle = (place['title'] as String?) ??
-                      (place['name'] as String?) ??
-                      '장소';
-                  final thumbnailUrl = _resolvePlaceImageUrl(place);
-                  final favoriteCount =
-                      (place['favoriteCount'] as num?)?.toInt() ?? 0;
-                  final commentCount =
-                      (place['commentCount'] as num?)?.toInt() ?? 0;
-                  final isFavorited = (place['favorited'] as bool?) ??
-                      (place['isFavorited'] as bool?) ??
-                      false;
-                  final address = (place['address'] as String?) ??
-                      (place['placeName'] as String?) ??
-                      '';
-                  return PlacebookListItemView(
-                    title: placeTitle,
-                    thumbnailUrl: thumbnailUrl,
-                    favoriteCount: favoriteCount,
-                    commentCount: commentCount,
-                    address: address,
-                    isFavorited: isFavorited,
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => PlacebookDetailView(space: place),
-                        ),
-                      );
-                    },
-                  );
-                },
-              ),
-              Positioned(
-                right: 16,
-                top: 0,
-                bottom: 0,
-                child: Center(
-                  child: CommonInkWell(
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => PlacebookCollectView(
-                            themeId: _themeId(theme),
-                            themeTitle: title,
-                          ),
-                        ),
-                      );
-                    },
-                    borderRadius: BorderRadius.circular(999),
-                    child: Container(
-                      width: 32,
-                      height: 32,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.9),
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.12),
-                            blurRadius: 12,
-                            offset: const Offset(0, 0),
-                          ),
-                        ],
-                      ),
-                      child: const Icon(
-                        PhosphorIconsBold.caretRight,
-                        size: 16,
-                        color: Colors.black,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
 class _CollectionChip extends StatelessWidget {
   const _CollectionChip({
     required this.label,
@@ -815,7 +800,7 @@ class _CollectionChip extends StatelessWidget {
               style: TextStyle(
                 fontFamily: 'Pretendard',
                 fontSize: 16,
-                fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
                 color: selected ? Colors.white : Colors.black,
               ),
             ),

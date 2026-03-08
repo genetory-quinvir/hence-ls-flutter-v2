@@ -1,10 +1,12 @@
 import 'dart:io';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../common/widgets/common_navigation_view.dart';
+import '../common/widgets/common_toast_view.dart';
 import '../common/network/api_client.dart';
 import '../common/auth/auth_store.dart';
 import '../common/widgets/common_empty_view.dart';
@@ -63,6 +65,11 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
   final Set<String> _togglingReplyLikeIds = {};
   FeedCommentItem? _replyTarget;
   String? _mentionBadgeName;
+  Timer? _favoriteToastTimer;
+  bool _isFavoriteToastVisible = false;
+  String _favoriteToastMessage = '';
+  bool _skipFavoriteToastOut = false;
+  int _favoriteToastSequence = 0;
 
   @override
   void initState() {
@@ -76,7 +83,37 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
     _commentController.dispose();
     _commentFocusNode.dispose();
     _scrollController.dispose();
+    _favoriteToastTimer?.cancel();
     super.dispose();
+  }
+
+  void _showFavoriteToast(String message) {
+    _favoriteToastTimer?.cancel();
+    if (_isFavoriteToastVisible) {
+      setState(() {
+        _skipFavoriteToastOut = true;
+        _isFavoriteToastVisible = false;
+      });
+      Future.microtask(() {
+        if (!mounted) return;
+        setState(() {
+          _skipFavoriteToastOut = false;
+          _favoriteToastMessage = message;
+          _isFavoriteToastVisible = true;
+          _favoriteToastSequence += 1;
+        });
+      });
+    } else {
+      setState(() {
+        _favoriteToastMessage = message;
+        _isFavoriteToastVisible = true;
+        _favoriteToastSequence += 1;
+      });
+    }
+    _favoriteToastTimer = Timer(const Duration(milliseconds: 1400), () {
+      if (!mounted) return;
+      setState(() => _isFavoriteToastVisible = false);
+    });
   }
 
   Future<void> _showCommentImageActionSheet() async {
@@ -650,6 +687,7 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
             'participantCount': nextUsers.length,
           };
         });
+        _showFavoriteToast('즐겨찾기에서 제거했어요');
         return;
       }
 
@@ -676,6 +714,7 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
           'participantCount': nextUsers.length,
         };
       });
+      _showFavoriteToast('즐겨찾기에 추가했어요');
     } catch (_) {
       // ignore for now
     } finally {
@@ -700,20 +739,26 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
         '도감';
     final imageUrls = _extractImageUrls(_space);
     final thumbnail = imageUrls.isNotEmpty ? imageUrls.first : '';
-    final user = _space['user'] is Map<String, dynamic>
-        ? _space['user'] as Map<String, dynamic>
-        : _space['author'] is Map<String, dynamic>
-            ? _space['author'] as Map<String, dynamic>
-            : _space['creator'] is Map<String, dynamic>
-                ? _space['creator'] as Map<String, dynamic>
-                : _space['host'] is Map<String, dynamic>
-                    ? _space['host'] as Map<String, dynamic>
-                    : null;
+    final user = _space['creator'] is Map<String, dynamic>
+        ? _space['creator'] as Map<String, dynamic>
+        : _space['createdBy'] is Map<String, dynamic>
+            ? _space['createdBy'] as Map<String, dynamic>
+            : _space['createdByUser'] is Map<String, dynamic>
+                ? _space['createdByUser'] as Map<String, dynamic>
+                : _space['author'] is Map<String, dynamic>
+                    ? _space['author'] as Map<String, dynamic>
+                    : _space['user'] is Map<String, dynamic>
+                        ? _space['user'] as Map<String, dynamic>
+                        : _space['host'] is Map<String, dynamic>
+                            ? _space['host'] as Map<String, dynamic>
+                            : null;
     final profileImageUrl = _extractProfileImageUrl(user?['profileImage']) ??
         _stringOrEmpty(user?['profileImageUrl']) ??
         _stringOrEmpty(user?['thumbnailUrl']) ??
         _stringOrEmpty(user?['avatarUrl']);
     final nickname = _stringOrEmpty(user?['nickname']) ??
+        _stringOrEmpty(_space['creatorNickname']) ??
+        _stringOrEmpty(_space['authorNickname']) ??
         '-';
     final categoryLabel = _extractCategoryTitle(_space);
     final themeLabel = _extractThemeTitle(_space);
@@ -725,6 +770,16 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
     final place = _stringOrEmpty(_space['address']) ??
         _stringOrEmpty(_space['placeName']) ??
         '-';
+    final latitude = _toDouble(_space['latitude']) ??
+        _toDouble(_space['lat']) ??
+        _toDouble(_space['locationLat']) ??
+        _toDouble((_space['location'] as Map?)?['lat']) ??
+        _toDouble((_space['location'] as Map?)?['latitude']);
+    final longitude = _toDouble(_space['longitude']) ??
+        _toDouble(_space['lng']) ??
+        _toDouble(_space['locationLng']) ??
+        _toDouble((_space['location'] as Map?)?['lng']) ??
+        _toDouble((_space['location'] as Map?)?['longitude']);
     final time = _formatTime(
       _stringOrEmpty(_space['time']) ??
           _stringOrEmpty(_space['startAt']) ??
@@ -767,17 +822,45 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
           : SystemUiOverlayStyle.light,
       child: Scaffold(
         backgroundColor: Colors.white,
-        body: CommonRefreshView(
-          onRefresh: () => _refreshAll(fromPull: true),
-          topPadding: MediaQuery.of(context).padding.top + 8,
-          notificationPredicate: (notification) => notification.depth == 0,
-          child: Stack(
-            children: [
-            AnimatedOpacity(
-              opacity: showContent ? 1 : 0,
-              duration: _didInitialReveal
-                  ? Duration.zero
-                  : const Duration(milliseconds: 250),
+        resizeToAvoidBottomInset: false,
+        bottomNavigationBar: placeId != null && placeId.isNotEmpty
+            ? AnimatedPadding(
+                duration: const Duration(milliseconds: 150),
+                curve: Curves.easeOut,
+                padding: EdgeInsets.only(
+                  bottom: MediaQuery.of(context).viewInsets.bottom,
+                ),
+                child: Container(
+                  color: Colors.white,
+                  padding: EdgeInsets.fromLTRB(
+                    commentInputPadding.horizontal / 2,
+                    commentInputPadding.vertical / 2,
+                    commentInputPadding.horizontal / 2,
+                    (commentInputPadding.vertical / 2) +
+                        (MediaQuery.of(context).viewInsets.bottom > 0
+                            ? 0
+                            : safeBottom),
+                  ),
+                  child: _buildCommentInput(
+                    placeId,
+                    padding: EdgeInsets.zero,
+                  ),
+                ),
+              )
+            : null,
+        body: Stack(
+          children: [
+            CommonRefreshView(
+              onRefresh: () => _refreshAll(fromPull: true),
+              topPadding: MediaQuery.of(context).padding.top + 8,
+              notificationPredicate: (notification) => notification.depth == 0,
+              child: Stack(
+                children: [
+                AnimatedOpacity(
+                  opacity: showContent ? 1 : 0,
+                  duration: _didInitialReveal
+                      ? Duration.zero
+                      : const Duration(milliseconds: 250),
               curve: Curves.easeOut,
               child: IgnorePointer(
                 ignoring: !showContent,
@@ -825,6 +908,7 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
                           ],
                           background: PlacebookDetailProfileView(
                             title: title,
+                            locationTitle: place,
                             imageUrls:
                                 imageUrls.isNotEmpty ? imageUrls : [thumbnail],
                             profileImageUrl: profileImageUrl,
@@ -845,6 +929,8 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
                         child: PlacebookDetailInfoView(
                           title: title,
                           place: place,
+                          latitude: latitude,
+                          longitude: longitude,
                           time: time,
                           status: status,
                           profileImageUrl: profileImageUrl,
@@ -902,43 +988,25 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
                       child: CommonNavigationView(
                         backgroundColor: Colors.transparent,
                         left: const Icon(
-                          PhosphorIconsRegular.caretLeft,
+                          PhosphorIconsBold.caretLeft,
                           size: 24,
                           color: Colors.white,
                         ),
                         onLeftTap: () => Navigator.of(context).maybePop(),
+                        right: Icon(
+                          hasCheckedIn
+                              ? PhosphorIconsFill.bookmarkSimple
+                              : PhosphorIconsBold.bookmarkSimple,
+                          size: 24,
+                          color: Colors.white,
+                        ),
+                        onRightTap: _toggleFavorite,
                       ),
                     ),
                   ],
                 ),
               ),
             ),
-            if (placeId != null && placeId.isNotEmpty)
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                child: AnimatedPadding(
-                  duration: const Duration(milliseconds: 150),
-                  curve: Curves.easeOut,
-                  padding: EdgeInsets.only(
-                    bottom: MediaQuery.of(context).viewInsets.bottom,
-                  ),
-                  child: Container(
-                    color: Colors.white,
-                    padding: EdgeInsets.fromLTRB(
-                      commentInputPadding.horizontal / 2,
-                      commentInputPadding.vertical / 2,
-                      commentInputPadding.horizontal / 2,
-                      (commentInputPadding.vertical / 2) + safeBottom,
-                    ),
-                    child: _buildCommentInput(
-                      placeId,
-                      padding: EdgeInsets.zero,
-                    ),
-                  ),
-                ),
-              ),
             if (!showContent)
               const Positioned.fill(
                 child: ColoredBox(
@@ -984,15 +1052,15 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
                       backgroundColor: Colors.white,
                       title: title,
                       left: const Icon(
-                        PhosphorIconsRegular.caretLeft,
+                        PhosphorIconsBold.caretLeft,
                         size: 24,
                         color: Colors.black,
                       ),
                       right: Icon(
                         hasCheckedIn
                             ? PhosphorIconsFill.bookmarkSimple
-                            : PhosphorIconsRegular.bookmarkSimple,
-                        size: 22,
+                            : PhosphorIconsBold.bookmarkSimple,
+                        size: 24,
                         color: Colors.black,
                       ),
                       onLeftTap: () =>
@@ -1005,8 +1073,24 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
                 ),
               ),
             ),
-            ],
-          ),
+                ],
+              ),
+            ),
+            Positioned(
+              left: 24,
+              right: 24,
+              top: MediaQuery.of(context).padding.top + 8,
+              child: IgnorePointer(
+                ignoring: true,
+                child: CommonToastView(
+                  visible: _isFavoriteToastVisible,
+                  message: _favoriteToastMessage,
+                  sequence: _favoriteToastSequence,
+                  skipOutAnimation: _skipFavoriteToastOut,
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -1029,6 +1113,15 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
       }
     }
     return value.toString();
+  }
+
+  static double? _toDouble(dynamic value) {
+    if (value == null) return null;
+    if (value is num) return value.toDouble();
+    if (value is String) {
+      return double.tryParse(value.trim());
+    }
+    return null;
   }
 
   static String _formatTime(String? raw) {
