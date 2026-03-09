@@ -71,7 +71,7 @@ class _HomeViewState extends State<HomeView> {
                 if (index == 4 && _currentIndex == 4) {
                   HomeTabController.requestProfileReload();
                 }
-                if (index == 3) {
+                if (index == 3 || index == 2) {
                   if (!AuthStore.instance.isSignedIn.value) {
                     showCupertinoModalPopup(
                       context: context,

@@ -534,7 +534,7 @@ class _CommonFeedItemViewState extends State<CommonFeedItemView> {
                 CommonInkWell(
                   onTap: () => _showMoreSheet(context),
                   child: const Icon(
-                    PhosphorIconsRegular.dotsThree,
+                    PhosphorIconsBold.dotsThree,
                     color: Colors.white,
                     size: 24,
                   ),

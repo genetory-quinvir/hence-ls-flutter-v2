@@ -7,6 +7,7 @@ import '../../common/widgets/common_inkwell.dart';
 import '../../common/widgets/common_profile_view.dart';
 import '../../common/widgets/common_rounded_button.dart';
 import '../../profile_edit/profile_edit_view.dart';
+import '../profile_placebook_view.dart';
 import '../models/profile_display_user.dart';
 
 class ProfileUserSection extends StatefulWidget {
@@ -316,10 +317,19 @@ class _ProfileUserContent extends StatelessWidget {
             Row(
               children: [
                 Expanded(
-                  child: _StatItem(
-                    label: '장소 도감',
-                    value: feedCount ?? 0,
-                    alignCenter: true,
+                  child: CommonInkWell(
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const ProfilePlacebookView(),
+                        ),
+                      );
+                    },
+                    child: _StatItem(
+                      label: '나의 장소',
+                      value: feedCount ?? 0,
+                      alignCenter: true,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 8),

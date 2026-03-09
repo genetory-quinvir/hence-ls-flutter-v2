@@ -1,8 +1,10 @@
 import 'dart:io';
 import 'dart:async';
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:hence_ls_flutter_v2/placebook_create/placebook_create_view.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../common/widgets/common_navigation_view.dart';
@@ -17,6 +19,7 @@ import '../common/widgets/common_refresh_view.dart';
 import '../common/widgets/common_rounded_button.dart';
 import '../common/widgets/common_title_actionsheet.dart';
 import '../common/widgets/common_alert_view.dart';
+import '../common/widgets/common_place_list_item_view.dart';
 import '../report/report_view.dart';
 import '../common/permissions/media_permission_service.dart';
 import '../common/media/media_picker_service.dart';
@@ -72,6 +75,8 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
   String _favoriteToastMessage = '';
   bool _skipFavoriteToastOut = false;
   int _favoriteToastSequence = 0;
+  bool _isLoadingNearby = false;
+  List<Map<String, dynamic>> _nearbyPlaces = const [];
 
   @override
   void initState() {
@@ -184,14 +189,40 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
       setState(() => _isPullRefreshing = true);
     }
     try {
-      await Future.wait([
-        _loadDetail(),
-        _loadCommentPreview(),
-      ]);
+      await _loadDetail();
+      await _loadNearbyPlaces();
+      await _loadCommentPreview();
     } finally {
       if (mounted && fromPull) {
         setState(() => _isPullRefreshing = false);
       }
+    }
+  }
+
+  Future<void> _loadNearbyPlaces() async {
+    final placeId = _extractPlaceId(_space) ?? '';
+    if (placeId.isEmpty) return;
+    if (_isLoadingNearby) return;
+    setState(() => _isLoadingNearby = true);
+    try {
+      final response = await ApiClient.fetchPlacebookPlacesNearby(
+        placeId: placeId,
+        limit: 3,
+      );
+      var items = _extractPlaceListItems(response);
+      final dataNode = response['data'];
+      if (items.isEmpty && dataNode is Map<String, dynamic>) {
+        items = _extractPlaceListItems(dataNode);
+      }
+      final normalized = items
+          .map(_normalizePlaceListItem)
+          .toList(growable: false);
+      if (!mounted) return;
+      setState(() => _nearbyPlaces = normalized);
+    } catch (_) {
+      if (!mounted) return;
+    } finally {
+      if (mounted) setState(() => _isLoadingNearby = false);
     }
   }
 
@@ -582,7 +613,7 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
 
     if (isMine) {
       return navIcon(
-        icon: PhosphorIconsRegular.dotsThree,
+        icon: PhosphorIconsBold.dotsThree,
         onTap: () => _showPlaceMoreSheet(
           isMine: true,
           placeId: placeId,
@@ -599,7 +630,7 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
           onTap: _toggleFavorite,
         ),
         navIcon(
-          icon: PhosphorIconsRegular.dotsThree,
+          icon: PhosphorIconsBold.dotsThree,
           onTap: () => _showPlaceMoreSheet(
             isMine: false,
             placeId: placeId,
@@ -895,6 +926,7 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
         '-';
     final categoryLabel = _extractCategoryTitle(_space);
     final themeLabel = _extractThemeTitle(_space);
+    final themeId = _extractThemeId(_space);
     final userId = _stringOrEmpty(user?['userId']) ??
         _stringOrEmpty(user?['id']) ??
         '';
@@ -1062,7 +1094,7 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
                           ),
                         ),
                       ),
-                        SliverToBoxAdapter(
+                      SliverToBoxAdapter(
                         child: PlacebookDetailInfoView(
                           title: title,
                           place: place,
@@ -1074,18 +1106,26 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
                           nickname: nickname,
                         ),
                       ),
-                        const SliverToBoxAdapter(
+                      SliverToBoxAdapter(
+                        child: _NearbyPlacesSection(
+                          isLoading: _isLoadingNearby,
+                          places: _nearbyPlaces,
+                          themeId: themeId,
+                          themeTitle: themeLabel,
+                        ),
+                      ),
+                      const SliverToBoxAdapter(
                         child: _SectionDivider(),
                       ),
-                        SliverToBoxAdapter(
+                      SliverToBoxAdapter(
                         child: PlacebookDetailContentView(
                           content: content,
                         ),
                       ),
-                        const SliverToBoxAdapter(
+                      const SliverToBoxAdapter(
                         child: _SectionDivider(),
                       ),
-                        SliverToBoxAdapter(
+                      SliverToBoxAdapter(
                         child: _PlacebookDetailCommentsSection(
                           commentCount: _commentCount,
                           comments: _commentPreview,
@@ -1331,6 +1371,27 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
     return null;
   }
 
+  static String? _extractThemeId(Map<String, dynamic> space) {
+    final theme = space['theme'];
+    if (theme is Map<String, dynamic>) {
+      final id = theme['id'];
+      if (id is String && id.isNotEmpty) return id;
+    }
+    final themeId = space['themeId'];
+    if (themeId is String && themeId.isNotEmpty) return themeId;
+    final place = space['place'];
+    if (place is Map<String, dynamic>) {
+      final nestedTheme = place['theme'];
+      if (nestedTheme is Map<String, dynamic>) {
+        final id = nestedTheme['id'];
+        if (id is String && id.isNotEmpty) return id;
+      }
+      final nestedId = place['themeId'];
+      if (nestedId is String && nestedId.isNotEmpty) return nestedId;
+    }
+    return null;
+  }
+
   static String? _extractPlaceId(Map<String, dynamic> space) {
     final direct = space['placeId'] ?? space['id'] ?? space['entityId'];
     if (direct is String && direct.isNotEmpty) return direct;
@@ -1451,6 +1512,102 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
   }
 }
 
+List<Map<String, dynamic>> _extractPlaceListItems(Map<String, dynamic> json) {
+  final items = json['items'];
+  if (items is List) {
+    return items.whereType<Map<String, dynamic>>().toList();
+  }
+  final data = json['data'];
+  if (data is Map<String, dynamic>) {
+    final nestedItems = data['items'] ?? data['nearbyPlaces'] ?? data['places'];
+    if (nestedItems is List) {
+      return nestedItems.whereType<Map<String, dynamic>>().toList();
+    }
+    final nestedData = data['data'];
+    if (nestedData is Map<String, dynamic>) {
+      final innerItems =
+          nestedData['items'] ?? nestedData['nearbyPlaces'] ?? nestedData['places'];
+      if (innerItems is List) {
+        return innerItems.whereType<Map<String, dynamic>>().toList();
+      }
+    }
+  }
+  return const [];
+}
+
+Map<String, dynamic> _normalizePlaceListItem(Map<String, dynamic> item) {
+  final next = Map<String, dynamic>.from(item);
+  final idRaw = item['id'];
+  if (idRaw is Map<String, dynamic>) {
+    next.remove('id');
+    next.addAll(idRaw);
+    final nestedId = idRaw['id'];
+    if (nestedId != null) {
+      next['id'] = nestedId.toString();
+      next['placeId'] ??= nestedId.toString();
+    }
+  }
+  return next;
+}
+
+String _resolvePlaceImageUrl(Map<String, dynamic> place) {
+  final idRaw = place['id'];
+  final idMap = idRaw is Map<String, dynamic> ? idRaw : null;
+  final thumbnailRaw = place['thumbnail'];
+  final thumbnailMap = thumbnailRaw is Map<String, dynamic> ? thumbnailRaw : null;
+  final imageIdRaw = place['imageId'];
+  final imageIdMap = imageIdRaw is Map<String, dynamic> ? imageIdRaw : null;
+  final imageRaw = place['image'];
+  final imageMap = imageRaw is Map<String, dynamic> ? imageRaw : null;
+  final idImageRaw = idMap?['image'];
+  final idImageMap =
+      idImageRaw is Map<String, dynamic> ? idImageRaw : null;
+  final feed = place['feed'];
+  final feedMap = feed is Map<String, dynamic> ? feed : null;
+  final images = feedMap?['images'] ?? place['images'];
+  Map<String, dynamic>? firstImageMap;
+  String? firstImageString;
+  if (images is List && images.isNotEmpty) {
+    final first = images.first;
+    if (first is Map<String, dynamic>) {
+      firstImageMap = first;
+    } else if (first is String) {
+      firstImageString = first;
+    }
+  }
+
+  return _firstValidImageUrl([
+    thumbnailRaw is String ? thumbnailRaw : null,
+    place['thumbnailUrl'] as String?,
+    place['imageUrl'] as String?,
+    idMap?['thumbnailUrl'] as String?,
+    idMap?['imageUrl'] as String?,
+    thumbnailMap?['thumbnailUrl'] as String?,
+    thumbnailMap?['cdnUrl'] as String?,
+    thumbnailMap?['fileUrl'] as String?,
+    imageIdMap?['thumbnailUrl'] as String?,
+    imageIdMap?['cdnUrl'] as String?,
+    imageIdMap?['fileUrl'] as String?,
+    imageMap?['thumbnailUrl'] as String?,
+    imageMap?['cdnUrl'] as String?,
+    imageMap?['fileUrl'] as String?,
+    idImageMap?['thumbnailUrl'] as String?,
+    idImageMap?['cdnUrl'] as String?,
+    idImageMap?['fileUrl'] as String?,
+    firstImageMap?['thumbnailUrl'] as String?,
+    firstImageMap?['cdnUrl'] as String?,
+    firstImageMap?['fileUrl'] as String?,
+    firstImageString,
+  ]);
+}
+
+String _firstValidImageUrl(List<String?> candidates) {
+  for (final url in candidates) {
+    if (url != null && url.trim().isNotEmpty) return url.trim();
+  }
+  return '';
+}
+
 class _SectionDivider extends StatelessWidget {
   const _SectionDivider();
 
@@ -1459,6 +1616,100 @@ class _SectionDivider extends StatelessWidget {
     return Container(
       height: 8,
       color: const Color(0xFFF5F5F5),
+    );
+  }
+}
+
+class _NearbyPlacesSection extends StatelessWidget {
+  const _NearbyPlacesSection({
+    required this.isLoading,
+    required this.places,
+    this.themeId,
+    this.themeTitle,
+  });
+
+  final bool isLoading;
+  final List<Map<String, dynamic>> places;
+  final String? themeId;
+  final String? themeTitle;
+
+  @override
+  Widget build(BuildContext context) {
+    if (isLoading) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 20),
+        child: Center(
+          child: CommonActivityIndicator(size: 22),
+        ),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '같은 테마를 가지고 있는 장소',
+            style: TextStyle(
+              fontFamily: 'Pretendard',
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: Colors.black,
+            ),
+          ),
+          const SizedBox(height: 8),
+          if (places.isEmpty)
+            Padding(
+              padding: EdgeInsets.symmetric(vertical: 16),
+              child: CommonEmptyView(
+                height: 100,
+                message: '근처에 등록된 장소가 없습니다.',
+                showButton: true,
+                buttonText: '장소 등록하기',
+                onTap: () {
+                  showCupertinoModalPopup(
+                    context: context,
+                    builder: (_) => SizedBox.expand(
+                      child: PlacebookCreateView(
+                        themeId: themeId,
+                        themeTitle: themeTitle,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            )
+          else
+            ...places.map((place) {
+              final title = (place['title'] as String?) ?? '장소';
+              final address = (place['address'] as String?) ?? '';
+              final commentCount =
+                  (place['commentCount'] as num?)?.toInt() ?? 0;
+              final likeCount = (place['likeCount'] as num?)?.toInt() ?? 0;
+              final themeText =
+                  _PlacebookDetailViewState._extractThemeTitle(place);
+              final favorited = (place['favorited'] as bool?) ??
+                  (place['isFavorited'] as bool?) ??
+                  false;
+              return CommonPlaceListItemView(
+                thumbnailUrl: _resolvePlaceImageUrl(place),
+                title: title,
+                address: address,
+                commentCount: commentCount,
+                likeCount: likeCount,
+                themeText: themeText,
+                favorited: favorited,
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => PlacebookDetailView(space: place),
+                    ),
+                  );
+                },
+              );
+            }),
+        ],
+      ),
     );
   }
 }

@@ -28,8 +28,8 @@ class _PlacebookCollectViewState extends State<PlacebookCollectView> {
   }
 
   Future<bool> _handleWillPop() async {
-    Navigator.of(context).maybePop(_hasDeletedPlace);
-    return false;
+    Navigator.of(context).pop(_hasDeletedPlace);
+    return true;
   }
 
   @override

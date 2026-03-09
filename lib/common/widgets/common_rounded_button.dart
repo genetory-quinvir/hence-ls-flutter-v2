@@ -18,6 +18,7 @@ class CommonRoundedButton extends StatelessWidget {
     this.leadingPadding = const EdgeInsets.only(left: 16),
     this.leadingCentered = false,
     this.leadingGap = 12,
+    this.contentPadding = EdgeInsets.zero,
   });
 
   final String title;
@@ -33,6 +34,7 @@ class CommonRoundedButton extends StatelessWidget {
   final EdgeInsetsGeometry leadingPadding;
   final bool leadingCentered;
   final double leadingGap;
+  final EdgeInsetsGeometry contentPadding;
 
   @override
   Widget build(BuildContext context) {
@@ -56,34 +58,43 @@ class CommonRoundedButton extends StatelessWidget {
             border: borderColor == null ? null : Border.all(color: borderColor!, width: borderWidth),
           ),
           child: leading == null
-              ? Center(
-                  child: Text(
-                    title,
-                    style: effectiveTextStyle,
+              ? Padding(
+                  padding: contentPadding,
+                  child: Center(
+                    child: Text(
+                      title,
+                      style: effectiveTextStyle,
+                    ),
                   ),
                 )
               : (leadingCentered
                   ? Center(
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          leading!,
-                          SizedBox(width: leadingGap),
-                          Text(
-                            title,
-                            style: effectiveTextStyle,
-                          ),
-                        ],
+                      child: Padding(
+                        padding: contentPadding,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            leading!,
+                            SizedBox(width: leadingGap),
+                            Text(
+                              title,
+                              style: effectiveTextStyle,
+                            ),
+                          ],
+                        ),
                       ),
                     )
                   : Stack(
                       fit: StackFit.expand,
                       alignment: Alignment.center,
                       children: [
-                        Center(
-                          child: Text(
-                            title,
-                            style: effectiveTextStyle,
+                        Padding(
+                          padding: contentPadding,
+                          child: Center(
+                            child: Text(
+                              title,
+                              style: effectiveTextStyle,
+                            ),
                           ),
                         ),
                         Align(

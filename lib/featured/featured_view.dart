@@ -290,15 +290,17 @@ class _FeaturedHeader extends StatelessWidget {
                 )
               else
                 SizedBox(
-                  height: 32,
+                  height: 40,
                   child: CommonRoundedButton(
                     title: '로그인하기',
-                    height: 32,
-                    radius: 999,
+                    height: 40,
+                    radius: 8,
                     backgroundColor: const Color(0xFFF2F2F2),
+                    contentPadding:
+                        const EdgeInsets.symmetric(horizontal: 16),
                     textStyle: const TextStyle(
                       fontFamily: 'Pretendard',
-                      fontSize: 12,
+                      fontSize: 14,
                       fontWeight: FontWeight.w600,
                       color: Color(0xFF424242),
                     ),

@@ -337,13 +337,16 @@ class _SignViewState extends State<SignView> {
                 height: 44,
                 child: Align(
                   alignment: Alignment.centerRight,
-                  child: Text(
-                    '둘러보기',
-                    style: TextStyle(
-                      fontFamily: 'Pretendard',
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.grey[600],
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 12),
+                    child: Text(
+                      '둘러보기',
+                      style: TextStyle(
+                        fontFamily: 'Pretendard',
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.grey[600],
+                      ),
                     ),
                   ),
                 ),

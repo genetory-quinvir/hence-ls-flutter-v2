@@ -144,9 +144,9 @@ class _PlacebookListViewState extends State<PlacebookListView> {
             placeOrderBy: 'title',
             themeLimit: 200,
             themePage: 1,
-            placeLimit: 4,
+            placeLimit: 3,
             placePage: 1,
-            includeTotal: 1,
+            includeTotal: 0,
           )
         : await ApiClient.fetchMyPlacebookThemes(
             filter: _collectionFilter(activeFilter),
@@ -156,7 +156,7 @@ class _PlacebookListViewState extends State<PlacebookListView> {
             placeOrderBy: 'title',
             themeLimit: 200,
             themePage: 1,
-            placeLimit: 4,
+            placeLimit: 3,
             placePage: 1,
             includeTotal: 0,
           );
@@ -672,7 +672,7 @@ class _PlacebookListViewState extends State<PlacebookListView> {
                               filter: _selectedCollection,
                               forceRefresh: true,
                             ),
-                            topPadding: 0,
+                            topPadding: 16,
                             notificationPredicate: (notification) =>
                                 notification.metrics.axis == Axis.vertical,
                             child: _isLoading && filteredPlaces.isEmpty

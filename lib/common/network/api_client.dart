@@ -1358,6 +1358,26 @@ class ApiClient {
     return json is Map<String, dynamic> ? json : <String, dynamic>{};
   }
 
+  static Future<Map<String, dynamic>> fetchPlacebookPlacesNearby({
+    required String placeId,
+    int limit = 3,
+  }) async {
+    final uri = Uri.parse('$baseUrl/api/v1/placebook/places/$placeId/nearby')
+        .replace(queryParameters: {'limit': '$limit'});
+    _logRequest('GET', uri);
+    final response = await _sendWithAuthRetry(
+      () => http.get(uri, headers: _headers()),
+      retryRequest: () => http.get(uri, headers: _headers()),
+    );
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+          'Placebook places nearby request failed: ${response.statusCode}');
+    }
+    final json = jsonDecode(response.body);
+    return json is Map<String, dynamic> ? json : <String, dynamic>{};
+  }
+
   static Future<Map<String, dynamic>> fetchMyPlacebookMyPlacesInfo() async {
     final uri = Uri.parse('$baseUrl/api/v1/placebook/my-places/info');
     _logRequest('GET', uri);
