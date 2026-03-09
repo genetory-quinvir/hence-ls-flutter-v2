@@ -120,10 +120,8 @@ class _PlacebookDetailInfoViewState extends State<PlacebookDetailInfoView> {
             width: double.infinity,
             height: 240,
             decoration: BoxDecoration(
-              borderRadius: const BorderRadius.vertical(
-                bottom: Radius.circular(12),
-              ),
-              border: Border.all(color: Colors.white, width: 4),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.white, width: 8),
               boxShadow: const [
                 BoxShadow(
                   color: Color(0x1A000000),
@@ -133,9 +131,7 @@ class _PlacebookDetailInfoViewState extends State<PlacebookDetailInfoView> {
               ],
             ),
             child: ClipRRect(
-              borderRadius: const BorderRadius.vertical(
-                bottom: Radius.circular(8),
-              ),
+              borderRadius: BorderRadius.circular(12),
               child: SizedBox(
                 width: double.infinity,
                 height: 180,

@@ -113,6 +113,10 @@ class _PlacebookDetailProfileViewState extends State<PlacebookDetailProfileView>
                 _HeaderSection.overlap)
             .clamp(0.0, headerHeight)
             .toDouble();
+        final gap = (totalHeight -
+                (headerHeight + _HeaderSection.titleBlockHeight))
+            .clamp(0.0, desiredGap)
+            .toDouble();
         return SizedBox(
           height: totalHeight,
           child: Column(
@@ -133,7 +137,7 @@ class _PlacebookDetailProfileViewState extends State<PlacebookDetailProfileView>
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
+                padding: EdgeInsets.fromLTRB(16, gap, 16, 0),
                 child: SizedBox(
                   height: _HeaderSection.titleBlockHeight,
                   child: Column(
@@ -141,6 +145,8 @@ class _PlacebookDetailProfileViewState extends State<PlacebookDetailProfileView>
                     children: [
                       Text(
                         widget.locationTitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           fontFamily: 'Pretendard',
                           fontSize: 20,
@@ -152,6 +158,8 @@ class _PlacebookDetailProfileViewState extends State<PlacebookDetailProfileView>
                       if ((widget.themeLabel ?? '').trim().isNotEmpty)
                         Text(
                           (widget.themeLabel ?? '').trim(),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
                             fontFamily: 'Pretendard',
                             fontSize: 13,
@@ -159,7 +167,7 @@ class _PlacebookDetailProfileViewState extends State<PlacebookDetailProfileView>
                             color: Color(0xFF616161),
                           ),
                         ),
-                      const SizedBox(height: 6),
+                      const SizedBox(height: 12),
                       Row(
                         children: [
                           CommonInkWell(
@@ -168,18 +176,20 @@ class _PlacebookDetailProfileViewState extends State<PlacebookDetailProfileView>
                             child: Row(
                               children: [
                                 CommonProfileImageView(
-                                  size: 24,
+                                  size: 28,
                                   imageUrl: widget.profileImageUrl,
                                   useSquircle: true,
-                                  placeholderIconSize: 12,
+                                  placeholderIconSize: 14,
                                 ),
                                 const SizedBox(width: 8),
                                 Text(
                                   widget.nickname,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(
                                     fontFamily: 'Pretendard',
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w400,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
                                     color: Colors.black,
                                   ),
                                 ),

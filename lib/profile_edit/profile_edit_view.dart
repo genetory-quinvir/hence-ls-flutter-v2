@@ -513,6 +513,8 @@ class _ProfilePhotoSection extends StatelessWidget {
             size: 120,
             imageFile: imageFile,
             imageUrl: imageUrl,
+            useSquircle: true,
+            squircleCornerRadius: 28,
           ),
           Positioned(
             right: -2,

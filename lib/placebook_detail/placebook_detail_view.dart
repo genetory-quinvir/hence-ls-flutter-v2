@@ -16,6 +16,8 @@ import '../common/widgets/common_login_guard.dart';
 import '../common/widgets/common_refresh_view.dart';
 import '../common/widgets/common_rounded_button.dart';
 import '../common/widgets/common_title_actionsheet.dart';
+import '../common/widgets/common_alert_view.dart';
+import '../report/report_view.dart';
 import '../common/permissions/media_permission_service.dart';
 import '../common/media/media_picker_service.dart';
 import '../common/media/media_conversion_service.dart';
@@ -159,7 +161,7 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
   }
 
   Future<void> _loadDetail() async {
-    final placeId = _extractPlaceId(_space);
+    final placeId = _extractPlaceId(_space) ?? '';
     if (placeId == null || placeId.isEmpty) return;
     setState(() => _isLoading = true);
     try {
@@ -194,7 +196,7 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
   }
 
   Future<void> _loadCommentPreview() async {
-    final placeId = _extractPlaceId(_space);
+    final placeId = _extractPlaceId(_space) ?? '';
     if (placeId == null || placeId.isEmpty) return;
     if (_isLoadingComments) return;
     setState(() => _isLoadingComments = true);
@@ -235,8 +237,8 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
   }
 
   Future<void> _loadMoreComments() async {
-    final placeId = _extractPlaceId(_space);
-    if (placeId == null || placeId.isEmpty) return;
+    final placeId = _extractPlaceId(_space) ?? '';
+    if (placeId.isEmpty) return;
     if (_isLoadingMoreComments || !_hasMoreComments) return;
     final cursor = _nextCommentCursor;
     if (cursor == null || cursor.isEmpty) return;
@@ -476,6 +478,137 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
     await _handleCheckin();
   }
 
+  void _showPlaceMoreSheet({
+    required bool isMine,
+    required String placeId,
+  }) {
+    final items = isMine
+        ? const [
+            CommonTitleActionSheetItem(label: '수정하기', value: 'edit'),
+            CommonTitleActionSheetItem(
+              label: '삭제하기',
+              value: 'delete',
+              isDestructive: true,
+            ),
+          ]
+        : const [
+            CommonTitleActionSheetItem(
+              label: '신고하기',
+              value: 'report',
+              isDestructive: true,
+            ),
+            CommonTitleActionSheetItem(label: '공유하기', value: 'share'),
+          ];
+    CommonTitleActionSheet.show(
+      context,
+      title: '더보기',
+      items: items,
+      onSelected: (item) {
+        switch (item.value) {
+          case 'edit':
+            // TODO: place edit flow
+            debugPrint('[PLACEBOOK] edit place');
+            break;
+          case 'delete':
+            if (placeId.isEmpty) return;
+            showDialog<void>(
+              context: context,
+              barrierDismissible: true,
+              barrierColor: const Color(0x99000000),
+              builder: (_) {
+                return Material(
+                  type: MaterialType.transparency,
+                  child: CommonAlertView(
+                    title: '장소를 삭제할까요?',
+                    subTitle: '삭제하면 되돌릴 수 없어요.',
+                    primaryButtonTitle: '삭제하기',
+                    secondaryButtonTitle: '취소',
+                    onPrimaryTap: () async {
+                      Navigator.of(context).pop();
+                      try {
+                        await ApiClient.deletePlacebookPlace(placeId);
+                        if (!mounted) return;
+                        Navigator.of(context).maybePop(true);
+                      } catch (e) {
+                        debugPrint('[PLACEBOOK] delete failed: $e');
+                      }
+                    },
+                    onSecondaryTap: () => Navigator.of(context).pop(),
+                  ),
+                );
+              },
+            );
+            break;
+          case 'report':
+            if (placeId.isEmpty) return;
+            ReportView.show(context, placeId: placeId);
+            break;
+          case 'share':
+            // TODO: share flow
+            debugPrint('[PLACEBOOK] share place');
+            break;
+          default:
+            break;
+        }
+      },
+    );
+  }
+
+  Widget _buildNavActions({
+    required bool isMine,
+    required bool isFavorited,
+    required Color iconColor,
+    required String placeId,
+  }) {
+    Widget navIcon({
+      required IconData icon,
+      required VoidCallback onTap,
+    }) {
+      return CommonInkWell(
+        onTap: onTap,
+        child: SizedBox(
+          width: 44,
+          height: 44,
+          child: Center(
+            child: Icon(
+              icon,
+              size: 24,
+              color: iconColor,
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (isMine) {
+      return navIcon(
+        icon: PhosphorIconsRegular.dotsThree,
+        onTap: () => _showPlaceMoreSheet(
+          isMine: true,
+          placeId: placeId,
+        ),
+      );
+    }
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        navIcon(
+          icon: isFavorited
+              ? PhosphorIconsFill.bookmarkSimple
+              : PhosphorIconsBold.bookmarkSimple,
+          onTap: _toggleFavorite,
+        ),
+        navIcon(
+          icon: PhosphorIconsRegular.dotsThree,
+          onTap: () => _showPlaceMoreSheet(
+            isMine: false,
+            placeId: placeId,
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildCommentInput(
     String placeId, {
     EdgeInsetsGeometry padding = const EdgeInsets.only(top: 12),
@@ -648,8 +781,8 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
 
   Future<void> _handleCheckin() async {
     if (_isCheckingIn) return;
-    final placeId = _extractPlaceId(_space);
-    if (placeId == null || placeId.isEmpty) return;
+    final placeId = _extractPlaceId(_space) ?? '';
+    if (placeId.isEmpty) return;
     if (!await CommonLoginGuard.ensureSignedIn(
       context,
       title: '로그인이 필요합니다.',
@@ -765,6 +898,10 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
     final userId = _stringOrEmpty(user?['userId']) ??
         _stringOrEmpty(user?['id']) ??
         '';
+    final currentUserId = AuthStore.instance.currentUser.value?.id;
+    final isMine = currentUserId != null &&
+        currentUserId.isNotEmpty &&
+        currentUserId == userId;
     final isDeletedUser =
         _stringOrEmpty(user?['deletedAt'])?.trim().isNotEmpty == true;
     final place = _stringOrEmpty(_space['address']) ??
@@ -810,7 +947,7 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
                 (_space['checkinCount'] as num?)?.toInt() ??
                 (_space['checkins'] as num?)?.toInt() ??
                 0;
-    final placeId = _extractPlaceId(_space);
+    final placeId = _extractPlaceId(_space) ?? '';
     const commentInputHeight = 50.0;
     const commentInputPadding = EdgeInsets.fromLTRB(16, 8, 16, 8);
     final commentInputTotalHeight =
@@ -823,7 +960,7 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
       child: Scaffold(
         backgroundColor: Colors.white,
         resizeToAvoidBottomInset: false,
-        bottomNavigationBar: placeId != null && placeId.isNotEmpty
+        bottomNavigationBar: placeId.isNotEmpty
             ? AnimatedPadding(
                 duration: const Duration(milliseconds: 150),
                 curve: Curves.easeOut,
@@ -993,14 +1130,13 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
                           color: Colors.white,
                         ),
                         onLeftTap: () => Navigator.of(context).maybePop(),
-                        right: Icon(
-                          hasCheckedIn
-                              ? PhosphorIconsFill.bookmarkSimple
-                              : PhosphorIconsBold.bookmarkSimple,
-                          size: 24,
-                          color: Colors.white,
+                        right: _buildNavActions(
+                          isMine: isMine,
+                          isFavorited: hasCheckedIn,
+                          iconColor: Colors.white,
+                          placeId: placeId,
                         ),
-                        onRightTap: _toggleFavorite,
+                        onRightTap: null,
                       ),
                     ),
                   ],
@@ -1056,16 +1192,15 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
                         size: 24,
                         color: Colors.black,
                       ),
-                      right: Icon(
-                        hasCheckedIn
-                            ? PhosphorIconsFill.bookmarkSimple
-                            : PhosphorIconsBold.bookmarkSimple,
-                        size: 24,
-                        color: Colors.black,
+                      right: _buildNavActions(
+                        isMine: isMine,
+                        isFavorited: hasCheckedIn,
+                        iconColor: Colors.black,
+                        placeId: placeId,
                       ),
                       onLeftTap: () =>
                           Navigator.of(context).maybePop(),
-                      onRightTap: _toggleFavorite,
+                      onRightTap: null,
                     ),
                       ),
                     ),

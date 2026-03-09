@@ -12,12 +12,16 @@ import '../common/widgets/common_map_view.dart';
 import '../common/widgets/common_place_marker.dart';
 import '../common/widgets/common_textfield_view.dart';
 import '../common/widgets/common_textview_view.dart';
+import '../common/widgets/common_inkwell.dart';
 import '../common/network/api_client.dart';
 import '../common/media/media_picker_service.dart';
 import '../common/permissions/media_permission_service.dart';
 import '../common/media/media_conversion_service.dart';
 import '../common/widgets/common_title_actionsheet.dart';
 import '../common/location/naver_location_service.dart';
+import '../place_select/place_select_view.dart';
+import '../placebook_search/placebook_search_view.dart';
+import '../placebook_saved/placebook_saved_view.dart';
 
 class PlacebookCreateView extends StatefulWidget {
   const PlacebookCreateView({
@@ -48,6 +52,7 @@ class _PlacebookCreateViewState extends State<PlacebookCreateView> {
         child: Column(
           children: [
             CommonNavigationView(
+              title: "장소 등록",
               left: const Icon(PhosphorIconsRegular.x,
                   size: 22, color: Colors.black),
               onLeftTap: () => Navigator.of(context).maybePop(),
@@ -55,8 +60,9 @@ class _PlacebookCreateViewState extends State<PlacebookCreateView> {
             ),
             Expanded(
               child: _PlacebookCreateBody(
-                titleSpan: _buildTitleSpan(),
+                categoryTitle: widget.categoryTitle,
                 themeId: widget.themeId,
+                themeTitle: widget.themeTitle,
                 mapKey: _mapKey,
               ),
             ),
@@ -65,54 +71,19 @@ class _PlacebookCreateViewState extends State<PlacebookCreateView> {
       ),
     );
   }
-
-  TextSpan _buildTitleSpan() {
-    final category = (widget.categoryTitle ?? '').trim();
-    final theme = (widget.themeTitle ?? '').trim();
-    const baseStyle = TextStyle(fontWeight: FontWeight.w400, fontSize: 20);
-    const boldStyle = TextStyle(fontWeight: FontWeight.w700, fontSize: 20);
-    if (category.isEmpty && theme.isEmpty) {
-      return const TextSpan(
-        text: '새로운 장소를\n등록하시겠습니까?',
-        style: baseStyle,
-      );
-    }
-    if (category.isEmpty) {
-      return TextSpan(
-        children: [
-          TextSpan(text: theme, style: boldStyle),
-          const TextSpan(text: '\n테마 장소를 등록하시겠습니까?', style: baseStyle),
-        ],
-      );
-    }
-    if (theme.isEmpty) {
-      return TextSpan(
-        children: [
-          TextSpan(text: category, style: boldStyle),
-          const TextSpan(text: '\n테마 장소를 등록하시겠습니까?', style: baseStyle),
-        ],
-      );
-    }
-    return TextSpan(
-      children: [
-        TextSpan(text: category, style: boldStyle),
-        const TextSpan(text: '\n', style: baseStyle),
-        TextSpan(text: theme, style: boldStyle),
-        const TextSpan(text: '\n테마 장소를 등록하시겠습니까?', style: baseStyle),
-      ],
-    );
-  }
 }
 
 class _PlacebookCreateBody extends StatefulWidget {
   const _PlacebookCreateBody({
-    required this.titleSpan,
+    required this.categoryTitle,
     required this.themeId,
+    required this.themeTitle,
     required this.mapKey,
   });
 
-  final TextSpan titleSpan;
+  final String? categoryTitle;
   final String? themeId;
+  final String? themeTitle;
   final Key mapKey;
 
   @override
@@ -121,6 +92,8 @@ class _PlacebookCreateBody extends StatefulWidget {
 
 class _PlacebookCreateBodyState extends State<_PlacebookCreateBody> {
   final CommonMapViewController _mapController = CommonMapViewController();
+  Key _mapKey = UniqueKey();
+  final TextEditingController _themeController = TextEditingController();
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _contentController = TextEditingController();
   final TextEditingController _subtitleController = TextEditingController();
@@ -140,10 +113,31 @@ class _PlacebookCreateBodyState extends State<_PlacebookCreateBody> {
   bool _showAdvanced = false;
   bool _canSave = false;
   Timer? _reverseGeocodeDebounce;
+  List<Map<String, dynamic>> _themes = const [];
+  bool _isLoadingThemes = false;
+  String? _selectedThemeId;
+  String? _selectedThemeTitle;
+  static const List<Map<String, String>> _visitTimeOptions = [
+    {'value': 'all_day', 'label': '하루종일'},
+    {'value': 'morning', 'label': '오전'},
+    {'value': 'afternoon', 'label': '오후'},
+    {'value': 'dawn', 'label': '새벽'},
+  ];
+  String? _bestVisitTimeValue;
 
   @override
   void initState() {
     super.initState();
+    _selectedThemeId = (widget.themeId ?? '').trim().isEmpty
+        ? null
+        : widget.themeId!.trim();
+    _selectedThemeTitle = (widget.themeTitle ?? '').trim();
+    if (_selectedThemeId != null && _selectedThemeTitle!.isNotEmpty) {
+      _themeController.text = _selectedThemeTitle!;
+    }
+    if (_selectedThemeId == null || _selectedThemeId!.isEmpty) {
+      _loadThemes();
+    }
     _titleController.addListener(_syncCanSave);
     _contentController.addListener(_syncCanSave);
     _syncCanSave();
@@ -152,6 +146,7 @@ class _PlacebookCreateBodyState extends State<_PlacebookCreateBody> {
   @override
   void dispose() {
     _reverseGeocodeDebounce?.cancel();
+    _themeController.dispose();
     _titleController.removeListener(_syncCanSave);
     _contentController.removeListener(_syncCanSave);
     _titleController.dispose();
@@ -165,10 +160,100 @@ class _PlacebookCreateBodyState extends State<_PlacebookCreateBody> {
     super.dispose();
   }
 
+  Future<void> _loadThemes() async {
+    if (_isLoadingThemes) return;
+    setState(() => _isLoadingThemes = true);
+    try {
+      final themes = await ApiClient.fetchPlacebookThemesSimple(orderBy: 'title');
+      if (!mounted) return;
+      setState(() {
+        _themes = themes.map(_resolveThemeData).toList();
+      });
+    } catch (_) {
+      // ignore
+    } finally {
+      if (mounted) setState(() => _isLoadingThemes = false);
+    }
+  }
+
+  Map<String, dynamic> _resolveThemeData(Map<String, dynamic> theme) {
+    final idMap = theme['id'];
+    if (idMap is Map<String, dynamic>) {
+      return {...idMap, ...theme};
+    }
+    return theme;
+  }
+
   void _syncCanSave() {
     final next = _canSaveNow();
     if (next == _canSave) return;
     setState(() => _canSave = next);
+  }
+
+  Widget _buildHeader() {
+    final category = (widget.categoryTitle ?? '').trim();
+    final theme = (_selectedThemeTitle ?? widget.themeTitle ?? '').trim();
+    const baseStyle =
+        TextStyle(fontWeight: FontWeight.w400, fontSize: 20, height: 1.4);
+    const boldStyle =
+        TextStyle(fontWeight: FontWeight.w700, fontSize: 20, height: 1.4);
+    const arrowColor = Colors.black;
+    const chipColor = Color(0xFFF2F2F2);
+
+    Widget buildThemeRow(String label) {
+      return CommonInkWell(
+        onTap: _openThemeSheet,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          decoration: BoxDecoration(
+            color: chipColor,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(label, style: boldStyle),
+              const SizedBox(width: 4),
+              const Icon(
+                PhosphorIconsFill.caretDown,
+                size: 18,
+                color: arrowColor,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final children = <Widget>[];
+    if (category.isNotEmpty) {
+      children.add(Text(category, style: boldStyle));
+      children.add(const SizedBox(height: 4));
+    }
+    if (theme.isNotEmpty) {
+      children.add(buildThemeRow(theme));
+      children.add(const SizedBox(height: 12));
+      children.add(const Text('테마 장소를 등록하시겠어요?', style: baseStyle));
+    } else {
+      children.add(buildThemeRow('새로운 장소'));
+      children.add(const SizedBox(height: 12));
+      children.add(const Text('등록하시겠어요?', style: baseStyle));
+    }
+
+    return SizedBox(
+      width: double.infinity,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: children,
+      ),
+    );
+  }
+
+  String _currentThemeId() {
+    final selected = (_selectedThemeId ?? '').trim();
+    if (selected.isNotEmpty) return selected;
+    return (widget.themeId ?? '').trim();
   }
 
   bool _canSaveNow() {
@@ -176,7 +261,7 @@ class _PlacebookCreateBodyState extends State<_PlacebookCreateBody> {
     final description = _contentController.text.trim();
     final lat = _selectedLatitude;
     final lng = _selectedLongitude;
-    final themeId = (widget.themeId ?? '').trim();
+    final themeId = _currentThemeId();
     return themeId.isNotEmpty &&
         title.isNotEmpty &&
         description.isNotEmpty &&
@@ -184,16 +269,68 @@ class _PlacebookCreateBodyState extends State<_PlacebookCreateBody> {
         lng != null;
   }
 
+  void _openThemeSheet() async {
+    if (_themes.isEmpty && !_isLoadingThemes) {
+      await _loadThemes();
+    }
+    if (!mounted) return;
+    if (_themes.isEmpty) {
+      _showSnack('테마를 불러오지 못했어요.');
+      return;
+    }
+    CommonTitleActionSheet.show(
+      context,
+      title: '테마 선택',
+      items: _themes
+          .map((theme) => CommonTitleActionSheetItem(
+                label: (theme['title'] as String?) ??
+                    (theme['name'] as String?) ??
+                    '테마',
+                value: theme['id']?.toString(),
+              ))
+          .toList(),
+      onSelected: (value) {
+        setState(() {
+          _selectedThemeId = value.value;
+          _selectedThemeTitle = value.label;
+          _themeController.text = value.label;
+        });
+        _syncCanSave();
+      },
+    );
+  }
+
+  void _openVisitTimeSheet() {
+    CommonTitleActionSheet.show(
+      context,
+      title: '찾아가기 좋은 시간대',
+      items: [
+        for (final option in _visitTimeOptions)
+          CommonTitleActionSheetItem(
+            label: option['label'] ?? '',
+            value: option['value'],
+          ),
+      ],
+      onSelected: (value) {
+        setState(() {
+          _subtitleController.text = value.label;
+          _bestVisitTimeValue = value.value;
+        });
+      },
+    );
+  }
+
 
   Future<void> _savePlace() async {
     if (_isSaving) return;
-    final themeId = (widget.themeId ?? '').trim();
+    final themeId = _currentThemeId();
     final title = _titleController.text.trim();
     final description = _contentController.text.trim();
     final subtitle = _subtitleController.text.trim();
     final address = _addressController.text.trim();
     final imageId = _photoId;
     final hashtags = _parseHashtags(_hashtagsController.text);
+    final bestVisitTime = _bestVisitTimeValue;
     final lat = _selectedLatitude;
     final lng = _selectedLongitude;
 
@@ -225,6 +362,7 @@ class _PlacebookCreateBodyState extends State<_PlacebookCreateBody> {
         latitude: lat,
         longitude: lng,
         imageId: imageId,
+        bestVisitTime: bestVisitTime,
         hashtags: hashtags,
       );
       if (imageId != null && imageId.isNotEmpty) {
@@ -239,13 +377,21 @@ class _PlacebookCreateBodyState extends State<_PlacebookCreateBody> {
             latitude: lat,
             longitude: lng,
             imageId: imageId,
+            bestVisitTime: bestVisitTime,
             hashtags: hashtags,
           );
         }
       }
       if (!mounted) return;
-      _showSnack('저장 완료');
-      Navigator.of(context).maybePop(created);
+      final imageUrl = _resolveCreatedImageUrl(created);
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => PlacebookSavedView(
+            imageBytes: _photoPreviewBytes,
+            imageUrl: imageUrl,
+          ),
+        ),
+      );
     } catch (e) {
       if (!mounted) return;
       _showSnack('저장에 실패했어요. 잠시 후 다시 시도해주세요.');
@@ -287,6 +433,31 @@ class _PlacebookCreateBodyState extends State<_PlacebookCreateBody> {
       if (url != null && url.trim().isNotEmpty) return true;
     }
     return false;
+  }
+
+  String? _resolveCreatedImageUrl(Map<String, dynamic> place) {
+    String? fromMap(dynamic raw) {
+      if (raw is Map<String, dynamic>) {
+        return raw['cdnUrl'] as String? ??
+            raw['fileUrl'] as String? ??
+            raw['thumbnailUrl'] as String?;
+      }
+      return null;
+    }
+
+    final imageUrl = place['imageUrl'] as String?;
+    if (imageUrl != null && imageUrl.trim().isNotEmpty) return imageUrl;
+    final thumbnailUrl = place['thumbnailUrl'] as String?;
+    if (thumbnailUrl != null && thumbnailUrl.trim().isNotEmpty) {
+      return thumbnailUrl;
+    }
+    final image = fromMap(place['image']);
+    if (image != null && image.trim().isNotEmpty) return image;
+    final imageId = fromMap(place['imageId']);
+    if (imageId != null && imageId.trim().isNotEmpty) return imageId;
+    final thumbnail = fromMap(place['thumbnail']);
+    if (thumbnail != null && thumbnail.trim().isNotEmpty) return thumbnail;
+    return null;
   }
 
   List<String> _parseHashtags(String raw) {
@@ -374,6 +545,30 @@ class _PlacebookCreateBodyState extends State<_PlacebookCreateBody> {
     });
   }
 
+  Future<void> _searchPlace() async {
+    final result = await Navigator.of(context).push(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => const PlacebookSearchView(),
+      ),
+    );
+    if (!mounted) return;
+    if (result is PlaceSelection) {
+      final name = result.placeName.trim();
+      if (name.isNotEmpty && _titleController.text.trim().isEmpty) {
+        _titleController.text = name;
+      }
+      _selectedLatitude = result.latitude;
+      _selectedLongitude = result.longitude;
+      setState(() {
+        _showMapStep = true;
+        _mapKey = UniqueKey();
+      });
+      _handleMapCenterChanged(NLatLng(result.latitude, result.longitude));
+      return;
+    }
+  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -388,27 +583,30 @@ class _PlacebookCreateBodyState extends State<_PlacebookCreateBody> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text.rich(
-            widget.titleSpan,
-            style: const TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.w400,
-              color: Colors.black,
-              height: 1.3,
-            ),
-          ),
-          if (!_showMapStep)
-          ...[
+          _buildHeader(),
+          // 테마는 헤더에서 선택
+          if (_currentThemeId().isNotEmpty && !_showMapStep) ...[
             const SizedBox(height: 16),
             SizedBox(
               width: double.infinity,
               child: CommonRoundedButton(
-                title: '맵에서 장소 가져오기',
+                title: '지도에서 직접 선택하기',
                 onTap: () {
                   setState(() => _showMapStep = true);
                   _syncCanSave();
                 },
                 height: 52,
+              ),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: CommonRoundedButton(
+                title: '검색해서 장소 가져오기',
+                onTap: _searchPlace,
+                height: 52,
+                backgroundColor: Colors.grey.shade200,
+                textColor: Colors.black,
               ),
             ),
           ],
@@ -434,8 +632,10 @@ class _PlacebookCreateBodyState extends State<_PlacebookCreateBody> {
                   child: Stack(
                     children: [
                     CommonMapView(
-                      key: widget.mapKey,
+                      key: _mapKey,
                       controller: _mapController,
+                      initialLatitude: _selectedLatitude,
+                      initialLongitude: _selectedLongitude,
                       showMyLocationButton: false,
                       onMapReady: (controller) async {
                         final position = await controller.getCameraPosition();
@@ -471,8 +671,16 @@ class _PlacebookCreateBodyState extends State<_PlacebookCreateBody> {
                       right: 12,
                       bottom: 12,
                       child: _MapFloatingButton(
-                        icon: Icons.my_location,
+                        icon: PhosphorIconsFill.navigationArrow,
                         onTap: () => _mapController.moveToMyLocation(),
+                      ),
+                    ),
+                    Positioned(
+                      right: 12,
+                      top: 12,
+                      child: _MapFloatingButton(
+                        icon: PhosphorIconsBold.magnifyingGlass,
+                        onTap: _searchPlace,
                       ),
                     ),
                     ],
@@ -534,6 +742,19 @@ class _PlacebookCreateBodyState extends State<_PlacebookCreateBody> {
                   maxLength: 120,
                   controller: _addressController,
                   focusNode: _addressFocusNode,
+                ),
+                const SizedBox(height: 16),
+                CommonInkWell(
+                  onTap: _openVisitTimeSheet,
+                  borderRadius: BorderRadius.circular(12),
+                  child: AbsorbPointer(
+                    child: CommonTextFieldView(
+                      title: '찾아가기 좋은 시간대',
+                      hintText: '예: 평일 오전 / 주말 오후',
+                      controller: _subtitleController,
+                      enabled: false,
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 16),
                 CommonTextFieldView(
@@ -600,12 +821,12 @@ class _MapFloatingButton extends StatelessWidget {
         height: size,
         decoration: BoxDecoration(
           color: Colors.white,
-          shape: BoxShape.circle,
+          borderRadius: BorderRadius.circular(8),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.18),
               blurRadius: 8,
-              offset: const Offset(0, 3),
+              offset: const Offset(0, 0),
             ),
           ],
         ),

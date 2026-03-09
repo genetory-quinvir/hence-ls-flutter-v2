@@ -57,6 +57,7 @@ dependencies:
   shared_preferences: ^2.3.2
   figma_squircle: ^0.6.3
   custom_refresh_indicator: ^4.0.1
+  lottie: ^3.1.2
 
 # ================= Firebase =================
   firebase_core: ^4.2.0
@@ -97,6 +98,7 @@ flutter:
     - assets/images/walkthrough/
     - assets/images/levels/
     - assets/json/
+    - assets/images/lottie/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

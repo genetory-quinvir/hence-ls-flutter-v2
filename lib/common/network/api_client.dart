@@ -1326,6 +1326,38 @@ class ApiClient {
     return _extractPlacebookItems(json);
   }
 
+  static Future<Map<String, dynamic>> fetchPlacebookPlacesList({
+    String? filter,
+    int? limit,
+    String? orderBy,
+    String? order,
+    String? cursor,
+    bool cursorOnly = false,
+  }) async {
+    final params = <String, String>{};
+    if (!cursorOnly) {
+      if (filter != null && filter.isNotEmpty) params['filter'] = filter;
+      if (limit != null) params['limit'] = '$limit';
+      if (orderBy != null && orderBy.isNotEmpty) params['orderBy'] = orderBy;
+      if (order != null && order.isNotEmpty) params['order'] = order;
+    }
+    if (cursor != null && cursor.isNotEmpty) params['cursor'] = cursor;
+    final uri = Uri.parse('$baseUrl/api/v1/placebook/places')
+        .replace(queryParameters: params);
+    _logRequest('GET', uri);
+    final response = await _sendWithAuthRetry(
+      () => http.get(uri, headers: _headers()),
+      retryRequest: () => http.get(uri, headers: _headers()),
+    );
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+          'Placebook places list request failed: ${response.statusCode}');
+    }
+    final json = jsonDecode(response.body);
+    return json is Map<String, dynamic> ? json : <String, dynamic>{};
+  }
+
   static Future<Map<String, dynamic>> fetchMyPlacebookMyPlacesInfo() async {
     final uri = Uri.parse('$baseUrl/api/v1/placebook/my-places/info');
     _logRequest('GET', uri);
@@ -1348,6 +1380,21 @@ class ApiClient {
       return json;
     }
     return const <String, dynamic>{};
+  }
+
+  static Future<void> deletePlacebookPlace(String placeId) async {
+    if (placeId.isEmpty) return;
+    final uri = Uri.parse('$baseUrl/api/v1/placebook/places/$placeId');
+    _logRequest('DELETE', uri);
+    final response = await _sendWithAuthRetry(
+      () => http.delete(uri, headers: _headers()),
+      retryRequest: () => http.delete(uri, headers: _headers()),
+    );
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+          'Placebook place delete failed: ${response.statusCode}');
+    }
   }
 
   static Future<Map<String, dynamic>> fetchMyPlacebookMyPlacesSearch({
@@ -1483,6 +1530,7 @@ class ApiClient {
   static Future<Map<String, dynamic>> fetchMyPlacebookThemes({
     required String filter,
     String themeOrderBy = 'title',
+    String? themeOrder,
     String? themeOrderBy2,
     String placeOrderBy = 'createdAt',
     int themeLimit = 200,
@@ -1496,6 +1544,8 @@ class ApiClient {
       queryParameters: <String, String>{
         'filter': filter,
         'themeOrderBy': themeOrderBy,
+        if (themeOrder != null && themeOrder.isNotEmpty)
+          'themeOrder': themeOrder,
         if (themeOrderBy2 != null && themeOrderBy2.isNotEmpty)
           'themeOrderBy2': themeOrderBy2,
         'placeOrderBy': placeOrderBy,
@@ -1518,6 +1568,7 @@ class ApiClient {
 
   static Future<Map<String, dynamic>> fetchPlacebookThemesPlaces({
     String themeOrderBy = 'title',
+    String? themeOrder,
     String? themeOrderBy2,
     String placeOrderBy = 'createdAt',
     int themeLimit = 200,
@@ -1530,6 +1581,8 @@ class ApiClient {
     uri = uri.replace(
       queryParameters: <String, String>{
         'themeOrderBy': themeOrderBy,
+        if (themeOrder != null && themeOrder.isNotEmpty)
+          'themeOrder': themeOrder,
         if (themeOrderBy2 != null && themeOrderBy2.isNotEmpty)
           'themeOrderBy2': themeOrderBy2,
         'placeOrderBy': placeOrderBy,
@@ -1573,6 +1626,7 @@ class ApiClient {
     required double longitude,
     String? imageId,
     String? thumbnailUrl,
+    String? bestVisitTime,
     required List<String> hashtags,
   }) async {
     final uri = Uri.parse('$baseUrl/api/v1/placebook/places');
@@ -1584,6 +1638,8 @@ class ApiClient {
       'address': address,
       'latitude': latitude,
       'longitude': longitude,
+      if (bestVisitTime != null && bestVisitTime.isNotEmpty)
+        'bestVisitTime': bestVisitTime,
       if (imageId != null && imageId.isNotEmpty) 'imageId': imageId,
       if (thumbnailUrl != null && thumbnailUrl.isNotEmpty)
         'thumbnailUrl': thumbnailUrl,
@@ -1618,6 +1674,7 @@ class ApiClient {
     required double latitude,
     required double longitude,
     String? imageId,
+    String? bestVisitTime,
     List<String>? hashtags,
   }) async {
     final uri = Uri.parse('$baseUrl/api/v1/placebook/places/$placeId');
@@ -1629,6 +1686,9 @@ class ApiClient {
       'latitude': latitude,
       'longitude': longitude,
     };
+    if (bestVisitTime != null && bestVisitTime.isNotEmpty) {
+      body['bestVisitTime'] = bestVisitTime;
+    }
     if (hashtags != null) {
       body['hashtags'] = hashtags;
     }

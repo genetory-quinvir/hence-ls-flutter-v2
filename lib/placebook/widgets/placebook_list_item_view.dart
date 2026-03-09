@@ -5,6 +5,7 @@ import 'package:figma_squircle/figma_squircle.dart';
 
 import '../../common/widgets/common_image_view.dart';
 import '../../common/widgets/common_inkwell.dart';
+import '../../common/widgets/common_rounded_button.dart';
 
 class PlacebookListItemView extends StatelessWidget {
   const PlacebookListItemView({
@@ -14,6 +15,7 @@ class PlacebookListItemView extends StatelessWidget {
     this.thumbnails = const [],
     this.hasPlaces = false,
     this.onTap,
+    this.onAddTap,
   });
 
   final String title;
@@ -21,6 +23,7 @@ class PlacebookListItemView extends StatelessWidget {
   final List<String> thumbnails;
   final bool hasPlaces;
   final VoidCallback? onTap;
+  final VoidCallback? onAddTap;
 
   @override
   Widget build(BuildContext context) {
@@ -44,7 +47,8 @@ class PlacebookListItemView extends StatelessWidget {
         builder: (context, constraints) {
           final width =
               constraints.maxWidth.isFinite ? constraints.maxWidth : 160.0;
-          const cardHeight = 100.0;
+          final cardHeight =
+              constraints.maxHeight.isFinite ? constraints.maxHeight : 124.0;
           final thumbSize = width * 0.32;
           final thumbOverlap = thumbSize * 0.5;
           final thumbTop = -thumbSize * 0.65;
@@ -77,7 +81,7 @@ class PlacebookListItemView extends StatelessWidget {
                         BoxShadow(
                           color: Colors.black.withValues(alpha: 0.08),
                           blurRadius: 18,
-                          offset: const Offset(0, 6),
+                          offset: const Offset(0, 0),
                         ),
                       ],
                     ),
@@ -106,6 +110,20 @@ class PlacebookListItemView extends StatelessWidget {
                             fontSize: 12,
                             fontWeight: FontWeight.w500,
                             color: Color(0xFF9E9E9E),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        CommonRoundedButton(
+                          title: '장소 추가하기',
+                          onTap: onAddTap,
+                          height: 32,
+                          radius: 8,
+                          backgroundColor: Colors.grey.shade200,
+                          textColor: Colors.black,
+                          textStyle: const TextStyle(
+                            fontFamily: 'Pretendard',
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                       ],
@@ -145,7 +163,7 @@ class _ThumbnailPeek extends StatelessWidget {
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.08),
             blurRadius: 12,
-            offset: const Offset(0, 2),
+            offset: const Offset(0, 0),
           ),
         ],
       ),

@@ -34,11 +34,13 @@ class PlacebookCollectMapView extends StatefulWidget {
     this.showFilterButton = true,
     this.useBottomSafeArea = true,
     this.fixedThemeIds,
+    this.onPlaceDeleted,
   });
 
   final bool showFilterButton;
   final bool useBottomSafeArea;
   final List<String>? fixedThemeIds;
+  final ValueChanged<String>? onPlaceDeleted;
 
   @override
   State<PlacebookCollectMapView> createState() =>
@@ -517,6 +519,27 @@ class _PlacebookCollectMapViewState extends State<PlacebookCollectMapView>
       _nearSpaces = _dedupeSpaces(next);
     });
     _updateLiveMarkerPoints();
+  }
+
+  void _removePlaceFromMap(String placeId) {
+    if (placeId.isEmpty) return;
+    setState(() {
+      _nearSpaces = _nearSpaces.where((space) {
+        final id = _placeIdOf(space);
+        return id != placeId;
+      }).toList();
+      if (_selectedLiveMarkerId == placeId) {
+        _selectedLiveMarkerId = null;
+      }
+    });
+    _updateLiveMarkerPoints();
+    widget.onPlaceDeleted?.call(placeId);
+  }
+
+  String _placeIdOf(Map<String, dynamic> space) {
+    final id = space['id'] ?? space['placeId'];
+    if (id is String) return id;
+    return id?.toString() ?? '';
   }
 
   String _spaceDedupeKey(Map<String, dynamic> space) {
@@ -1014,11 +1037,15 @@ class _PlacebookCollectMapViewState extends State<PlacebookCollectMapView>
                   setState(() => _selectedLiveMarkerId = cluster.clusterId);
                   return;
                 }
-                Navigator.of(context).push(
+                final deleted = await Navigator.of(context).push(
                   MaterialPageRoute(
                     builder: (_) => PlacebookDetailView(space: single.space),
                   ),
                 );
+                if (deleted == true) {
+                  final placeId = _placeIdOf(single.space);
+                  _removePlaceFromMap(placeId);
+                }
               },
               child: AnimatedOpacity(
                 opacity: _showLiveMarkers ? 1 : 0,
@@ -2010,12 +2037,16 @@ class _PlacebookCollectMapViewState extends State<PlacebookCollectMapView>
                       themeText: themeText,
                       distanceText: _distanceLabelForSpace(lat: lat, lng: lng),
                       favorited: favorited,
-                      onTap: () {
-                        Navigator.of(context).push(
+                      onTap: () async {
+                        final deleted = await Navigator.of(context).push(
                           MaterialPageRoute(
                             builder: (_) => PlacebookDetailView(space: space),
                           ),
                         );
+                        if (deleted == true) {
+                          final placeId = _placeIdOf(space);
+                          _removePlaceFromMap(placeId);
+                        }
                       },
                     );
                   }).toList(),

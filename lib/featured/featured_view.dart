@@ -54,6 +54,44 @@ class _FeaturedViewState extends State<FeaturedView> {
     }
   }
 
+  void _removeFeaturedPlace(String placeId) {
+    if (placeId.isEmpty || _featuredData == null) return;
+    final root = _featuredData!;
+    final data = root['data'];
+    if (data is! Map<String, dynamic>) return;
+    final themes = data['themes'];
+    if (themes is! List) return;
+    var changed = false;
+    final nextThemes = themes.map((entry) {
+      if (entry is! Map<String, dynamic>) return entry;
+      final places = entry['places'];
+      if (places is! List) return entry;
+      final filtered = places.where((raw) {
+        if (raw is! Map<String, dynamic>) return true;
+        final id = _featuredPlaceId(raw);
+        return id != placeId;
+      }).toList();
+      if (filtered.length != places.length) {
+        changed = true;
+        return {
+          ...entry,
+          'places': filtered,
+        };
+      }
+      return entry;
+    }).toList();
+    if (!changed) return;
+    setState(() {
+      _featuredData = {
+        ...root,
+        'data': {
+          ...data,
+          'themes': nextThemes,
+        },
+      };
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -83,7 +121,7 @@ class _FeaturedViewState extends State<FeaturedView> {
             final bottomInset = MediaQuery.of(context).padding.bottom;
             return CommonRefreshView(
               onRefresh: _reloadFeatured,
-              topPadding: 0,
+              topPadding: 16,
               notificationPredicate: (notification) =>
                   notification.metrics.axis == Axis.vertical,
               child: ListView(
@@ -100,7 +138,10 @@ class _FeaturedViewState extends State<FeaturedView> {
                         : <String, dynamic>{};
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 28),
-                      child: _FeaturedThemeSection(item: item),
+                      child: _FeaturedThemeSection(
+                        item: item,
+                        onPlaceDeleted: _removeFeaturedPlace,
+                      ),
                     );
                   }).toList(),
                   if (themes.isEmpty)
@@ -397,9 +438,11 @@ class _FeaturedBannerCard extends StatelessWidget {
 class _FeaturedThemeSection extends StatelessWidget {
   const _FeaturedThemeSection({
     required this.item,
+    required this.onPlaceDeleted,
   });
 
   final Map<String, dynamic> item;
+  final ValueChanged<String> onPlaceDeleted;
 
   @override
   Widget build(BuildContext context) {
@@ -491,12 +534,18 @@ class _FeaturedThemeSection extends StatelessWidget {
                   likeCount: likeCount,
                   themeText: title,
                   favorited: favorited,
-                  onTap: () {
-                    Navigator.of(context).push(
+                  onTap: () async {
+                    final deleted = await Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (_) => PlacebookDetailView(space: place),
                       ),
                     );
+                    if (deleted == true) {
+                      final placeId = _featuredPlaceId(place);
+                      if (placeId.isNotEmpty) {
+                        onPlaceDeleted(placeId);
+                      }
+                    }
                   },
                 );
               }).toList(),
@@ -548,6 +597,12 @@ String _bannerImageUrl(Map<String, dynamic> banner) {
       (offMap?['cdnUrl'] as String?) ??
       (offMap?['fileUrl'] as String?) ??
       '';
+}
+
+String _featuredPlaceId(Map<String, dynamic> place) {
+  final id = place['id'] ?? place['placeId'];
+  if (id is String) return id;
+  return id?.toString() ?? '';
 }
 
 String _placeImageUrl(Map<String, dynamic> place) {
