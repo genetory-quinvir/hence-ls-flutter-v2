@@ -4,11 +4,13 @@ import 'dart:math' as math;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'package:hence_ls_flutter_v2/common/widgets/common_inkwell.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../common/location/naver_location_service.dart';
+import '../common/permissions/location_permission_service.dart';
 import '../common/auth/auth_store.dart';
 import '../common/state/home_tab_controller.dart';
 import '../sign/sign_view.dart';
@@ -101,6 +103,7 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
   late final VoidCallback _mapFocusListener;
   late final VoidCallback _mapFilterListener;
   late final VoidCallback _tabIndexListener;
+  bool _didInitialLoad = false;
   MapFocusRequest? _pendingMapFocusRequest;
   Map<String, dynamic>? _optimisticCreatedSpace;
   DateTime? _optimisticCreatedAt;
@@ -411,6 +414,11 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
       onCameraIdle: _onMapCameraIdle,
       onMapReady: (controller) {
         _mapController = controller;
+        if (_lastCenter != null && _pendingMapFocusRequest == null) {
+          controller.updateCamera(
+            NCameraUpdate.withParams(target: _lastCenter!),
+          );
+        }
         controller
             .getCameraPosition()
             .then((camera) => _updateRadiusOverlay(center: camera.target));
@@ -427,25 +435,64 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
     HomeTabController.mapFilterRequest.addListener(_mapFilterListener);
     _tabIndexListener = () {
       if (HomeTabController.currentIndex.value == 1) {
+        _ensureMapInitialized();
         _handleMapFilterRequest();
       }
     };
     HomeTabController.currentIndex.addListener(_tabIndexListener);
-    if (HomeTabController.mapFilterRequest.value != null) {
+    if (HomeTabController.currentIndex.value == 1) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _ensureMapInitialized();
+      });
+    }
+    if (HomeTabController.currentIndex.value == 1 &&
+        HomeTabController.mapFilterRequest.value != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         _handleMapFilterRequest();
       });
     }
     _chipKeys = <String, GlobalKey>{};
+  }
+
+  void _ensureMapInitialized() {
+    if (_didInitialLoad) return;
+    _didInitialLoad = true;
     _loadCategoryFilters();
     _loadThemeFilters();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _centerChip(animated: false);
-      const initialCenter = NLatLng(37.5665, 126.9780);
-      _lastCenter = initialCenter;
-      _fetchPlacebookSpaces();
-    });
+    _initInitialCenter();
+  }
+
+  Future<void> _initInitialCenter() async {
+    final initialCenter = await _resolveInitialCenter();
+    if (!mounted) return;
+    _lastCenter = initialCenter;
+    _centerChip(animated: false);
+    if (_mapController != null && _pendingMapFocusRequest == null) {
+      _mapController!.updateCamera(
+        NCameraUpdate.withParams(target: initialCenter),
+      );
+    }
+    await _updateRadiusOverlay(center: initialCenter);
+    _fetchPlacebookSpaces();
+  }
+
+  Future<NLatLng> _resolveInitialCenter() async {
+    const fallback = NLatLng(37.5665, 126.9780);
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      final granted = await LocationPermissionService.isGranted();
+      if (serviceEnabled && granted) {
+        final position = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.medium,
+        );
+        return NLatLng(position.latitude, position.longitude);
+      }
+    } catch (_) {
+      // ignore and use fallback
+    }
+    return fallback;
   }
 
   @override
@@ -1261,8 +1308,12 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
           .where((url) => url.isNotEmpty)
           .toList();
       final isClusterSpace = single != null && _isClusterSpace(single.space);
-      final clusterCount =
-          single == null ? cluster.members.length : _clusterCountForSpace(single.space);
+      final clusterCount = single == null
+          ? cluster.members.fold<int>(
+              0,
+              (sum, member) => sum + _clusterCountForSpace(member.space),
+            )
+          : _clusterCountForSpace(single.space);
       final showClusterMarker = single == null || (isClusterSpace && clusterCount > 1);
       final isPrimarySingle = single != null &&
           (cluster.clusterId == primaryClusterId ||
@@ -1420,15 +1471,15 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
 
   int _maxMarkersForZoom(double zoom, {required bool isCluster}) {
     if (isCluster) {
-      if (zoom >= 15) return 140;
-      if (zoom >= 14) return 120;
-      if (zoom >= 13) return 100;
-      return 80;
+      if (zoom >= 15) return 200;
+      if (zoom >= 14) return 180;
+      if (zoom >= 13) return 160;
+      return 140;
     }
-    if (zoom >= 16) return 160;
-    if (zoom >= 15) return 140;
-    if (zoom >= 14) return 120;
-    return 100;
+    if (zoom >= 16) return 200;
+    if (zoom >= 15) return 180;
+    if (zoom >= 14) return 160;
+    return 140;
   }
 
   List<T> _limitEntriesByDistance<T>(

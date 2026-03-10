@@ -229,6 +229,8 @@ class _PlacebookCollectMapViewState extends State<PlacebookCollectMapView>
           orderBy: orderBy,
           order: order,
           themeIds: themeIds,
+          latitude: center.latitude,
+          longitude: center.longitude,
         );
         isClusterMode = false;
       } else {

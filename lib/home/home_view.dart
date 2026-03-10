@@ -10,7 +10,7 @@ import '../common/auth/auth_store.dart';
 import '../sign/sign_view.dart';
 import '../notification/notification_view.dart';
 import '../featured/featured_view.dart';
-import '../placebook/placebook_list_view.dart';
+import '../placebook/placebook_view.dart';
 
 class HomeView extends StatefulWidget {
   const HomeView({super.key});
@@ -56,7 +56,7 @@ class _HomeViewState extends State<HomeView> {
           children: const [
             FeaturedView(),
             MapView(),
-            _PlacebookListWrapper(),
+            _PlacebookWrapper(),
             SafeArea(top: true, bottom: true, child: NotificationView()),
             SafeArea(bottom: true, child: ProfileView()),
           ],
@@ -97,8 +97,8 @@ class _HomeViewState extends State<HomeView> {
   }
 }
 
-class _PlacebookListWrapper extends StatelessWidget {
-  const _PlacebookListWrapper();
+class _PlacebookWrapper extends StatelessWidget {
+  const _PlacebookWrapper();
 
   @override
   Widget build(BuildContext context) {
@@ -108,7 +108,7 @@ class _PlacebookListWrapper extends StatelessWidget {
         padding: data.padding.copyWith(bottom: 0),
         viewPadding: data.viewPadding.copyWith(bottom: 0),
       ),
-      child: const PlacebookListView(),
+      child: const PlacebookView(),
     );
   }
 }

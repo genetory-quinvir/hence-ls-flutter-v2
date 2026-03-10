@@ -48,19 +48,29 @@ class _NotificationBodyState extends State<_NotificationBody> {
   String? _nextCursor;
   String? _errorMessage;
   late final VoidCallback _tabListener;
+  bool _didInitialLoad = false;
 
   @override
   void initState() {
     super.initState();
-    _loadInitial();
     _tabListener = () {
       if (!mounted) return;
       if (HomeTabController.currentIndex.value == 3) {
         HomeTabController.setUnreadNotifications(false);
-        _reloadAll();
+        if (!_didInitialLoad) {
+          _loadInitial();
+        } else {
+          _reloadAll();
+        }
       }
     };
     HomeTabController.currentIndex.addListener(_tabListener);
+    if (HomeTabController.currentIndex.value == 3) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _loadInitial();
+      });
+    }
   }
 
   @override
@@ -70,6 +80,7 @@ class _NotificationBodyState extends State<_NotificationBody> {
   }
 
   Future<void> _loadInitial() async {
+    _didInitialLoad = true;
     if (!AuthStore.instance.isSignedIn.value) {
       setState(() {
         _items.clear();

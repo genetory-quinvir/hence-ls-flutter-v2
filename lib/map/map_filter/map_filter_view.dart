@@ -53,7 +53,7 @@ class _MapFilterViewState extends State<MapFilterView> {
   }
 
   Future<void> _loadThemes() async {
-    final themes = await ApiClient.fetchPlacebookThemes();
+    final themes = await ApiClient.fetchPlacebookThemes(orderBy: 'title');
     if (!mounted) return;
     setState(() {
       _themes = themes.map(_resolveThemeData).toList()
@@ -249,11 +249,9 @@ class _MapFilterViewState extends State<MapFilterView> {
                   ),
                 ),
               ),
-              Expanded(
-                child: ListView(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                  children: [
-                  CommonTextFieldView(
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                child: CommonTextFieldView(
                     controller: _queryController,
                     focusNode: _queryFocusNode,
                     hintText: '테마 검색',
@@ -272,6 +270,11 @@ class _MapFilterViewState extends State<MapFilterView> {
                     ),
                     onChanged: (value) => setState(() => _query = value),
                   ),
+              ),
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                  children: [
                   const SizedBox(height: 12),
                   if (_query.trim().isNotEmpty && searchResults.isEmpty)
                     const CommonEmptyView(
@@ -298,15 +301,16 @@ class _MapFilterViewState extends State<MapFilterView> {
                     ...displayThemes.map((theme) {
                       final id = theme['id']?.toString() ?? '';
                       final name = theme['title']?.toString() ?? '';
-                      final subtitle = theme['subtitle']?.toString() ?? '';
                       final categoryId = theme['categoryId']?.toString() ?? '';
                       final categoryTitle =
                           categoryTitles[categoryId]?.trim() ?? '';
+                      final subtitle = categoryTitle.isNotEmpty
+                          ? categoryTitle
+                          : (theme['subtitle']?.toString() ?? '');
                       if (id.isEmpty || name.isEmpty) {
                         return const SizedBox.shrink();
                       }
-                      final displayTitle =
-                          categoryTitle.isEmpty ? name : '$categoryTitle · $name';
+                      final displayTitle = name;
                       final selected = _selectedThemeIds.contains(id);
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 8),

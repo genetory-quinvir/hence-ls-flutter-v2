@@ -1262,8 +1262,12 @@ class _PlacebookCollectMapViewState extends State<PlacebookCollectMapView>
           .where((url) => url.isNotEmpty)
           .toList();
       final isClusterSpace = single != null && _isClusterSpace(single.space);
-      final clusterCount =
-          single == null ? cluster.members.length : _clusterCountForSpace(single.space);
+      final clusterCount = single == null
+          ? cluster.members.fold<int>(
+              0,
+              (sum, member) => sum + _clusterCountForSpace(member.space),
+            )
+          : _clusterCountForSpace(single.space);
       final showClusterMarker = single == null || (isClusterSpace && clusterCount > 1);
       final isPrimarySingle = single != null &&
           (cluster.clusterId == primaryClusterId ||
@@ -1421,15 +1425,15 @@ class _PlacebookCollectMapViewState extends State<PlacebookCollectMapView>
 
   int _maxMarkersForZoom(double zoom, {required bool isCluster}) {
     if (isCluster) {
-      if (zoom >= 15) return 140;
-      if (zoom >= 14) return 120;
-      if (zoom >= 13) return 100;
-      return 80;
+      if (zoom >= 15) return 200;
+      if (zoom >= 14) return 180;
+      if (zoom >= 13) return 160;
+      return 140;
     }
-    if (zoom >= 16) return 160;
-    if (zoom >= 15) return 140;
-    if (zoom >= 14) return 120;
-    return 100;
+    if (zoom >= 16) return 200;
+    if (zoom >= 15) return 180;
+    if (zoom >= 14) return 160;
+    return 140;
   }
 
   List<T> _limitEntriesByDistance<T>(

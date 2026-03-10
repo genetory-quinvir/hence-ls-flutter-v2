@@ -4,8 +4,8 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../common/widgets/common_inkwell.dart';
 
-class PlacebookListEmptyView extends StatelessWidget {
-  const PlacebookListEmptyView({
+class PlacebookEmptyView extends StatelessWidget {
+  const PlacebookEmptyView({
     super.key,
     required this.themeTitle,
     this.onTap,

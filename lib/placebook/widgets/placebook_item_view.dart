@@ -7,8 +7,8 @@ import '../../common/widgets/common_image_view.dart';
 import '../../common/widgets/common_inkwell.dart';
 import '../../common/widgets/common_rounded_button.dart';
 
-class PlacebookListItemView extends StatelessWidget {
-  const PlacebookListItemView({
+class PlacebookItemView extends StatelessWidget {
+  const PlacebookItemView({
     super.key,
     required this.title,
     required this.placeCount,

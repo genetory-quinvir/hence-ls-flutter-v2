@@ -1333,6 +1333,8 @@ class ApiClient {
     String? order,
     String? query,
     List<String>? themeIds,
+    double? latitude,
+    double? longitude,
     String? cursor,
     bool cursorOnly = false,
   }) async {
@@ -1349,6 +1351,8 @@ class ApiClient {
     if (themeIds != null && themeIds.isNotEmpty) {
       params['themeIds'] = themeIds.join(',');
     }
+    if (latitude != null) params['latitude'] = '$latitude';
+    if (longitude != null) params['longitude'] = '$longitude';
     if (cursor != null && cursor.isNotEmpty) params['cursor'] = cursor;
     final uri = Uri.parse('$baseUrl/api/v1/placebook/places')
         .replace(queryParameters: params);
@@ -1624,8 +1628,13 @@ class ApiClient {
     return _extractPlacebookItems(json);
   }
 
-  static Future<List<Map<String, dynamic>>> fetchPlacebookThemes() async {
-    final uri = Uri.parse('$baseUrl/api/v1/placebook/themes');
+  static Future<List<Map<String, dynamic>>> fetchPlacebookThemes({
+    String? orderBy,
+  }) async {
+    var uri = Uri.parse('$baseUrl/api/v1/placebook/themes');
+    if (orderBy != null && orderBy.isNotEmpty) {
+      uri = uri.replace(queryParameters: {'orderBy': orderBy});
+    }
     _logRequest('GET', uri);
     final response = await http.get(uri, headers: _headers());
     _logResponse(response);
