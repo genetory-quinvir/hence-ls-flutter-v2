@@ -50,7 +50,7 @@ class PlacebookCollectMapView extends StatefulWidget {
 class _PlacebookCollectMapViewState extends State<PlacebookCollectMapView>
     with SingleTickerProviderStateMixin {
   static const double _focusMarkerRadiusMeters = 1200;
-  static const double _liveClusterDistancePx = 52;
+  static const double _liveClusterDistancePx = 84;
   static const double _clusterMaxZoom = 18.0;
   static const double _clusterSelectionZoomThreshold = 17.8;
   static const double _placeListPeekHeight = 160.0;
@@ -75,6 +75,7 @@ class _PlacebookCollectMapViewState extends State<PlacebookCollectMapView>
   bool _isCameraMoving = false;
   bool _skipNextCameraIdleFetch = false;
   bool _isProgrammaticMove = false;
+  bool _didFitToAllPlaces = false;
   String? _selectedLiveMarkerId;
   NLatLng? _lastCenter;
   NLatLng? _lastMyLocation;
@@ -88,7 +89,7 @@ class _PlacebookCollectMapViewState extends State<PlacebookCollectMapView>
   double _lastViewportHeight = 0;
   static const String _radiusOverlayId = 'api-radius';
   NCircleOverlay? _radiusOverlay;
-  bool _showRadiusOverlay = false;
+  bool _showRadiusOverlay = true;
   late final Widget _mapWidget;
   final CommonMapViewController _mapViewController = CommonMapViewController();
   List<Map<String, dynamic>> _categoryFilters = const [];
@@ -185,36 +186,48 @@ class _PlacebookCollectMapViewState extends State<PlacebookCollectMapView>
       final radiusKm = _radiusKmForScreen() ?? 10.0;
       await _updateRadiusOverlay(center: center);
       const limit = 200;
+      final listLimit = _shouldFitAllPlaces ? null : limit;
       const orderBy = 'createdAt';
       const order = 'DESC';
       final categoryId = _selectedCategoryId;
       final themeIds = _effectiveThemeIds.isNotEmpty ? _effectiveThemeIds : null;
-      final spaces = _selectedIndex == 1
-          ? await ApiClient.fetchTopPlacebookThemes(
-              latitude: center.latitude,
-              longitude: center.longitude,
-              radiusKm: radiusKm,
-              limit: limit,
-              orderBy: orderBy,
-              order: order,
-              categoryId: categoryId,
-              themeIds: themeIds,
+      final spaces = _shouldFitAllPlaces
+          ? _extractPlacesFromListResponse(
+              await ApiClient.fetchPlacebookPlacesList(
+                filter: _placesFilterForIndex(),
+                limit: listLimit,
+                orderBy: orderBy,
+                order: order,
+                themeIds: themeIds,
+              ),
             )
-          : await ApiClient.fetchMyPlacebookPlaces(
-              latitude: center.latitude,
-              longitude: center.longitude,
-              radiusKm: radiusKm,
-              limit: limit,
-              orderBy: orderBy,
-              order: order,
-              categoryId: categoryId,
-              themeIds: themeIds,
-            );
+          : _selectedIndex == 1
+              ? await ApiClient.fetchTopPlacebookThemes(
+                  latitude: center.latitude,
+                  longitude: center.longitude,
+                  radiusKm: radiusKm,
+                  limit: limit,
+                  orderBy: orderBy,
+                  order: order,
+                  categoryId: categoryId,
+                  themeIds: themeIds,
+                )
+              : await ApiClient.fetchMyPlacebookPlaces(
+                  latitude: center.latitude,
+                  longitude: center.longitude,
+                  radiusKm: radiusKm,
+                  limit: limit,
+                  orderBy: orderBy,
+                  order: order,
+                  categoryId: categoryId,
+                  themeIds: themeIds,
+                );
       if (!mounted) return;
       final normalized = spaces.map(_normalizePlaceItem).toList();
       final merged = _dedupeSpaces(_mergeOptimisticCreatedSpace(normalized));
       setState(() => _nearSpaces = merged);
       await _updateLiveMarkerPoints();
+      await _fitToAllPlaces();
       if (_awaitingFetchMarkers && mounted) {
         _awaitingFetchMarkers = false;
         setState(() => _showLiveMarkers = true);
@@ -223,6 +236,7 @@ class _PlacebookCollectMapViewState extends State<PlacebookCollectMapView>
       if (!mounted) return;
       setState(() => _nearSpaces = const []);
       await _updateLiveMarkerPoints();
+      await _fitToAllPlaces();
       if (_awaitingFetchMarkers && mounted) {
         _awaitingFetchMarkers = false;
         setState(() => _showLiveMarkers = true);
@@ -261,6 +275,32 @@ class _PlacebookCollectMapViewState extends State<PlacebookCollectMapView>
     return _selectedThemeIds;
   }
 
+  bool get _shouldFitAllPlaces {
+    final fixed = widget.fixedThemeIds;
+    return fixed != null && fixed.isNotEmpty;
+  }
+
+  String _placesFilterForIndex() {
+    return _selectedIndex == 1 ? 'all' : 'favorites_created';
+  }
+
+  List<Map<String, dynamic>> _extractPlacesFromListResponse(
+    Map<String, dynamic> response,
+  ) {
+    final items = response['items'];
+    if (items is List) {
+      return items.whereType<Map<String, dynamic>>().toList();
+    }
+    final data = response['data'];
+    if (data is Map<String, dynamic>) {
+      final nested = data['items'];
+      if (nested is List) {
+        return nested.whereType<Map<String, dynamic>>().toList();
+      }
+    }
+    return const <Map<String, dynamic>>[];
+  }
+
   @override
   void initState() {
     super.initState();
@@ -287,6 +327,7 @@ class _PlacebookCollectMapViewState extends State<PlacebookCollectMapView>
           _focusToCreatedLivespace(pending);
         }
         _updateLiveMarkerPoints();
+        _fitToAllPlaces();
       },
     );
     _mapFocusListener = _handleMapFocusRequest;
@@ -324,6 +365,7 @@ class _PlacebookCollectMapViewState extends State<PlacebookCollectMapView>
     if (fixed != oldFixed) {
       if (fixed != null && fixed.isNotEmpty) {
         _selectedThemeIds = List<String>.from(fixed);
+        _didFitToAllPlaces = false;
       }
     }
   }
@@ -534,6 +576,48 @@ class _PlacebookCollectMapViewState extends State<PlacebookCollectMapView>
     });
     _updateLiveMarkerPoints();
     widget.onPlaceDeleted?.call(placeId);
+  }
+
+  List<NLatLng> _collectSpaceLatLngs() {
+    final points = <NLatLng>[];
+    for (final space in _nearSpaces) {
+      final lat = (space['latitude'] as num?)?.toDouble();
+      final lng = (space['longitude'] as num?)?.toDouble();
+      if (lat == null || lng == null) continue;
+      points.add(NLatLng(lat, lng));
+    }
+    return points;
+  }
+
+  Future<void> _fitToAllPlaces() async {
+    if (!_shouldFitAllPlaces || _didFitToAllPlaces) return;
+    final controller = _mapController;
+    if (controller == null) return;
+    final points = _collectSpaceLatLngs();
+    if (points.isEmpty) return;
+    try {
+      _skipNextCameraIdleFetch = true;
+      _isProgrammaticMove = true;
+      if (points.length == 1) {
+        await controller.updateCamera(
+          NCameraUpdate.withParams(
+            target: points.first,
+            zoom: 15.5,
+          ),
+        );
+      } else {
+        final bounds = NLatLngBounds.from(points);
+        final update = NCameraUpdate.fitBounds(
+          bounds,
+          padding: const EdgeInsets.fromLTRB(24, 140, 24, 220),
+        );
+        update.setAnimation(duration: const Duration(milliseconds: 500));
+        await controller.updateCamera(update);
+      }
+      _didFitToAllPlaces = true;
+    } catch (_) {
+      // Ignore camera update errors.
+    }
   }
 
   String _placeIdOf(Map<String, dynamic> space) {
@@ -749,10 +833,16 @@ class _PlacebookCollectMapViewState extends State<PlacebookCollectMapView>
 
   double? _radiusKmForScreen() {
     final controller = _mapController;
-    if (controller == null || _mapViewportWidth <= 0) return null;
+    if (controller == null || _mapViewportWidth <= 0 || _mapViewportHeight <= 0) {
+      return null;
+    }
     final halfWidth = _mapViewportWidth / 2;
+    final halfHeight = _mapViewportHeight / 2;
+    final halfDiagonal = math.sqrt(
+      (halfWidth * halfWidth) + (halfHeight * halfHeight),
+    );
     final metersPerDp = controller.getMeterPerDp();
-    final meters = metersPerDp * halfWidth;
+    final meters = metersPerDp * halfDiagonal;
     if (meters.isNaN || meters.isInfinite || meters <= 0) return null;
     return meters / 1000;
   }

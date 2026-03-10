@@ -1331,6 +1331,8 @@ class ApiClient {
     int? limit,
     String? orderBy,
     String? order,
+    String? query,
+    List<String>? themeIds,
     String? cursor,
     bool cursorOnly = false,
   }) async {
@@ -1340,6 +1342,12 @@ class ApiClient {
       if (limit != null) params['limit'] = '$limit';
       if (orderBy != null && orderBy.isNotEmpty) params['orderBy'] = orderBy;
       if (order != null && order.isNotEmpty) params['order'] = order;
+    }
+    if (query != null && query.trim().isNotEmpty) {
+      params['q'] = query.trim();
+    }
+    if (themeIds != null && themeIds.isNotEmpty) {
+      params['themeIds'] = themeIds.join(',');
     }
     if (cursor != null && cursor.isNotEmpty) params['cursor'] = cursor;
     final uri = Uri.parse('$baseUrl/api/v1/placebook/places')
@@ -1483,7 +1491,7 @@ class ApiClient {
     String? query,
     List<String>? hashtags,
   }) async {
-    var uri = Uri.parse('$baseUrl/api/v1/map/placebook/themes/top');
+    var uri = Uri.parse('$baseUrl/api/v1/map/placebook/all');
     final queryParams = <String, String>{
       'latitude': '$latitude',
       'longitude': '$longitude',
@@ -1624,8 +1632,17 @@ class ApiClient {
     return json is Map<String, dynamic> ? json : <String, dynamic>{};
   }
 
-  static Future<Map<String, dynamic>> fetchFeatured() async {
-    final uri = Uri.parse('$baseUrl/api/v1/featured');
+  static Future<Map<String, dynamic>> fetchFeatured({
+    double? latitude,
+    double? longitude,
+  }) async {
+    var uri = Uri.parse('$baseUrl/api/v1/featured');
+    if (latitude != null && longitude != null) {
+      uri = uri.replace(queryParameters: {
+        'latitude': '$latitude',
+        'longitude': '$longitude',
+      });
+    }
     _logRequest('GET', uri);
     final response = await http.get(uri, headers: _headers());
     _logResponse(response);

@@ -47,7 +47,7 @@ class MapView extends StatefulWidget {
 
 class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
   static const double _focusMarkerRadiusMeters = 1200;
-  static const double _liveClusterDistancePx = 52;
+  static const double _liveClusterDistancePx = 84;
   static const double _clusterMaxZoom = 18.0;
   static const double _clusterSelectionZoomThreshold = 17.8;
   static const double _placeListPeekHeight = 160.0;
@@ -181,7 +181,7 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
       final center = _lastCenter ?? const NLatLng(37.5665, 126.9780);
       final radiusKm = _radiusKmForScreen() ?? 10.0;
       await _updateRadiusOverlay(center: center);
-      const limit = 200;
+      const limit = 40;
       const orderBy = 'createdAt';
       const order = 'DESC';
       final categoryId = _selectedCategoryId;

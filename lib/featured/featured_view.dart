@@ -1,11 +1,13 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../common/auth/auth_models.dart';
 import '../common/auth/auth_store.dart';
 import '../common/state/home_tab_controller.dart';
 import '../common/network/api_client.dart';
+import '../common/permissions/location_permission_service.dart';
 import '../common/widgets/common_activity.dart';
 import '../common/widgets/common_image_view.dart';
 import '../common/widgets/common_inkwell.dart';
@@ -35,13 +37,35 @@ class _FeaturedViewState extends State<FeaturedView> {
   @override
   void initState() {
     super.initState();
-    _featuredFuture = ApiClient.fetchFeatured();
+    _featuredFuture = _requestFeatured();
+  }
+
+  Future<Map<String, dynamic>> _requestFeatured() async {
+    double? latitude;
+    double? longitude;
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      final granted = await LocationPermissionService.isGranted();
+      if (serviceEnabled && granted) {
+        final position = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.medium,
+        );
+        latitude = position.latitude;
+        longitude = position.longitude;
+      }
+    } on Exception {
+      // Ignore location failures and fall back to non-location request.
+    }
+    return ApiClient.fetchFeatured(
+      latitude: latitude,
+      longitude: longitude,
+    );
   }
 
   Future<void> _reloadFeatured() async {
     setState(() => _isRefreshing = true);
     try {
-      final data = await ApiClient.fetchFeatured();
+      final data = await _requestFeatured();
       if (!mounted) return;
       setState(() {
         _featuredData = data;
@@ -118,6 +142,9 @@ class _FeaturedViewState extends State<FeaturedView> {
             final themes = data is Map<String, dynamic>
                 ? (data['themes'] as List<dynamic>?) ?? const []
                 : const [];
+            final nearestPlaces = data is Map<String, dynamic>
+                ? (data['nearestPlaces'] as List<dynamic>?) ?? const []
+                : const [];
             final bottomInset = MediaQuery.of(context).padding.bottom;
             return CommonRefreshView(
               onRefresh: _reloadFeatured,
@@ -131,6 +158,15 @@ class _FeaturedViewState extends State<FeaturedView> {
                   const _FeaturedHeader(),
                   const SizedBox(height: 14),
                   _FeaturedBannerSection(items: banners),
+                  const _FeaturedSingleCardBannerSection(),
+                  if (nearestPlaces.isNotEmpty) ...[
+                    const SizedBox(height: 20),
+                    _FeaturedNearestPlacesSection(
+                      places: nearestPlaces
+                          .whereType<Map<String, dynamic>>()
+                          .toList(),
+                    ),
+                  ],
                   const SizedBox(height: 28),
                   ...themes.map((entry) {
                     final item = entry is Map<String, dynamic>
@@ -191,6 +227,88 @@ class _FeaturedBannerSection extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _FeaturedSingleCardBannerSection extends StatelessWidget {
+  const _FeaturedSingleCardBannerSection();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+      child: Container(
+        height: 160,
+        decoration: BoxDecoration(
+          color: const Color(0xFFF2F2F2),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: const Color(0x14000000)),
+        ),
+      ),
+    );
+  }
+}
+
+class _FeaturedNearestPlacesSection extends StatelessWidget {
+  const _FeaturedNearestPlacesSection({
+    required this.places,
+  });
+
+  final List<Map<String, dynamic>> places;
+
+  @override
+  Widget build(BuildContext context) {
+    if (places.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '내 근처에는 이런 장소가 있어요',
+            style: TextStyle(
+              fontFamily: 'Pretendard',
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: Colors.black,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Column(
+            children: places.map((place) {
+              final title = (place['title'] as String?) ?? '장소';
+              final address = (place['address'] as String?) ?? '';
+              final commentCount =
+                  (place['commentCount'] as num?)?.toInt() ?? 0;
+              final likeCount = (place['likeCount'] as num?)?.toInt() ?? 0;
+              final favorited = (place['favorited'] as bool?) ??
+                  (place['isFavorited'] as bool?) ??
+                  false;
+              final themeText = _placeThemeTitle(place);
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: CommonPlaceListItemView(
+                  thumbnailUrl: _placeImageUrl(place),
+                  title: title,
+                  address: address,
+                  commentCount: commentCount,
+                  likeCount: likeCount,
+                  themeText: themeText,
+                  favorited: favorited,
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => PlacebookDetailView(space: place),
+                      ),
+                    );
+                  },
+                ),
+              );
+            }).toList(),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -463,10 +581,54 @@ class _FeaturedThemeSection extends StatelessWidget {
       children: [
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: CommonInkWell(
-            onTap: themeId.trim().isEmpty
-                ? null
-                : () {
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: CommonInkWell(
+                  onTap: themeId.trim().isEmpty
+                      ? null
+                      : () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => PlacebookCollectView(
+                                themeId: themeId,
+                                themeTitle: title,
+                              ),
+                            ),
+                          );
+                        },
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          fontFamily: 'Pretendard',
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.black,
+                        ),
+                      ),
+                      if (description.trim().isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          description,
+                          style: const TextStyle(
+                            fontFamily: 'Pretendard',
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            color: Color(0xFF8E8E8E),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              if (themeId.trim().isNotEmpty)
+                CommonInkWell(
+                  onTap: () {
                     Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (_) => PlacebookCollectView(
@@ -476,32 +638,32 @@ class _FeaturedThemeSection extends StatelessWidget {
                       ),
                     );
                   },
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontFamily: 'Pretendard',
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.black,
+                  borderRadius: BorderRadius.circular(10),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 4,
+                  ),
+                  child: Row(
+                    children: const [
+                      Text(
+                        '더보기',
+                        style: TextStyle(
+                          fontFamily: 'Pretendard',
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF9E9E9E),
+                        ),
+                      ),
+                      SizedBox(width: 2),
+                      Icon(
+                        PhosphorIconsRegular.caretRight,
+                        size: 14,
+                        color: Color(0xFF9E9E9E),
+                      ),
+                    ],
                   ),
                 ),
-                if (description.trim().isNotEmpty) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    description,
-                    style: const TextStyle(
-                      fontFamily: 'Pretendard',
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                      color: Color(0xFF8E8E8E),
-                    ),
-                  ),
-                ],
-              ],
-            ),
+            ],
           ),
         ),
         const SizedBox(height: 12),
@@ -605,6 +767,17 @@ String _featuredPlaceId(Map<String, dynamic> place) {
   final id = place['id'] ?? place['placeId'];
   if (id is String) return id;
   return id?.toString() ?? '';
+}
+
+String _placeThemeTitle(Map<String, dynamic> place) {
+  final theme = place['theme'];
+  if (theme is Map<String, dynamic>) {
+    final title = theme['title'];
+    if (title is String && title.trim().isNotEmpty) {
+      return title.trim();
+    }
+  }
+  return '';
 }
 
 String _placeImageUrl(Map<String, dynamic> place) {

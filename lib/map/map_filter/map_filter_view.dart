@@ -224,7 +224,7 @@ class _MapFilterViewState extends State<MapFilterView> {
                           height: 36,
                           child: Center(
                             child: Icon(
-                              PhosphorIconsRegular.x,
+                              PhosphorIconsBold.x,
                               size: 20,
                               color: Colors.black,
                             ),

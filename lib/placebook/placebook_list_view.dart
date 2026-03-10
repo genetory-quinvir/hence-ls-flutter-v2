@@ -48,6 +48,7 @@ class _PlacebookListViewState extends State<PlacebookListView> {
   final ScrollController _listController = ScrollController();
   final TextEditingController _searchController = TextEditingController();
   String _searchText = '';
+  String _pendingSearchText = '';
   final Map<String, _PlacebookCacheSnapshot> _filterCache = {};
 
   @override
@@ -84,7 +85,52 @@ class _PlacebookListViewState extends State<PlacebookListView> {
   }
 
   void _handleSearchChanged(String value) {
-    setState(() => _searchText = value);
+    final nextValue = value.trim();
+    final shouldClear = nextValue.isEmpty && _searchText.trim().isNotEmpty;
+    setState(() => _pendingSearchText = value);
+    if (!shouldClear) return;
+    setState(() {
+      _searchText = '';
+      _pendingSearchText = '';
+    });
+    _scrollToTop();
+    if (_selectedViewMode == 'place') {
+      _loadPlacebookPlacesList(
+        filter: _selectedCollection,
+        forceRefresh: true,
+      );
+    }
+  }
+
+  void _handleSearchCancel() {
+    _searchController.clear();
+    setState(() {
+      _searchText = '';
+      _pendingSearchText = '';
+    });
+    _scrollToTop();
+    if (_selectedViewMode == 'place') {
+      _loadPlacebookPlacesList(
+        filter: _selectedCollection,
+        forceRefresh: true,
+      );
+    }
+  }
+
+  void _handleSearchSubmitted(String value) {
+    final nextValue = _pendingSearchText.trim();
+    if (nextValue == _searchText.trim()) return;
+    setState(() {
+      _searchText = value;
+      _pendingSearchText = value;
+    });
+    _scrollToTop();
+    if (nextValue.isNotEmpty || _selectedViewMode == 'place') {
+      _loadPlacebookPlacesList(
+        filter: _selectedCollection,
+        forceRefresh: true,
+      );
+    }
   }
 
   Future<void> _loadPlacebookData({
@@ -246,6 +292,7 @@ class _PlacebookListViewState extends State<PlacebookListView> {
       limit: 20,
       orderBy: loadMore ? null : placeOrderBy,
       order: loadMore ? null : placeOrder,
+      query: _searchText,
       cursor: requestCursor,
       cursorOnly: loadMore,
     );
@@ -306,7 +353,11 @@ class _PlacebookListViewState extends State<PlacebookListView> {
   Widget build(BuildContext context) {
     final rootViewPadding =
         MediaQueryData.fromView(View.of(context)).viewPadding.bottom;
-    final isPlaceView = _selectedViewMode == 'place';
+    final hasSearch = _searchText.trim().isNotEmpty;
+    final isPlaceView = hasSearch || _selectedViewMode == 'place';
+    final hasThemeData = _themes.isNotEmpty || _placesByTheme.isNotEmpty;
+    final hasPlaceData = _places.isNotEmpty;
+    final showInitialLoading = _isLoading && !(hasThemeData || hasPlaceData);
     final themes = _themes
         .whereType<Map<String, dynamic>>()
         .where((item) => item['isActive'] != false)
@@ -326,8 +377,7 @@ class _PlacebookListViewState extends State<PlacebookListView> {
                 .where(
                     (theme) => filteredPlacesByTheme.containsKey(_themeId(theme)))
                 .toList());
-    final filteredPlaces =
-        isPlaceView ? _applyPlaceSearchFilter(_places, _searchText) : const [];
+    final filteredPlaces = isPlaceView ? _places : const [];
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -338,7 +388,7 @@ class _PlacebookListViewState extends State<PlacebookListView> {
           SafeArea(
             top: true,
             bottom: false,
-            child: _isLoading
+            child: showInitialLoading
                 ? const Center(
                     child: SizedBox(
                       width: 24,
@@ -354,40 +404,70 @@ class _PlacebookListViewState extends State<PlacebookListView> {
                         child: Stack(
                           clipBehavior: Clip.none,
                           children: [
-                            Positioned(
-                              left: 24,
-                              right: 16,
-                              top: 12,
-                              child: _SearchThumbnailStack(
-                                thumbnails: _searchThumbnails,
+                            if (!(_selectedCollection == 'mine' &&
+                                _searchThumbnails.isEmpty))
+                              Positioned(
+                                left: 24,
+                                right: 16,
+                                top: 12,
+                                child: _SearchThumbnailStack(
+                                  thumbnails: _searchThumbnails,
+                                ),
                               ),
-                            ),
                             Positioned(
                               left: 16,
                               right: 16,
                               bottom: 0,
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withValues(alpha: 0.12),
-                                      blurRadius: 16,
-                                      offset: const Offset(0, 0),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color:
+                                                Colors.black.withValues(alpha: 0.12),
+                                            blurRadius: 16,
+                                            offset: const Offset(0, 0),
+                                          ),
+                                        ],
+                                      ),
+                                      child: CommonTextFieldView(
+                                        controller: _searchController,
+                                        hintText: '검색',
+                                        textInputAction: TextInputAction.search,
+                                        onChanged: _handleSearchChanged,
+                                        onSubmitted: _handleSearchSubmitted,
+                                        backgroundColor: Colors.white,
+                                        prefixIcon: const Icon(
+                                          PhosphorIconsRegular.magnifyingGlass,
+                                          size: 18,
+                                          color: Color(0xFF9E9E9E),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  if (hasSearch) ...[
+                                    const SizedBox(width: 8),
+                                    GestureDetector(
+                                      onTap: _handleSearchCancel,
+                                      behavior: HitTestBehavior.opaque,
+                                      child: const Padding(
+                                        padding:
+                                            EdgeInsets.symmetric(horizontal: 12),
+                                        child: Text(
+                                          '취소',
+                                          style: TextStyle(
+                                            fontFamily: 'Pretendard',
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w400,
+                                            color: Colors.black,
+                                          ),
+                                        ),
+                                      ),
                                     ),
                                   ],
-                                ),
-                                child: CommonTextFieldView(
-                                  controller: _searchController,
-                                  hintText: '검색',
-                                  textInputAction: TextInputAction.search,
-                                  onChanged: _handleSearchChanged,
-                                  backgroundColor: Colors.white,
-                                  prefixIcon: const Icon(
-                                    PhosphorIconsRegular.magnifyingGlass,
-                                    size: 18,
-                                    color: Color(0xFF9E9E9E),
-                                  ),
-                                ),
+                                ],
                               ),
                             ),
                           ],
@@ -405,7 +485,8 @@ class _PlacebookListViewState extends State<PlacebookListView> {
                           onTap: () {
                             if (_selectedCollection == 'all') return;
                             setState(() => _selectedCollection = 'all');
-                            if (_selectedViewMode == 'place') {
+                            if (_searchText.trim().isNotEmpty ||
+                                _selectedViewMode == 'place') {
                               _loadPlacebookPlacesList(filter: 'all');
                             } else {
                             _loadPlacebookData(
@@ -427,7 +508,8 @@ class _PlacebookListViewState extends State<PlacebookListView> {
                           onTap: () {
                             if (_selectedCollection == 'mine') return;
                             setState(() => _selectedCollection = 'mine');
-                            if (_selectedViewMode == 'place') {
+                            if (_searchText.trim().isNotEmpty ||
+                                _selectedViewMode == 'place') {
                               _loadPlacebookPlacesList(filter: 'mine');
                             } else {
                               _loadPlacebookData(
@@ -444,11 +526,12 @@ class _PlacebookListViewState extends State<PlacebookListView> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 24),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Row(
-                      children: [
+                  if (!hasSearch) ...[
+                    const SizedBox(height: 24),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Row(
+                        children: [
                         GestureDetector(
                           onTap: () {
                             if (!isPlaceView) return;
@@ -661,10 +744,11 @@ class _PlacebookListViewState extends State<PlacebookListView> {
                               ),
                             ],
                           ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 12),
+                    const SizedBox(height: 12),
+                  ],
                   Expanded(
                     child: isPlaceView
                         ? CommonRefreshView(
@@ -700,6 +784,7 @@ class _PlacebookListViewState extends State<PlacebookListView> {
                                           CommonEmptyView(
                                             message: '검색 결과가 없습니다.',
                                             showButton: false,
+                                            height: 200,
                                           ),
                                         ],
                                       )
