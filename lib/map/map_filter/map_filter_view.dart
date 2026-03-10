@@ -53,10 +53,18 @@ class _MapFilterViewState extends State<MapFilterView> {
   }
 
   Future<void> _loadThemes() async {
-    final themes = await ApiClient.fetchPlacebookThemesSimple(orderBy: 'title');
+    final themes = await ApiClient.fetchPlacebookThemes();
     if (!mounted) return;
     setState(() {
-      _themes = themes.map(_resolveThemeData).toList();
+      _themes = themes.map(_resolveThemeData).toList()
+        ..sort((a, b) {
+          final aOrder = (a['sortOrder'] as num?)?.toInt() ?? 0;
+          final bOrder = (b['sortOrder'] as num?)?.toInt() ?? 0;
+          if (aOrder != bOrder) return aOrder.compareTo(bOrder);
+          final aTitle = a['title']?.toString() ?? '';
+          final bTitle = b['title']?.toString() ?? '';
+          return aTitle.compareTo(bTitle);
+        });
       if (_selectedThemeIds.isEmpty) {
         _selectedThemeIds
           ..clear()
@@ -69,11 +77,14 @@ class _MapFilterViewState extends State<MapFilterView> {
   }
 
   Map<String, dynamic> _resolveThemeData(Map<String, dynamic> theme) {
-    final idMap = theme['id'];
-    if (idMap is Map<String, dynamic>) {
-      return {...idMap, ...theme};
+    final next = Map<String, dynamic>.from(theme);
+    final category = theme['category'];
+    if (category is Map<String, dynamic>) {
+      next['categoryId'] ??= category['id'];
+      next['categoryTitle'] ??= category['title'];
+      next['categorySubtitle'] ??= category['subtitle'];
     }
-    return theme;
+    return next;
   }
 
   List<Map<String, dynamic>> _themesForCategory(String? categoryId) {
@@ -163,6 +174,9 @@ class _MapFilterViewState extends State<MapFilterView> {
         _query.trim().isNotEmpty ? _searchThemes() : const <Map<String, dynamic>>[];
     final displayThemes = _query.trim().isNotEmpty ? searchResults : _themes;
     final categoryTitles = <String, String>{
+      for (final item in _themes)
+        if ((item['categoryId']?.toString() ?? '').isNotEmpty)
+          item['categoryId'].toString(): item['categoryTitle']?.toString() ?? '',
     };
     final allThemeIds = _themes
         .map((e) => e['id']?.toString())

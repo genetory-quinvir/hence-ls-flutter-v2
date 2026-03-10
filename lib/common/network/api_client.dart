@@ -1514,6 +1514,104 @@ class ApiClient {
     return _extractPlacebookItems(jsonDecode(response.body));
   }
 
+  static Future<Map<String, dynamic>> fetchMapPlaces({
+    required double latitude,
+    required double longitude,
+    int? radiusMeters,
+    String? categoryId,
+    String? themeId,
+    List<String>? tagIds,
+    List<String>? commonTagIds,
+    bool? isActive,
+    String? filter,
+    String? orderBy,
+    String? order,
+    String? cursor,
+    int? page,
+    int? limit,
+  }) async {
+    var uri = Uri.parse('$baseUrl/api/v1/map/places');
+    final params = <String, String>{
+      'latitude': '$latitude',
+      'longitude': '$longitude',
+      if (radiusMeters != null) 'radius': '$radiusMeters',
+      if (categoryId != null && categoryId.isNotEmpty) 'categoryId': categoryId,
+      if (themeId != null && themeId.isNotEmpty) 'themeId': themeId,
+      if (tagIds != null && tagIds.isNotEmpty) 'tagIds': tagIds.join(','),
+      if (commonTagIds != null && commonTagIds.isNotEmpty)
+        'commonTagIds': commonTagIds.join(','),
+      if (isActive != null) 'isActive': '$isActive',
+      if (filter != null && filter.isNotEmpty) 'filter': filter,
+      if (orderBy != null && orderBy.isNotEmpty) 'orderBy': orderBy,
+      if (order != null && order.isNotEmpty) 'order': order,
+      if (cursor != null && cursor.isNotEmpty) 'cursor': cursor,
+      if (page != null) 'page': '$page',
+      if (limit != null) 'limit': '$limit',
+    };
+    uri = uri.replace(queryParameters: params);
+    _logRequest('GET', uri);
+    final response = await _sendWithAuthRetry(
+      () => http.get(uri, headers: _headers()),
+      retryRequest: () => http.get(uri, headers: _headers()),
+    );
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Map places request failed: ${response.statusCode}');
+    }
+    final json = jsonDecode(response.body);
+    return json is Map<String, dynamic> ? json : <String, dynamic>{};
+  }
+
+  static Future<Map<String, dynamic>> fetchMapPlaceClusters({
+    required double latitude,
+    required double longitude,
+    int? radiusMeters,
+    int? gridSizeMeters,
+    String? categoryId,
+    String? themeId,
+    List<String>? tagIds,
+    List<String>? commonTagIds,
+    bool? isActive,
+    String? filter,
+    String? orderBy,
+    String? order,
+    String? cursor,
+    int? page,
+    int? limit,
+  }) async {
+    var uri = Uri.parse('$baseUrl/api/v1/map/places/clusters');
+    final params = <String, String>{
+      'latitude': '$latitude',
+      'longitude': '$longitude',
+      if (radiusMeters != null) 'radius': '$radiusMeters',
+      if (gridSizeMeters != null) 'gridSizeMeters': '$gridSizeMeters',
+      if (categoryId != null && categoryId.isNotEmpty) 'categoryId': categoryId,
+      if (themeId != null && themeId.isNotEmpty) 'themeId': themeId,
+      if (tagIds != null && tagIds.isNotEmpty) 'tagIds': tagIds.join(','),
+      if (commonTagIds != null && commonTagIds.isNotEmpty)
+        'commonTagIds': commonTagIds.join(','),
+      if (isActive != null) 'isActive': '$isActive',
+      if (filter != null && filter.isNotEmpty) 'filter': filter,
+      if (orderBy != null && orderBy.isNotEmpty) 'orderBy': orderBy,
+      if (order != null && order.isNotEmpty) 'order': order,
+      if (cursor != null && cursor.isNotEmpty) 'cursor': cursor,
+      if (page != null) 'page': '$page',
+      if (limit != null) 'limit': '$limit',
+    };
+    uri = uri.replace(queryParameters: params);
+    _logRequest('GET', uri);
+    final response = await _sendWithAuthRetry(
+      () => http.get(uri, headers: _headers()),
+      retryRequest: () => http.get(uri, headers: _headers()),
+    );
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Map place clusters request failed: ${response.statusCode}');
+    }
+    final json = jsonDecode(response.body);
+    return json is Map<String, dynamic> ? json : <String, dynamic>{};
+  }
+
   static Future<List<Map<String, dynamic>>> fetchPlacebookCategories() async {
     final uri = Uri.parse('$baseUrl/api/v1/placebook/categories');
     _logRequest('GET', uri);
