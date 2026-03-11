@@ -11,6 +11,12 @@ import '../common/widgets/common_place_list_item_view.dart';
 import '../common/widgets/common_refresh_view.dart';
 import '../placebook_detail/placebook_detail_view.dart';
 
+enum PlacebookListSource {
+  all,
+  created,
+  favorites,
+}
+
 class PlacebookListView extends StatefulWidget {
   const PlacebookListView({
     super.key,
@@ -19,6 +25,7 @@ class PlacebookListView extends StatefulWidget {
     this.latitude,
     this.longitude,
     this.orderBy,
+    this.source = PlacebookListSource.all,
   });
 
   final String? themeId;
@@ -26,6 +33,7 @@ class PlacebookListView extends StatefulWidget {
   final double? latitude;
   final double? longitude;
   final String? orderBy;
+  final PlacebookListSource source;
 
   @override
   State<PlacebookListView> createState() => _PlacebookListViewState();
@@ -53,16 +61,12 @@ class _PlacebookListViewState extends State<PlacebookListView> {
     } else if (widget.orderBy == 'popular') {
       _selectedSort = 'popular';
     }
-    if (_shouldLoadLocation) {
+    if (_latitude == null || _longitude == null) {
       _loadWithLocation();
     } else {
       _loadPlaces();
     }
   }
-
-  bool get _shouldLoadLocation =>
-      _selectedSort == 'distance' &&
-      (_latitude == null || _longitude == null);
 
   Future<void> _loadWithLocation() async {
     try {
@@ -119,16 +123,11 @@ class _PlacebookListViewState extends State<PlacebookListView> {
     _requestedCursor = requestCursor;
     final orderBy = _orderByForSort(_selectedSort);
     final order = orderBy == 'distance' ? 'ASC' : 'DESC';
-    final response = await ApiClient.fetchPlacebookPlacesList(
-      filter: 'all',
-      limit: 20,
-      orderBy: loadMore ? null : orderBy,
-      order: loadMore ? null : order,
-      themeIds: _hasThemeFilter ? [_themeId] : null,
-      latitude: _latitude,
-      longitude: _longitude,
+    final response = await _fetchPlaces(
+      orderBy: orderBy,
+      order: order,
       cursor: requestCursor,
-      cursorOnly: loadMore,
+      loadMore: loadMore,
     );
     final items = _extractPlaceListItems(response)
         .map(_normalizePlaceListItem)
@@ -165,7 +164,23 @@ class _PlacebookListViewState extends State<PlacebookListView> {
   String get _themeId => (widget.themeId ?? '').trim();
 
   String get _title =>
-      (widget.themeTitle ?? '').trim().isNotEmpty ? widget.themeTitle!.trim() : '장소 목록';
+      (widget.themeTitle ?? '').trim().isNotEmpty
+          ? widget.themeTitle!.trim()
+          : _titleForSource();
+
+  bool get _showSort => true;
+
+  String _titleForSource() {
+    switch (widget.source) {
+      case PlacebookListSource.created:
+        return '나의 장소';
+      case PlacebookListSource.favorites:
+        return '저장한 장소';
+      case PlacebookListSource.all:
+      default:
+        return '장소 목록';
+    }
+  }
 
   String _orderByForSort(String sort) {
     switch (sort) {
@@ -182,12 +197,52 @@ class _PlacebookListViewState extends State<PlacebookListView> {
   void _handleSortTap(String next) {
     if (_selectedSort == next) return;
     setState(() => _selectedSort = next);
-    if (_selectedSort == 'distance' &&
-        (_latitude == null || _longitude == null)) {
+    if (_latitude == null || _longitude == null) {
       _loadWithLocation();
       return;
     }
     _loadPlaces(forceRefresh: true);
+  }
+
+  Future<Map<String, dynamic>> _fetchPlaces({
+    required String orderBy,
+    required String order,
+    required String? cursor,
+    required bool loadMore,
+  }) {
+    switch (widget.source) {
+      case PlacebookListSource.created:
+        return ApiClient.fetchPlacebookCreatedPlacesList(
+          limit: 20,
+          orderBy: orderBy,
+          order: order,
+          cursor: cursor,
+          latitude: _latitude,
+          longitude: _longitude,
+        );
+      case PlacebookListSource.favorites:
+        return ApiClient.fetchPlacebookFavoritePlacesList(
+          limit: 20,
+          orderBy: orderBy,
+          order: order,
+          cursor: cursor,
+          latitude: _latitude,
+          longitude: _longitude,
+        );
+      case PlacebookListSource.all:
+      default:
+        return ApiClient.fetchPlacebookPlacesList(
+          filter: 'all',
+          limit: 20,
+          orderBy: loadMore ? null : orderBy,
+          order: loadMore ? null : order,
+          themeIds: _hasThemeFilter ? [_themeId] : null,
+          latitude: _latitude,
+          longitude: _longitude,
+          cursor: cursor,
+          cursorOnly: loadMore,
+        );
+    }
   }
 
   List<Map<String, dynamic>> _extractPlaceListItems(
@@ -256,42 +311,43 @@ class _PlacebookListViewState extends State<PlacebookListView> {
               height: 50,
               backgroundColor: Colors.white,
               left: const Icon(
-                PhosphorIconsRegular.caretLeft,
-                size: 22,
+                PhosphorIconsBold.caretLeft,
+                size: 24,
                 color: Colors.black,
               ),
               onLeftTap: () => Navigator.of(context).maybePop(),
               title: _title,
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-              child: Row(
-                children: [
-                  const Spacer(),
-                  _SortChip(
-                    label: '최신순',
-                    selected: _selectedSort == 'latest',
-                    onTap: () => _handleSortTap('latest'),
-                  ),
-                  const SizedBox(width: 8),
-                  const _SortDivider(),
-                  const SizedBox(width: 8),
-                  _SortChip(
-                    label: '인기순',
-                    selected: _selectedSort == 'popular',
-                    onTap: () => _handleSortTap('popular'),
-                  ),
-                  const SizedBox(width: 8),
-                  const _SortDivider(),
-                  const SizedBox(width: 8),
-                  _SortChip(
-                    label: '거리순',
-                    selected: _selectedSort == 'distance',
-                    onTap: () => _handleSortTap('distance'),
-                  ),
-                ],
+            if (_showSort)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: Row(
+                  children: [
+                    const Spacer(),
+                    _SortChip(
+                      label: '최신순',
+                      selected: _selectedSort == 'latest',
+                      onTap: () => _handleSortTap('latest'),
+                    ),
+                    const SizedBox(width: 8),
+                    const _SortDivider(),
+                    const SizedBox(width: 8),
+                    _SortChip(
+                      label: '인기순',
+                      selected: _selectedSort == 'popular',
+                      onTap: () => _handleSortTap('popular'),
+                    ),
+                    const SizedBox(width: 8),
+                    const _SortDivider(),
+                    const SizedBox(width: 8),
+                    _SortChip(
+                      label: '거리순',
+                      selected: _selectedSort == 'distance',
+                      onTap: () => _handleSortTap('distance'),
+                    ),
+                  ],
+                ),
               ),
-            ),
             Expanded(
               child: _isLoading
                   ? const Center(

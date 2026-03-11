@@ -18,6 +18,10 @@ class CommonRoundedButton extends StatelessWidget {
     this.leadingPadding = const EdgeInsets.only(left: 16),
     this.leadingCentered = false,
     this.leadingGap = 12,
+    this.trailing,
+    this.trailingPadding = const EdgeInsets.only(right: 16),
+    this.trailingCentered = false,
+    this.trailingGap = 8,
     this.contentPadding = EdgeInsets.zero,
   });
 
@@ -34,6 +38,10 @@ class CommonRoundedButton extends StatelessWidget {
   final EdgeInsetsGeometry leadingPadding;
   final bool leadingCentered;
   final double leadingGap;
+  final Widget? trailing;
+  final EdgeInsetsGeometry trailingPadding;
+  final bool trailingCentered;
+  final double trailingGap;
   final EdgeInsetsGeometry contentPadding;
 
   @override
@@ -57,7 +65,7 @@ class CommonRoundedButton extends StatelessWidget {
             borderRadius: BorderRadius.circular(radius),
             border: borderColor == null ? null : Border.all(color: borderColor!, width: borderWidth),
           ),
-          child: leading == null
+          child: (leading == null && trailing == null)
               ? Padding(
                   padding: contentPadding,
                   child: Center(
@@ -67,44 +75,61 @@ class CommonRoundedButton extends StatelessWidget {
                     ),
                   ),
                 )
-              : (leadingCentered
+              : (leadingCentered || trailingCentered
                   ? Center(
                       child: Padding(
                         padding: contentPadding,
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            leading!,
-                            SizedBox(width: leadingGap),
+                            if (leading != null) ...[
+                              leading!,
+                              SizedBox(width: leadingGap),
+                            ],
                             Text(
                               title,
                               style: effectiveTextStyle,
                             ),
+                            if (trailing != null) ...[
+                              SizedBox(width: trailingGap),
+                              trailing!,
+                            ],
                           ],
                         ),
                       ),
                     )
-                  : Stack(
-                      fit: StackFit.expand,
-                      alignment: Alignment.center,
-                      children: [
-                        Padding(
-                          padding: contentPadding,
-                          child: Center(
-                            child: Text(
-                              title,
-                              style: effectiveTextStyle,
+                  : IntrinsicWidth(
+                      child: Stack(
+                        fit: StackFit.loose,
+                        alignment: Alignment.center,
+                        children: [
+                          Padding(
+                            padding: contentPadding,
+                            child: Center(
+                              child: Text(
+                                title,
+                                style: effectiveTextStyle,
+                              ),
                             ),
                           ),
-                        ),
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: Padding(
-                            padding: leadingPadding,
-                            child: leading!,
-                          ),
-                        ),
-                      ],
+                          if (leading != null)
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: Padding(
+                                padding: leadingPadding,
+                                child: leading!,
+                              ),
+                            ),
+                          if (trailing != null)
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: Padding(
+                                padding: trailingPadding,
+                                child: trailing!,
+                              ),
+                            ),
+                        ],
+                      ),
                     )),
         ),
       ),

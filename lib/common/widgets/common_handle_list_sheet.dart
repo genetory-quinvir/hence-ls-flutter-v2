@@ -145,6 +145,7 @@ class CommonHandleListOverlay extends StatefulWidget {
     this.initialChildSize = 0.35,
     this.maxChildSize = 0.93,
     this.useBottomSafeArea = true,
+    this.cacheExtent,
     this.onSizeChanged,
     this.onHeightChanged,
   });
@@ -158,6 +159,7 @@ class CommonHandleListOverlay extends StatefulWidget {
   final double initialChildSize;
   final double maxChildSize;
   final bool useBottomSafeArea;
+  final double? cacheExtent;
   final ValueChanged<double>? onSizeChanged;
   final ValueChanged<double>? onHeightChanged;
 
@@ -383,6 +385,7 @@ class _CommonHandleListOverlayState extends State<CommonHandleListOverlay> {
                     padding: listPadding,
                     primary: false,
                     physics: const BouncingScrollPhysics(),
+                    cacheExtent: widget.cacheExtent,
                     itemBuilder: (context, index) => widget.items[index],
                     separatorBuilder: (context, index) =>
                         const SizedBox(height: 2),

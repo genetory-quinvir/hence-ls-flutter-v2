@@ -1,6 +1,8 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:hence_ls_flutter_v2/main.dart';
+import 'package:hence_ls_flutter_v2/placebook_create/placebook_create_view.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../common/auth/auth_models.dart';
@@ -18,8 +20,11 @@ import '../common/widgets/common_profile_image_view.dart';
 import '../common/widgets/common_profile_view.dart';
 import '../common/widgets/common_refresh_view.dart';
 import '../common/widgets/common_rounded_button.dart';
+import '../common/widgets/common_user_list_item.dart';
 import '../placebook_list/placebook_list_view.dart';
 import '../placebook_detail/placebook_detail_view.dart';
+import '../profile_info/profile_info_view.dart';
+import '../profile/models/profile_display_user.dart';
 import '../sign/sign_view.dart';
 import '../web/web_view.dart';
 
@@ -173,6 +178,9 @@ class _FeaturedViewState extends State<FeaturedView> {
             final nearbyPlaces = data is Map<String, dynamic>
                 ? (data['nearbyPlaces'] as List<dynamic>?) ?? const []
                 : const [];
+            final rankingUsers = data is Map<String, dynamic>
+                ? (data['rankingUsers'] as List<dynamic>?) ?? const []
+                : const [];
             final bottomInset = MediaQuery.of(context).padding.bottom;
             return CommonRefreshView(
               onRefresh: _reloadFeatured,
@@ -186,7 +194,6 @@ class _FeaturedViewState extends State<FeaturedView> {
                   const _FeaturedHeader(),
                   const SizedBox(height: 14),
                   _FeaturedBannerSection(items: banners),
-                  const _FeaturedSingleCardBannerSection(),
                   const SizedBox(height: 20),
                   _FeaturedNearestPlacesSection(
                     places: nearbyPlaces
@@ -195,6 +202,16 @@ class _FeaturedViewState extends State<FeaturedView> {
                     latitude: _lastLatitude,
                     longitude: _lastLongitude,
                   ),
+                  if (rankingUsers.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 28),
+                      child: _FeaturedRankingSection(
+                        items: rankingUsers
+                            .whereType<Map<String, dynamic>>()
+                            .toList(),
+                      ),
+                    ),
+                  const _FeaturedSingleCardBannerSection(),
                   const SizedBox(height: 28),
                   ...themes.map((entry) {
                     final item = entry is Map<String, dynamic>
@@ -261,19 +278,221 @@ class _FeaturedBannerSection extends StatelessWidget {
   }
 }
 
+class _FeaturedRankingSection extends StatelessWidget {
+  const _FeaturedRankingSection({
+    required this.items,
+  });
+
+  final List<Map<String, dynamic>> items;
+
+  String _resolveName(Map<String, dynamic> user) {
+    final name = (user['name'] ?? '').toString().trim();
+    if (name.isNotEmpty) return name;
+    final nickname = (user['nickname'] ?? '').toString().trim();
+    if (nickname.isNotEmpty) return nickname;
+    return '사용자';
+  }
+
+  String? _resolveSubtitle(Map<String, dynamic> user) {
+    final info = user['representativeTitleInfo'];
+    if (info is Map<String, dynamic>) {
+      final title = (info['name'] ?? '').toString().trim();
+      if (title.isNotEmpty) return title;
+    }
+    return null;
+  }
+
+  String? _resolveImageUrl(Map<String, dynamic> user) {
+    final profile = user['profileImage'];
+    if (profile is Map<String, dynamic>) {
+      return (profile['cdnUrl'] ??
+              profile['thumbnailUrl'] ??
+              profile['fileUrl'])
+          ?.toString();
+    }
+    return user['profileImageUrl']?.toString();
+  }
+
+  String? _resolvePointsText(Map<String, dynamic> user) {
+    final raw = user['rewardScore'] ??
+        user['point'] ??
+        user['points'] ??
+        user['score'];
+    if (raw is num) {
+      return '${raw.toInt()}P';
+    }
+    if (raw is String) {
+      final trimmed = raw.trim();
+      if (trimmed.isEmpty) return null;
+      final parsed = int.tryParse(trimmed);
+      return parsed != null ? '${parsed}P' : trimmed;
+    }
+    return null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final top5 = items.take(5).toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 16),
+          child: Text(
+            '장소 전문가 Top5',
+            style: TextStyle(
+              fontFamily: 'Pretendard',
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: Colors.black,
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        ...top5.asMap().entries.map((entry) {
+          final index = entry.key;
+          final user = entry.value;
+          final userId =
+              (user['id'] ?? user['userId'] ?? '').toString().trim();
+          return CommonUserListItem(
+            rank: index + 1,
+            title: _resolveName(user),
+            subtitle: _resolveSubtitle(user),
+            imageUrl: _resolveImageUrl(user),
+            pointsText: _resolvePointsText(user),
+            onTap: userId.isEmpty
+                ? null
+                : () {
+                    showCupertinoModalPopup<void>(
+                      context: context,
+                      builder: (_) => ProfileInfoView(
+                        user: ProfileDisplayUser.fromJson(user),
+                      ),
+                    );
+                  },
+          );
+        }).toList(),
+      ],
+    );
+  }
+}
+
 class _FeaturedSingleCardBannerSection extends StatelessWidget {
-  const _FeaturedSingleCardBannerSection();
+  const _FeaturedSingleCardBannerSection({
+    this.title = '나만 알고 있는 장소가 있나요?',
+    this.subtitle = '장소를 등록하고 친구들과 공유해보세요',
+  });
+
+  final String title;
+  final String subtitle;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
       child: Container(
-        height: 160,
-        decoration: BoxDecoration(
+        height: 156,
+        decoration: ShapeDecoration(
           color: const Color(0xFFF2F2F2),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: const Color(0x14000000)),
+          shape: ContinuousRectangleBorder(
+            borderRadius: BorderRadius.circular(48),
+            side: const BorderSide(color: Color(0x14000000)),
+          ),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Stack(
+          children: [
+            Positioned(
+              right: 0,
+              top: 0,
+              bottom: 0,
+              child: SizedBox(
+                width: 180,
+                child: Image.asset(
+                  'assets/images/img_my_place.webp',
+                  fit: BoxFit.cover,
+                  alignment: Alignment.centerRight,
+                ),
+              ),
+            ),
+            Positioned.fill(
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                      colors: [
+                        const Color(0xFF0E0E0E),
+                        const Color(0xFF0E0E0E),
+                        const Color(0x000E0E0E),
+                      ],
+                      stops: const [0.0, 0.55, 1.0],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 12, 24, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontFamily: 'Pretendard',
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontFamily: 'Pretendard',
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: Color(0xFF8E8E8E),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    height: 44,
+                    child: OutlinedButton(
+                      onPressed: () {
+                        showCupertinoModalPopup(
+                          context: context,
+                          builder: (_) => const SizedBox.expand(
+                            child: PlacebookCreateView(),
+                          ),
+                        );
+                      },
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white,
+                        side: const BorderSide(color: Color(0x33FFFFFF)),
+                        backgroundColor: MyApp.primary200,
+                        shape: const StadiumBorder(),
+                        padding: const EdgeInsets.symmetric(horizontal: 24),
+                        textStyle: const TextStyle(
+                          fontFamily: 'Pretendard',
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      child: const Text('지금 장소 등록하기', style: TextStyle(color: Colors.black),),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -352,7 +571,7 @@ class _FeaturedNearestPlacesSection extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 4),
           if (places.isEmpty)
             Padding(
               padding: EdgeInsets.symmetric(vertical: 12),
@@ -411,6 +630,7 @@ class _FeaturedNearestPlacesSection extends StatelessWidget {
                 },
               ),
             ),
+            const SizedBox(height: 12),
         ],
       );
   }
@@ -846,19 +1066,63 @@ class _FeaturedEmptySection extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+      height: 96,
       decoration: BoxDecoration(
         color: const Color(0xFFF5F5F5),
         borderRadius: BorderRadius.circular(16),
       ),
-      child: Text(
-        title,
-        style: const TextStyle(
-          fontFamily: 'Pretendard',
-          fontSize: 14,
-          fontWeight: FontWeight.w500,
-          color: Color(0xFF9E9E9E),
-        ),
+      clipBehavior: Clip.antiAlias,
+      child: Stack(
+        children: [
+          Positioned(
+            right: 0,
+            top: 0,
+            bottom: 0,
+            child: SizedBox(
+              width: 160,
+              child: Image.asset(
+                'assets/images/img_my_place.webp',
+                fit: BoxFit.cover,
+                alignment: Alignment.centerRight,
+              ),
+            ),
+          ),
+          Positioned.fill(
+            child: IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                    colors: [
+                      const Color(0xFFF5F5F5),
+                      const Color(0xFFF5F5F5),
+                      const Color(0x00F5F5F5),
+                    ],
+                    stops: const [0.0, 0.55, 1.0],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontFamily: 'Pretendard',
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: Color(0xFF9E9E9E),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

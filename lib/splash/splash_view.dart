@@ -70,7 +70,7 @@ class _SplashViewState extends State<SplashView>
     }
     try {
       final categories = await ApiClient.fetchPlacebookCategories();
-      final themes = await ApiClient.fetchPlacebookThemesSimple();
+      final themes = await ApiClient.fetchPlacebookThemes();
       debugPrint(
         '[PLACEBOOK][CACHE] categories=${categories.length} themes=${themes.length}',
       );

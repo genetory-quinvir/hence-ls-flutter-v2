@@ -100,6 +100,28 @@ class ApiClient {
     return _parseUser(json);
   }
 
+  static Future<ProfileDisplayUser> fetchMyProfile() async {
+    final uri = Uri.parse('$baseUrl/api/v1/users/me');
+    _logRequest('GET', uri);
+    final response = await _sendWithAuthRetry(
+      () => http.get(uri, headers: _headers()),
+      retryRequest: () => http.get(uri, headers: _headers()),
+    );
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('My profile request failed: ${response.statusCode}');
+    }
+    final json = jsonDecode(response.body);
+    final data = json is Map<String, dynamic> ? json['data'] : null;
+    if (data is Map<String, dynamic>) {
+      return ProfileDisplayUser.fromJson(data);
+    }
+    if (json is Map<String, dynamic>) {
+      return ProfileDisplayUser.fromJson(json);
+    }
+    return const ProfileDisplayUser(id: '', nickname: '');
+  }
+
   static Future<ProfileDisplayUser> fetchUserDetail(String userId) async {
     final uri = Uri.parse('$baseUrl/api/v1/users/detail/$userId');
     _logRequest('GET', uri);
@@ -1760,34 +1782,115 @@ class ApiClient {
     return json is Map<String, dynamic> ? json : <String, dynamic>{};
   }
 
+  static Future<Map<String, dynamic>> fetchPlacebookCreatedPlacesList({
+    int limit = 20,
+    String? orderBy,
+    String? order,
+    String? cursor,
+    double? latitude,
+    double? longitude,
+  }) async {
+    var uri = Uri.parse('$baseUrl/api/v1/placebook/places/created');
+    final params = <String, String>{
+      'limit': '$limit',
+      if (orderBy != null && orderBy.isNotEmpty) 'orderBy': orderBy,
+      if (order != null && order.isNotEmpty) 'order': order,
+      if (cursor != null && cursor.isNotEmpty) 'cursor': cursor,
+      if (latitude != null) 'latitude': '$latitude',
+      if (longitude != null) 'longitude': '$longitude',
+    };
+    if (params.isNotEmpty) {
+      uri = uri.replace(queryParameters: params);
+    }
+    _logRequest('GET', uri);
+    final response = await _sendWithAuthRetry(
+      () => http.get(uri, headers: _headers()),
+      retryRequest: () => http.get(uri, headers: _headers()),
+    );
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+          'Placebook created places request failed: ${response.statusCode}');
+    }
+    final json = jsonDecode(response.body);
+    return json is Map<String, dynamic> ? json : <String, dynamic>{};
+  }
+
+  static Future<Map<String, dynamic>> fetchPlacebookFavoritePlacesList({
+    int limit = 20,
+    String? orderBy,
+    String? order,
+    String? cursor,
+    double? latitude,
+    double? longitude,
+  }) async {
+    var uri = Uri.parse('$baseUrl/api/v1/placebook/places/favorites');
+    final params = <String, String>{
+      'limit': '$limit',
+      if (orderBy != null && orderBy.isNotEmpty) 'orderBy': orderBy,
+      if (order != null && order.isNotEmpty) 'order': order,
+      if (cursor != null && cursor.isNotEmpty) 'cursor': cursor,
+      if (latitude != null) 'latitude': '$latitude',
+      if (longitude != null) 'longitude': '$longitude',
+    };
+    if (params.isNotEmpty) {
+      uri = uri.replace(queryParameters: params);
+    }
+    _logRequest('GET', uri);
+    final response = await _sendWithAuthRetry(
+      () => http.get(uri, headers: _headers()),
+      retryRequest: () => http.get(uri, headers: _headers()),
+    );
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+          'Placebook favorite places request failed: ${response.statusCode}');
+    }
+    final json = jsonDecode(response.body);
+    return json is Map<String, dynamic> ? json : <String, dynamic>{};
+  }
+
   static Future<Map<String, dynamic>> createPlacebookPlace({
+    required String categoryId,
     required String themeId,
     required String title,
     required String description,
     required String subtitle,
     required String address,
+    String? region,
     required double latitude,
     required double longitude,
-    String? imageId,
-    String? thumbnailUrl,
-    String? bestVisitTime,
-    required List<String> hashtags,
+    String? lastVerifiedAt,
+    bool isActive = true,
+    int verificationCount = 0,
+    String? cautionNote,
+    String visibility = 'PRIVATE',
+    List<String> tagIds = const [],
+    List<String> commonTagIds = const [],
+    String? thumbnailFileId,
   }) async {
     final uri = Uri.parse('$baseUrl/api/v1/placebook/places');
     final body = <String, dynamic>{
+      'categoryId': categoryId,
       'themeId': themeId,
       'description': description,
       'title': title,
       'subtitle': subtitle,
       'address': address,
+      if (region != null && region.isNotEmpty) 'region': region,
       'latitude': latitude,
       'longitude': longitude,
-      if (bestVisitTime != null && bestVisitTime.isNotEmpty)
-        'bestVisitTime': bestVisitTime,
-      if (imageId != null && imageId.isNotEmpty) 'imageId': imageId,
-      if (thumbnailUrl != null && thumbnailUrl.isNotEmpty)
-        'thumbnailUrl': thumbnailUrl,
-      'hashtags': hashtags,
+      if (lastVerifiedAt != null && lastVerifiedAt.isNotEmpty)
+        'lastVerifiedAt': lastVerifiedAt,
+      'isActive': isActive,
+      'verificationCount': verificationCount,
+      if (cautionNote != null && cautionNote.isNotEmpty)
+        'cautionNote': cautionNote,
+      'visibility': visibility,
+      'tagIds': tagIds,
+      'commonTagIds': commonTagIds,
+      if (thumbnailFileId != null && thumbnailFileId.isNotEmpty)
+        'thumbnailFileId': thumbnailFileId,
     };
     _logJsonRequest('POST', uri, body);
     final response = await _sendWithAuthRetry(
@@ -1817,9 +1920,7 @@ class ApiClient {
     required String address,
     required double latitude,
     required double longitude,
-    String? imageId,
-    String? bestVisitTime,
-    List<String>? hashtags,
+    String? thumbnailFileId,
   }) async {
     final uri = Uri.parse('$baseUrl/api/v1/placebook/places/$placeId');
     final body = <String, dynamic>{
@@ -1830,14 +1931,8 @@ class ApiClient {
       'latitude': latitude,
       'longitude': longitude,
     };
-    if (bestVisitTime != null && bestVisitTime.isNotEmpty) {
-      body['bestVisitTime'] = bestVisitTime;
-    }
-    if (hashtags != null) {
-      body['hashtags'] = hashtags;
-    }
-    if (imageId != null && imageId.isNotEmpty) {
-      body['imageId'] = imageId;
+    if (thumbnailFileId != null && thumbnailFileId.isNotEmpty) {
+      body['thumbnailFileId'] = thumbnailFileId;
     }
     _logJsonRequest('PATCH', uri, body);
     final response = await _sendWithAuthRetry(

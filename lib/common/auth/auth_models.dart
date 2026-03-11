@@ -11,6 +11,8 @@ class AuthUser {
     this.activityLevel,
     this.feedCount,
     this.placebookTotalCount,
+    this.createdPlaceCount,
+    this.favoritePlaceCount,
     this.followerCount,
     this.followingCount,
   });
@@ -26,6 +28,8 @@ class AuthUser {
   final int? activityLevel;
   final int? feedCount;
   final int? placebookTotalCount;
+  final int? createdPlaceCount;
+  final int? favoritePlaceCount;
   final int? followerCount;
   final int? followingCount;
 
@@ -49,6 +53,10 @@ class AuthUser {
       feedCount: (json['feedCount'] as num?)?.toInt() ??
           (json['postCount'] as num?)?.toInt(),
       placebookTotalCount: (json['placebookTotalCount'] as num?)?.toInt(),
+      createdPlaceCount: (json['createdPlaceCount'] as num?)?.toInt() ??
+          (json['placeCreatedCount'] as num?)?.toInt() ??
+          (json['createdPlacesCount'] as num?)?.toInt(),
+      favoritePlaceCount: (json['favoritePlaceCount'] as num?)?.toInt(),
       followerCount: (json['followerCount'] as num?)?.toInt(),
       followingCount: (json['followingCount'] as num?)?.toInt(),
     );
@@ -67,6 +75,8 @@ class AuthUser {
       'activityLevel': activityLevel,
       'feedCount': feedCount,
       'placebookTotalCount': placebookTotalCount,
+      'createdPlaceCount': createdPlaceCount,
+      'favoritePlaceCount': favoritePlaceCount,
       'followerCount': followerCount,
       'followingCount': followingCount,
     };
@@ -86,6 +96,10 @@ class AuthUser {
       feedCount: (json['feedCount'] as num?)?.toInt() ??
           (json['postCount'] as num?)?.toInt(),
       placebookTotalCount: (json['placebookTotalCount'] as num?)?.toInt(),
+      createdPlaceCount: (json['createdPlaceCount'] as num?)?.toInt() ??
+          (json['placeCreatedCount'] as num?)?.toInt() ??
+          (json['createdPlacesCount'] as num?)?.toInt(),
+      favoritePlaceCount: (json['favoritePlaceCount'] as num?)?.toInt(),
       followerCount: (json['followerCount'] as num?)?.toInt(),
       followingCount: (json['followingCount'] as num?)?.toInt(),
     );

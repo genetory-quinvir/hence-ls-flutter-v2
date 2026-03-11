@@ -17,6 +17,7 @@ import '../../common/widgets/common_livespace_list_item_view.dart';
 import '../../common/widgets/common_empty_view.dart';
 import '../../common/widgets/common_refresh_view.dart';
 import '../../placebook_detail/placebook_detail_view.dart';
+import '../../placebook_list/placebook_list_view.dart';
 import '../profile_feed_detail_view.dart';
 import '../models/profile_display_user.dart';
 import '../../following_list/following_list_view.dart';
@@ -113,23 +114,27 @@ class _ProfileSignedViewState extends State<ProfileSignedView> {
       if (!mounted) return;
       _measureHeaderHeight();
     });
-    return CustomScrollView(
-      controller: _scrollController,
-      physics: const AlwaysScrollableScrollPhysics(
-        parent: BouncingScrollPhysics(),
-      ),
-      slivers: [
-        const SliverToBoxAdapter(child: SizedBox(height: 16)),
-        SliverToBoxAdapter(
-          child: KeyedSubtree(
-            key: _headerKey,
-            child: _ProfileHeaderUserSection(
-              refreshSignal: _headerRefreshSignal,
+    return CommonRefreshView(
+      onRefresh: () => _refreshProfileInfo(force: true),
+      topPadding: 0,
+      child: CustomScrollView(
+        controller: _scrollController,
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
+        ),
+        slivers: [
+          const SliverToBoxAdapter(child: SizedBox(height: 16)),
+          SliverToBoxAdapter(
+            child: KeyedSubtree(
+              key: _headerKey,
+              child: _ProfileHeaderUserSection(
+                refreshSignal: _headerRefreshSignal,
+              ),
             ),
           ),
-        ),
-        const SliverToBoxAdapter(child: SizedBox(height: 24)),
-      ],
+          const SliverToBoxAdapter(child: SizedBox(height: 24)),
+        ],
+      ),
     );
   }
 }
@@ -202,7 +207,7 @@ class _ProfileHeaderUserSectionState extends State<_ProfileHeaderUserSection> {
           _userId = id;
           _userSignature = signature;
           _forceReload = false;
-          _detailFuture = ApiClient.fetchUserDetail(id);
+          _detailFuture = ApiClient.fetchMyProfile();
         }
 
         if (_detailFuture == null) {
@@ -227,6 +232,24 @@ class _ProfileHeaderUserSectionState extends State<_ProfileHeaderUserSection> {
               activityLevel: user?.activityLevel ?? resolved.activityLevel,
               followingLabel: '팔로잉',
               followerLabel: '팔로우',
+              onCreatedPlaceTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const PlacebookListView(
+                      source: PlacebookListSource.created,
+                    ),
+                  ),
+                );
+              },
+              onFavoritePlaceTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const PlacebookListView(
+                      source: PlacebookListSource.favorites,
+                    ),
+                  ),
+                );
+              },
               onFollowingTap: () {
                 Navigator.of(context).push(
                   MaterialPageRoute(

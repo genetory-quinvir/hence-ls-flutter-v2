@@ -19,6 +19,7 @@ import '../common/permissions/media_permission_service.dart';
 import '../common/media/media_conversion_service.dart';
 import '../common/widgets/common_title_actionsheet.dart';
 import '../common/location/naver_location_service.dart';
+import '../common/state/placebook_cache.dart';
 import '../place_select/place_select_view.dart';
 import '../placebook_search/placebook_search_view.dart';
 import '../placebook_saved/placebook_saved_view.dart';
@@ -53,8 +54,8 @@ class _PlacebookCreateViewState extends State<PlacebookCreateView> {
           children: [
             CommonNavigationView(
               title: "장소 등록",
-              left: const Icon(PhosphorIconsRegular.x,
-                  size: 22, color: Colors.black),
+              left: const Icon(PhosphorIconsBold.x,
+                  size: 24, color: Colors.black),
               onLeftTap: () => Navigator.of(context).maybePop(),
               backgroundColor: Colors.white,
             ),
@@ -117,6 +118,7 @@ class _PlacebookCreateBodyState extends State<_PlacebookCreateBody> {
   bool _isLoadingThemes = false;
   String? _selectedThemeId;
   String? _selectedThemeTitle;
+  String? _selectedCategoryId;
   static const List<Map<String, String>> _visitTimeOptions = [
     {'value': 'all_day', 'label': '하루종일'},
     {'value': 'morning', 'label': '오전'},
@@ -136,6 +138,8 @@ class _PlacebookCreateBodyState extends State<_PlacebookCreateBody> {
       _themeController.text = _selectedThemeTitle!;
     }
     if (_selectedThemeId == null || _selectedThemeId!.isEmpty) {
+      _loadThemes();
+    } else {
       _loadThemes();
     }
     _titleController.addListener(_syncCanSave);
@@ -164,10 +168,11 @@ class _PlacebookCreateBodyState extends State<_PlacebookCreateBody> {
     if (_isLoadingThemes) return;
     setState(() => _isLoadingThemes = true);
     try {
-      final themes = await ApiClient.fetchPlacebookThemesSimple(orderBy: 'title');
+      final themes = await PlacebookCache.loadThemes();
       if (!mounted) return;
       setState(() {
         _themes = themes.map(_resolveThemeData).toList();
+        _applySelectedThemeFromList();
       });
     } catch (_) {
       // ignore
@@ -182,6 +187,28 @@ class _PlacebookCreateBodyState extends State<_PlacebookCreateBody> {
       return {...idMap, ...theme};
     }
     return theme;
+  }
+
+  void _applySelectedThemeFromList() {
+    final selectedId = (_selectedThemeId ?? '').trim();
+    if (selectedId.isEmpty || _themes.isEmpty) return;
+    final match = _themes.firstWhere(
+      (theme) => theme['id']?.toString() == selectedId,
+      orElse: () => <String, dynamic>{},
+    );
+    if (match.isEmpty) return;
+    final resolvedTitle =
+        (match['title'] as String?) ?? (match['name'] as String?);
+    if ((resolvedTitle ?? '').trim().isNotEmpty) {
+      _selectedThemeTitle = resolvedTitle;
+      if (_themeController.text.trim().isEmpty) {
+        _themeController.text = resolvedTitle!;
+      }
+    }
+    final category = match['category'];
+    if (category is Map<String, dynamic>) {
+      _selectedCategoryId = category['id']?.toString();
+    }
   }
 
   void _syncCanSave() {
@@ -256,13 +283,34 @@ class _PlacebookCreateBodyState extends State<_PlacebookCreateBody> {
     return (widget.themeId ?? '').trim();
   }
 
+  String _currentCategoryId() {
+    final selected = (_selectedCategoryId ?? '').trim();
+    if (selected.isNotEmpty) return selected;
+    final themeId = _currentThemeId();
+    if (themeId.isEmpty) return '';
+    final match = _themes.firstWhere(
+      (theme) => theme['id']?.toString() == themeId,
+      orElse: () => <String, dynamic>{},
+    );
+    if (match.isNotEmpty) {
+      final category = match['category'];
+      if (category is Map<String, dynamic>) {
+        final id = category['id']?.toString() ?? '';
+        if (id.isNotEmpty) return id;
+      }
+    }
+    return '';
+  }
+
   bool _canSaveNow() {
     final title = _titleController.text.trim();
     final description = _contentController.text.trim();
     final lat = _selectedLatitude;
     final lng = _selectedLongitude;
     final themeId = _currentThemeId();
+    final categoryId = _currentCategoryId();
     return themeId.isNotEmpty &&
+        categoryId.isNotEmpty &&
         title.isNotEmpty &&
         description.isNotEmpty &&
         lat != null &&
@@ -290,10 +338,18 @@ class _PlacebookCreateBodyState extends State<_PlacebookCreateBody> {
               ))
           .toList(),
       onSelected: (value) {
+        final selectedTheme = _themes.firstWhere(
+          (theme) => theme['id']?.toString() == value.value?.toString(),
+          orElse: () => <String, dynamic>{},
+        );
         setState(() {
           _selectedThemeId = value.value;
           _selectedThemeTitle = value.label;
           _themeController.text = value.label;
+          final category = selectedTheme['category'];
+          if (category is Map<String, dynamic>) {
+            _selectedCategoryId = category['id']?.toString();
+          }
         });
         _syncCanSave();
       },
@@ -324,18 +380,23 @@ class _PlacebookCreateBodyState extends State<_PlacebookCreateBody> {
   Future<void> _savePlace() async {
     if (_isSaving) return;
     final themeId = _currentThemeId();
+    final categoryId = _currentCategoryId();
     final title = _titleController.text.trim();
     final description = _contentController.text.trim();
     final subtitle = _subtitleController.text.trim();
     final address = _addressController.text.trim();
-    final imageId = _photoId;
-    final hashtags = _parseHashtags(_hashtagsController.text);
-    final bestVisitTime = _bestVisitTimeValue;
+    final thumbnailFileId = _photoId;
+    final tagIds = _parseHashtags(_hashtagsController.text);
+    final commonTagIds = const <String>[];
     final lat = _selectedLatitude;
     final lng = _selectedLongitude;
 
     if (themeId.isEmpty) {
       _showSnack('테마를 찾을 수 없어요.');
+      return;
+    }
+    if (categoryId.isEmpty) {
+      _showSnack('카테고리를 찾을 수 없어요.');
       return;
     }
     if (lat == null || lng == null) {
@@ -354,6 +415,7 @@ class _PlacebookCreateBodyState extends State<_PlacebookCreateBody> {
     setState(() => _isSaving = true);
     try {
       var created = await ApiClient.createPlacebookPlace(
+        categoryId: categoryId,
         themeId: themeId,
         title: title,
         description: description,
@@ -361,11 +423,11 @@ class _PlacebookCreateBodyState extends State<_PlacebookCreateBody> {
         address: address,
         latitude: lat,
         longitude: lng,
-        imageId: imageId,
-        bestVisitTime: bestVisitTime,
-        hashtags: hashtags,
+        thumbnailFileId: thumbnailFileId,
+        tagIds: tagIds,
+        commonTagIds: commonTagIds,
       );
-      if (imageId != null && imageId.isNotEmpty) {
+      if (thumbnailFileId != null && thumbnailFileId.isNotEmpty) {
         final id = created['id']?.toString() ?? '';
         if (id.isNotEmpty && !_hasImageUrl(created)) {
           created = await ApiClient.updatePlacebookPlace(
@@ -376,9 +438,7 @@ class _PlacebookCreateBodyState extends State<_PlacebookCreateBody> {
             address: address,
             latitude: lat,
             longitude: lng,
-            imageId: imageId,
-            bestVisitTime: bestVisitTime,
-            hashtags: hashtags,
+            thumbnailFileId: thumbnailFileId,
           );
         }
       }
@@ -596,6 +656,8 @@ class _PlacebookCreateBodyState extends State<_PlacebookCreateBody> {
                   _syncCanSave();
                 },
                 height: 52,
+                backgroundColor: Colors.grey.shade200,
+                textColor: Colors.black,
               ),
             ),
             const SizedBox(height: 12),

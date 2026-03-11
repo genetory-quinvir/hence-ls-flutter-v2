@@ -35,7 +35,7 @@ class ProfileInfoView extends StatelessWidget {
             CommonNavigationView(
               title: '프로필 정보',
               left: const Icon(
-                PhosphorIconsRegular.x,
+                PhosphorIconsBold.caretLeft,
                 size: 24,
                 color: Colors.black,
               ),
@@ -143,12 +143,15 @@ class _ProfileInfoBodyState extends State<_ProfileInfoBody> {
     }
 
     return CustomScrollView(
-      physics: const BouncingScrollPhysics(),
+      physics: const AlwaysScrollableScrollPhysics(
+        parent: BouncingScrollPhysics(),
+      ),
       slivers: [
         const SliverToBoxAdapter(child: SizedBox(height: 16)),
         SliverToBoxAdapter(
           child: ProfileUserSection(
             showEditButton: false,
+            showAchievementButton: false,
             displayUser: user,
             showFollowActions: true,
             showFollowButton: true,

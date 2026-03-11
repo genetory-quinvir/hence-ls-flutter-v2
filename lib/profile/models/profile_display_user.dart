@@ -2,30 +2,42 @@ class ProfileDisplayUser {
   const ProfileDisplayUser({
     required this.id,
     required this.nickname,
+    this.name,
     this.introduction,
     this.email,
     this.profileImageUrl,
     this.feedCount,
     this.placebookTotalCount,
+    this.createdPlaceCount,
+    this.favoritePlaceCount,
     this.followingCount,
     this.followerCount,
     this.activityLevel,
+    this.rewardLevel,
     this.isFollowing,
     this.isFollowedByMe,
+    this.representativeTitleInfoName,
+    this.representativeTitleInfoCode,
   });
 
   final String id;
   final String nickname;
+  final String? name;
   final String? introduction;
   final String? email;
   final String? profileImageUrl;
   final int? feedCount;
   final int? placebookTotalCount;
+  final int? createdPlaceCount;
+  final int? favoritePlaceCount;
   final int? followingCount;
   final int? followerCount;
   final int? activityLevel;
+  final int? rewardLevel;
   final bool? isFollowing;
   final bool? isFollowedByMe;
+  final String? representativeTitleInfoName;
+  final String? representativeTitleInfoCode;
 
   static bool? _asBool(dynamic value) {
     if (value is bool) return value;
@@ -75,9 +87,18 @@ class ProfileDisplayUser {
         _asBool(followMap?['isFollowedByMe']) ??
         _asBool(followMap?['isFollower']);
 
+    final representativeInfo = json['representativeTitleInfo'];
+    final representativeName = representativeInfo is Map<String, dynamic>
+        ? representativeInfo['name'] as String?
+        : null;
+    final representativeCode = representativeInfo is Map<String, dynamic>
+        ? representativeInfo['code'] as String?
+        : null;
+
     return ProfileDisplayUser(
       id: json['userId'] as String? ?? json['id'] as String? ?? '',
       nickname: json['nickname'] as String? ?? '',
+      name: json['name'] as String?,
       introduction: json['introduction'] as String?,
       email: (json['email'] as String?) ?? (json['contact'] as String?),
       profileImageUrl: profileImageUrl,
@@ -85,11 +106,21 @@ class ProfileDisplayUser {
           (json['postCount'] as num?)?.toInt(),
       placebookTotalCount:
           (json['placebookTotalCount'] as num?)?.toInt(),
+      createdPlaceCount: (json['createdPlaceCount'] as num?)?.toInt() ??
+          (json['placeCreatedCount'] as num?)?.toInt() ??
+          (json['createdPlacesCount'] as num?)?.toInt(),
+      favoritePlaceCount: (json['favoritePlaceCount'] as num?)?.toInt() ??
+          (json['favoriteCount'] as num?)?.toInt() ??
+          (json['placeFavoriteCount'] as num?)?.toInt() ??
+          (json['favoritePlacebookCount'] as num?)?.toInt(),
       followingCount: (json['followingCount'] as num?)?.toInt(),
       followerCount: (json['followerCount'] as num?)?.toInt(),
       activityLevel: (json['activityLevel'] as num?)?.toInt(),
+      rewardLevel: (json['rewardLevel'] as num?)?.toInt(),
       isFollowing: parsedIsFollowing,
       isFollowedByMe: parsedIsFollowedByMe,
+      representativeTitleInfoName: representativeName,
+      representativeTitleInfoCode: representativeCode,
     );
   }
 }

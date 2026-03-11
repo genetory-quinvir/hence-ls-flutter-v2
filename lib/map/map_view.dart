@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'package:hence_ls_flutter_v2/common/widgets/common_inkwell.dart';
+import 'package:hence_ls_flutter_v2/main.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../common/location/naver_location_service.dart';
@@ -37,11 +38,15 @@ class MapView extends StatefulWidget {
     this.showFilterButton = true,
     this.useBottomSafeArea = true,
     this.fixedThemeIds,
+    this.onPlaceDeleted,
+    this.config = const MapViewConfig(),
   });
 
   final bool showFilterButton;
   final bool useBottomSafeArea;
   final List<String>? fixedThemeIds;
+  final ValueChanged<String>? onPlaceDeleted;
+  final MapViewConfig config;
 
   @override
   State<MapView> createState() => _MapViewState();
@@ -52,7 +57,6 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
   static const double _liveClusterDistancePx = 84;
   static const double _clusterMaxZoom = 18.0;
   static const double _clusterSelectionZoomThreshold = 17.8;
-  static const double _mapPlacesZoomThreshold = 14.0;
   static const double _placeListPeekHeight = 160.0;
   int _selectedIndex = 1;
   String? _selectedCategoryId;
@@ -79,6 +83,7 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
   bool _isCameraMoving = false;
   bool _skipNextCameraIdleFetch = false;
   bool _isProgrammaticMove = false;
+  bool _didFitToAllPlaces = false;
   String? _selectedLiveMarkerId;
   NLatLng? _lastCenter;
   NLatLng? _lastMyLocation;
@@ -112,6 +117,7 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
   bool _isMapToggleToastVisible = false;
   int _mapToggleToastSequence = 0;
   bool _skipToastOutAnimation = false;
+  int _chipShuffleSequence = 0;
 
   Map<String, dynamic> _normalizePlaceItem(Map<String, dynamic> item) {
     final next = Map<String, dynamic>.from(item);
@@ -215,12 +221,23 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
       final themeIds = _effectiveThemeIds.isNotEmpty ? _effectiveThemeIds : null;
       final themeId = (themeIds != null && themeIds.length == 1) ? themeIds.first : null;
       final filter = _placesFilterForIndex();
-      final zoom = _lastZoom ?? _mapPlacesZoomThreshold;
+      final zoom = _lastZoom ?? widget.config.mapPlacesZoomThreshold;
       final shouldUseClusters = _shouldUseClusterApi(zoom);
 
       Map<String, dynamic> response;
       bool isClusterMode = false;
-      if (shouldUseClusters) {
+      if (_shouldFitAllPlaces) {
+        const listOrderBy = 'createdAt';
+        const listOrder = 'DESC';
+        response = await ApiClient.fetchPlacebookPlacesList(
+          filter: filter,
+          limit: null,
+          orderBy: listOrderBy,
+          order: listOrder,
+          themeIds: themeIds,
+        );
+        isClusterMode = false;
+      } else if (shouldUseClusters) {
         response = await ApiClient.fetchMapPlaceClusters(
           latitude: center.latitude,
           longitude: center.longitude,
@@ -237,7 +254,7 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
         );
         isClusterMode = true;
         final clusterCount = _countFromMapResponse(response);
-        if (clusterCount < 30) {
+        if (clusterCount < widget.config.clusterMinCount) {
           response = await ApiClient.fetchMapPlaces(
             latitude: center.latitude,
             longitude: center.longitude,
@@ -269,7 +286,7 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
         );
         isClusterMode = false;
         final placeCount = _countFromMapResponse(response);
-        if (placeCount >= 120) {
+        if (placeCount >= widget.config.placeCountForCluster) {
           response = await ApiClient.fetchMapPlaceClusters(
             latitude: center.latitude,
             longitude: center.longitude,
@@ -303,6 +320,7 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
         _isClusterMode = isClusterMode;
       });
       await _updateLiveMarkerPoints();
+      await _fitToAllPlaces();
       if (_awaitingFetchMarkers && mounted) {
         _awaitingFetchMarkers = false;
         setState(() => _showLiveMarkers = true);
@@ -373,6 +391,11 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
       return fixed;
     }
     return _selectedThemeIds;
+  }
+
+  bool get _shouldFitAllPlaces {
+    final fixed = widget.fixedThemeIds;
+    return fixed != null && fixed.isNotEmpty;
   }
 
   String _placesFilterForIndex() {
@@ -503,6 +526,7 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
     if (fixed != oldFixed) {
       if (fixed != null && fixed.isNotEmpty) {
         _selectedThemeIds = List<String>.from(fixed);
+        _didFitToAllPlaces = false;
       }
     }
   }
@@ -678,6 +702,36 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
     });
   }
 
+  void _shuffleThemeChips() {
+    final active = _themeFilters;
+    if (active.isEmpty) return;
+    if (widget.fixedThemeIds == null || widget.fixedThemeIds!.isEmpty) {
+      if (_selectedThemeIds.isNotEmpty || _selectedCategoryId != null) {
+        setState(() {
+          _selectedThemeIds = const [];
+          _selectedCategoryId = null;
+        });
+      }
+    }
+    final shuffled = List<Map<String, dynamic>>.from(active);
+    shuffled.shuffle(math.Random());
+    final chips = shuffled.take(5).toList();
+    setState(() {
+      _themeChipFilters = chips;
+      _chipShuffleSequence += 1;
+      _chipKeys
+        ..clear()
+        ..addAll({
+          for (final item in chips)
+            (item['id']?.toString() ?? ''): GlobalKey(),
+        });
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _centerChip(animated: false);
+    });
+    _fetchPlacebookSpaces();
+  }
+
   void _upsertCreatedSpaceForImmediateMarker(Map<String, dynamic> raw) {
     final lat = (raw['latitude'] as num?)?.toDouble();
     final lng = (raw['longitude'] as num?)?.toDouble();
@@ -699,6 +753,69 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
       _nearSpaces = _dedupeSpaces(next);
     });
     _updateLiveMarkerPoints();
+  }
+
+  List<NLatLng> _collectSpaceLatLngs() {
+    final points = <NLatLng>[];
+    for (final space in _nearSpaces) {
+      final lat = (space['latitude'] as num?)?.toDouble();
+      final lng = (space['longitude'] as num?)?.toDouble();
+      if (lat == null || lng == null) continue;
+      points.add(NLatLng(lat, lng));
+    }
+    return points;
+  }
+
+  Future<void> _fitToAllPlaces() async {
+    if (!_shouldFitAllPlaces || _didFitToAllPlaces) return;
+    final controller = _mapController;
+    if (controller == null) return;
+    final points = _collectSpaceLatLngs();
+    if (points.isEmpty) return;
+    try {
+      _skipNextCameraIdleFetch = true;
+      _isProgrammaticMove = true;
+      if (points.length == 1) {
+        await controller.updateCamera(
+          NCameraUpdate.withParams(
+            target: points.first,
+            zoom: 15.5,
+          ),
+        );
+      } else {
+        final bounds = NLatLngBounds.from(points);
+        final update = NCameraUpdate.fitBounds(
+          bounds,
+          padding: const EdgeInsets.fromLTRB(24, 140, 24, 220),
+        );
+        update.setAnimation(duration: const Duration(milliseconds: 500));
+        await controller.updateCamera(update);
+      }
+      _didFitToAllPlaces = true;
+    } catch (_) {
+      // Ignore camera update errors.
+    }
+  }
+
+  void _removePlaceFromMap(String placeId) {
+    if (placeId.isEmpty) return;
+    setState(() {
+      _nearSpaces = _nearSpaces.where((space) {
+        final id = _placeIdOf(space);
+        return id != placeId;
+      }).toList();
+      if (_selectedLiveMarkerId == placeId) {
+        _selectedLiveMarkerId = null;
+      }
+    });
+    _updateLiveMarkerPoints();
+    widget.onPlaceDeleted?.call(placeId);
+  }
+
+  String _placeIdOf(Map<String, dynamic> space) {
+    final id = space['id'] ?? space['placeId'];
+    if (id is String) return id;
+    return id?.toString() ?? '';
   }
 
   String _spaceDedupeKey(Map<String, dynamic> space) {
@@ -917,10 +1034,16 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
   }
 
   bool _shouldUseClusterApi(double zoom) {
-    return zoom < _mapPlacesZoomThreshold;
+    return zoom < widget.config.mapPlacesZoomThreshold;
   }
 
   int _gridSizeMetersForZoom(double zoom) {
+    final override = widget.config.gridSizeMetersForZoom;
+    if (override != null) return override(zoom);
+    return _defaultGridSizeMetersForZoom(zoom);
+  }
+
+  int _defaultGridSizeMetersForZoom(double zoom) {
     if (zoom >= 15) return 250;
     if (zoom >= 14) return 400;
     if (zoom >= 13) return 700;
@@ -1229,7 +1352,7 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
         lng: lng,
       ));
     }
-    final zoom = _lastZoom ?? _mapPlacesZoomThreshold;
+    final zoom = _lastZoom ?? widget.config.mapPlacesZoomThreshold;
     final maxMarkers = _maxMarkersForZoom(zoom, isCluster: _isClusterMode);
     final center = _lastCenter;
     if (center != null && markerEntries.length > maxMarkers) {
@@ -1360,11 +1483,18 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
                   setState(() => _selectedLiveMarkerId = cluster.clusterId);
                   return;
                 }
-                Navigator.of(context).push(
+                Navigator.of(context)
+                    .push(
                   MaterialPageRoute(
                     builder: (_) => PlacebookDetailView(space: single.space),
                   ),
-                );
+                )
+                    .then((deleted) {
+                  if (deleted == true) {
+                    final placeId = _placeIdOf(single.space);
+                    _removePlaceFromMap(placeId);
+                  }
+                });
               },
               child: AnimatedOpacity(
                 opacity: _showLiveMarkers ? 1 : 0,
@@ -1470,6 +1600,12 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
   }
 
   int _maxMarkersForZoom(double zoom, {required bool isCluster}) {
+    final override = widget.config.maxMarkersForZoom;
+    if (override != null) return override(zoom, isCluster: isCluster);
+    return _defaultMaxMarkersForZoom(zoom, isCluster: isCluster);
+  }
+
+  int _defaultMaxMarkersForZoom(double zoom, {required bool isCluster}) {
     if (isCluster) {
       if (zoom >= 15) return 200;
       if (zoom >= 14) return 180;
@@ -1882,190 +2018,157 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
   Widget _buildFilterChips() {
     final themeChips = _themeChipFilters;
     final effectiveThemeIds = _effectiveThemeIds;
-    final filterCount = effectiveThemeIds.isNotEmpty
-        ? effectiveThemeIds.length
-        : (_selectedCategoryId != null && _selectedCategoryId!.isNotEmpty ? 1 : 0);
-    final showFilterBadge = filterCount > 0;
-    final filterLabel = _filterLabel;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      child: Row(
-        children: [
-          Expanded(
-            child: SingleChildScrollView(
-              controller: _chipScrollController,
-              scrollDirection: Axis.horizontal,
-              clipBehavior: Clip.none,
-              child: Row(
-                children: [
-                  if (widget.showFilterButton)
-                    Padding(
-                      padding: const EdgeInsets.only(left: 8, right: 12),
+    return Container(
+      height: 56,
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Padding(
+        padding: const EdgeInsets.only(left: 20, right: 32),
+        child: SingleChildScrollView(
+          controller: _chipScrollController,
+          scrollDirection: Axis.horizontal,
+          clipBehavior: Clip.hardEdge,
+          child: Row(
+            children: [
+              if (themeChips.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8,),
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    decoration: const ShapeDecoration(
+                      color: Colors.white,
+                      shape: ContinuousRectangleBorder(
+                        borderRadius: BorderRadius.all(Radius.circular(28)),
+                        side: BorderSide(color: Color(0x22000000)),
+                      ),
+                    ),
+                    child: const Text(
+                      '테마 없음',
+                      style: TextStyle(
+                        fontFamily: 'Pretendard',
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF9E9E9E),
+                      ),
+                    ),
+                  ),
+                )
+              else
+                ...themeChips.map((theme) {
+                  final themeId = theme['id']?.toString() ?? '';
+                  final displayLabel = (theme['title'] as String?) ?? '';
+                  final selected = themeId.isNotEmpty &&
+                      effectiveThemeIds.length == 1 &&
+                      effectiveThemeIds.first == themeId;
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 8,),
+                    child: KeyedSubtree(
+                      key: _chipKeys[themeId],
                       child: GestureDetector(
-                        onTap: _openMapFilter,
-                        child: Stack(
-                          clipBehavior: Clip.none,
-                          children: [
-                            AnimatedContainer(
-                              duration: const Duration(milliseconds: 180),
-                              curve: Curves.easeOut,
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                              alignment: Alignment.centerLeft,
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(999),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withValues(alpha: 0.18),
-                                    blurRadius: 8,
-                                    offset: const Offset(0, 3),
-                                  ),
-                                ],
+                        onTap: () async {
+                          if (themeId.isEmpty) return;
+                          if (widget.fixedThemeIds != null &&
+                              widget.fixedThemeIds!.isNotEmpty) {
+                            return;
+                          }
+                          setState(() {
+                            if (selected) {
+                              _selectedThemeIds = const [];
+                            } else {
+                              _selectedThemeIds = [themeId];
+                            }
+                            _selectedCategoryId = null;
+                          });
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            _centerChip();
+                          });
+                          final center = _lastCenter;
+                          if (center != null) {
+                            _fetchPlacebookSpaces();
+                          }
+                        },
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 180),
+                          curve: Curves.easeOut,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 8),
+                          decoration: ShapeDecoration(
+                            color: selected ? Colors.black : Colors.white,
+                            shape: const ContinuousRectangleBorder(
+                              borderRadius:
+                                  BorderRadius.all(Radius.circular(16)),
+                            ),
+                            shadows: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.08),
+                                blurRadius: 8,
+                                offset: const Offset(0, 0),
                               ),
-                              child: Text(
-                                filterLabel,
-                                textAlign: TextAlign.left,
+                            ],
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                PhosphorIconsFill.tag,
+                                size: 16,
+                                color:
+                                    selected ? Colors.white : Colors.black,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                displayLabel,
                                 style: TextStyle(
                                   fontFamily: 'Pretendard',
                                   fontSize: 13,
                                   fontWeight: FontWeight.w600,
-                                  color: Colors.black,
+                                  color: selected
+                                      ? Colors.white
+                                      : Colors.black,
                                 ),
                               ),
-                            ),
-                            if (showFilterBadge)
-                              Positioned(
-                                top: -8,
-                                right: -14,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 6,
-                                    vertical: 2,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Colors.black,
-                                    borderRadius: BorderRadius.circular(999),
-                                    border: Border.all(color: Colors.white, width: 2),
-                                  ),
-                                  child: Text(
-                                    '$filterCount',
-                                    style: const TextStyle(
-                                      fontFamily: 'Pretendard',
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w700,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     ),
-                  if (themeChips.isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(999),
-                          border: Border.all(color: const Color(0x22000000)),
-                        ),
-                        child: const Text(
-                          '테마 없음',
-                          style: TextStyle(
-                            fontFamily: 'Pretendard',
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: Color(0xFF9E9E9E),
-                          ),
-                        ),
-                      ),
-                    )
-                  else
-                    ...themeChips.map((theme) {
-                      final themeId = theme['id']?.toString() ?? '';
-                      final displayLabel = (theme['title'] as String?) ?? '';
-                      final selected = themeId.isNotEmpty &&
-                          effectiveThemeIds.length == 1 &&
-                          effectiveThemeIds.first == themeId;
-                      return Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: KeyedSubtree(
-                          key: _chipKeys[themeId],
-                          child: GestureDetector(
-                            onTap: () async {
-                              if (themeId.isEmpty) return;
-                              if (widget.fixedThemeIds != null &&
-                                  widget.fixedThemeIds!.isNotEmpty) {
-                                return;
-                              }
-                              setState(() {
-                                if (selected) {
-                                  _selectedThemeIds = const [];
-                                } else {
-                                  _selectedThemeIds = [themeId];
-                                }
-                                _selectedCategoryId = null;
-                              });
-                              WidgetsBinding.instance.addPostFrameCallback((_) {
-                                _centerChip();
-                              });
-                              final center = _lastCenter;
-                              if (center != null) {
-                                _fetchPlacebookSpaces();
-                              }
-                            },
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 180),
-                              curve: Curves.easeOut,
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                              decoration: BoxDecoration(
-                                color: selected ? Colors.black : Colors.white,
-                                borderRadius: BorderRadius.circular(999),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withValues(alpha: 0.18),
-                                    blurRadius: 8,
-                                    offset: const Offset(0, 3),
-                                  ),
-                                ],
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    PhosphorIconsFill.tag,
-                                    size: 16,
-                                    color: selected ? Colors.white : Colors.black,
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    displayLabel,
-                                    style: TextStyle(
-                                      fontFamily: 'Pretendard',
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w600,
-                                      color: selected ? Colors.white : Colors.black,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                ],
-              ),
-            ),
+                  );
+                }).toList(),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
 
+  Widget _buildShuffleButton() {
+    return GestureDetector(
+      onTap: _shuffleThemeChips,
+      child: Container(
+        width: 36,
+        height: 36,
+        alignment: Alignment.center,
+        decoration: const ShapeDecoration(
+          color: Colors.black,
+          shape: ContinuousRectangleBorder(
+            borderRadius: BorderRadius.all(Radius.circular(16)),
+          ),
+          shadows: [
+            BoxShadow(
+              color: Color(0x2E000000),
+              blurRadius: 8,
+              offset: Offset(0, 0),
+            ),
+          ],
+        ),
+        child: const Icon(
+          PhosphorIconsBold.arrowsClockwise,
+          size: 16,
+          color: MyApp.primary200,
+        ),
+      ),
+    );
+  }
   Widget _buildTopFilterButton() {
     if (!widget.showFilterButton) return const SizedBox.shrink();
     final effectiveThemeIds = _effectiveThemeIds;
@@ -2079,11 +2182,12 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
         _MapFloatingButton(
           icon: PhosphorIconsBold.magnifyingGlass,
           onTap: _openMapFilter,
+          iconColor: Colors.black,
         ),
         if (showFilterBadge)
           Positioned(
             top: -8,
-            right: -20,
+            right: -16,
             child: _MapFilterBadge(text: '$filterCount'),
           ),
       ],
@@ -2157,7 +2261,12 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
     const searchBarVerticalPadding = 8.0;
     const navigationBottomOffset =
         searchBarHeight + (searchBarVerticalPadding * 2);
-    const chipTopOffset = navigationBottomOffset;
+    const filterRowHeight = 50.0;
+    const chipRowHeight = filterRowHeight + 8;
+    const shuffleButtonSize = 36.0;
+    const shuffleButtonGap = 12.0;
+    final filterRowTop = topSafe + searchBarVerticalPadding;
+    const chipLeftOffset = 16.0;
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.dark,
       child: Scaffold(
@@ -2221,6 +2330,20 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      _MapToggleVertical(
+                        isSharedMap: _selectedIndex == 1,
+                        onSharedTap: () {
+                          if (_selectedIndex == 1) return;
+                          _onTabSelected(1);
+                          _triggerMapToggleToast('공유 지도를 보여줄게요!');
+                        },
+                        onMyTap: () {
+                          if (_selectedIndex == 0) return;
+                          _onMyMapTap();
+                          _triggerMapToggleToast('내 지도를 보여줄게요!');
+                        },
+                      ),
+                      const SizedBox(height: 16),
                       _MapZoomButton(
                         onZoomIn: () => _zoomBy(1),
                         onZoomOut: () => _zoomBy(-1),
@@ -2228,6 +2351,7 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
                       const SizedBox(height: 12),
                       _MapFloatingButton(
                         icon: PhosphorIconsFill.navigationArrow,
+                        iconColor: MyApp.primary200,
                         onTap: () => _mapViewController.moveToMyLocation(),
                       ),
                     ],
@@ -2247,6 +2371,26 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
               ),
             ),
             Positioned(
+              top: filterRowTop,
+              left: chipLeftOffset,
+              right: 20,
+              height: chipRowHeight,
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: _buildFilterChips(),
+              ),
+            ),
+            Positioned(
+              top: filterRowTop,
+              right: 16,
+              width: shuffleButtonSize,
+              height: chipRowHeight,
+              child: Align(
+                alignment: Alignment.center,
+                child: _buildShuffleButton(),
+              ),
+            ),
+            Positioned(
               top: 0,
               left: 0,
               right: 0,
@@ -2261,36 +2405,18 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
                         16,
                         searchBarVerticalPadding,
                       ),
-                      child: Row(
-                        children: [
-                          _buildTopFilterButton(),
-                          const Spacer(),
-                          _MapToggleHorizontal(
-                            isSharedMap: _selectedIndex == 1,
-                            onSharedTap: () {
-                              if (_selectedIndex == 1) return;
-                              _onTabSelected(1);
-                              _triggerMapToggleToast('공유 지도를 보여줄게요!');
-                            },
-                            onMyTap: () {
-                              if (_selectedIndex == 0) return;
-                              _onMyMapTap();
-                              _triggerMapToggleToast('내 지도를 보여줄게요!');
-                            },
-                          ),
-                        ],
+                      child: SizedBox(
+                        height: chipRowHeight,
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: _buildTopFilterButton(),
+                        ),
                       ),
                     ),
                     const SizedBox.shrink(),
                   ],
                 ),
               ),
-            ),
-            Positioned(
-              top: topSafe + chipTopOffset,
-              left: 0,
-              right: 0,
-              child: const SizedBox.shrink(),
             ),
             Positioned(
               left: 24,
@@ -2313,6 +2439,7 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
                   peekHeight: _placeListPeekHeight,
                   initialChildSize: 0.0,
                   useBottomSafeArea: widget.useBottomSafeArea,
+                  cacheExtent: 420,
                   title: '${_listSpaces.length} 개의 장소를 발견했어요!',
                   count: null,
                   trailing: _buildListSortToggle(),
@@ -2355,23 +2482,31 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
                     final favorited = (space['favorited'] as bool?) ??
                         (space['isFavorited'] as bool?) ??
                         false;
-                    return CommonPlaceListItemView(
-                      thumbnailUrl: _thumbnailForSpace(space) ?? '',
-                      title: title.isNotEmpty ? title : '장소',
-                      address: placeName,
-                      commentCount: commentCount,
-                      likeCount: likeCount,
-                      categoryText: categoryText,
-                      themeText: themeText,
-                      distanceText: _distanceLabelForSpace(lat: lat, lng: lng),
-                      favorited: favorited,
-                      onTap: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => PlacebookDetailView(space: space),
-                          ),
-                        );
-                      },
+                    final placeId = _placeIdOf(space);
+                    return KeyedSubtree(
+                      key: ValueKey('place_$placeId'),
+                      child: CommonPlaceListItemView(
+                        thumbnailUrl: _thumbnailForSpace(space) ?? '',
+                        title: title.isNotEmpty ? title : '장소',
+                        address: placeName,
+                        commentCount: commentCount,
+                        likeCount: likeCount,
+                        categoryText: categoryText,
+                        themeText: themeText,
+                        distanceText:
+                            _distanceLabelForSpace(lat: lat, lng: lng),
+                        favorited: favorited,
+                        onTap: () async {
+                          final deleted = await Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => PlacebookDetailView(space: space),
+                            ),
+                          );
+                          if (deleted == true) {
+                            _removePlaceFromMap(placeId);
+                          }
+                        },
+                      ),
                     );
                   }).toList(),
                 ),
@@ -2471,7 +2606,7 @@ class _MapToggleButton extends StatelessWidget {
                   ? PhosphorIconsBold.usersThree
                   : PhosphorIconsBold.user),
           size: 20,
-          color: isLight ? Colors.black : Colors.white,
+          color: isLight ? MyApp.primary200 : Colors.white,
         ),
       ),
     );
@@ -2532,7 +2667,6 @@ class _MapToggleSegmentButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final background = isActive ? Colors.black : Colors.transparent;
-    final iconColor = isActive ? Colors.white : Colors.black;
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
@@ -2549,15 +2683,15 @@ class _MapToggleSegmentButton extends StatelessWidget {
         child: Icon(
           icon,
           size: 20,
-          color: iconColor,
+          color: isActive ? MyApp.primary200 : Colors.black,
         ),
       ),
     );
   }
 }
 
-class _MapToggleHorizontal extends StatelessWidget {
-  const _MapToggleHorizontal({
+class _MapToggleVertical extends StatelessWidget {
+  const _MapToggleVertical({
     required this.isSharedMap,
     required this.onSharedTap,
     required this.onMyTap,
@@ -2570,7 +2704,7 @@ class _MapToggleHorizontal extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 44,
+      width: 44,
       padding: const EdgeInsets.all(4),
       decoration: ShapeDecoration(
         color: Colors.white,
@@ -2585,7 +2719,7 @@ class _MapToggleHorizontal extends StatelessWidget {
           ),
         ],
       ),
-      child: Row(
+      child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           _MapToggleSegmentButton(
@@ -2593,7 +2727,7 @@ class _MapToggleHorizontal extends StatelessWidget {
             icon: PhosphorIconsBold.globeHemisphereEast,
             onTap: onSharedTap,
           ),
-          const SizedBox(width: 6),
+          const SizedBox(height: 6),
           _MapToggleSegmentButton(
             isActive: !isSharedMap,
             icon: PhosphorIconsBold.user,
@@ -2654,9 +2788,11 @@ class _MapFloatingButton extends StatelessWidget {
   const _MapFloatingButton({
     required this.icon,
     required this.onTap,
+    required this.iconColor,
   });
 
   final IconData icon;
+  final Color iconColor;
   final VoidCallback onTap;
 
   @override
@@ -2683,7 +2819,7 @@ class _MapFloatingButton extends StatelessWidget {
         child: Icon(
           icon,
           size: 20,
-          color: Colors.black,
+          color: iconColor,
         ),
       ),
     );
@@ -2749,4 +2885,20 @@ class _MapZoomButton extends StatelessWidget {
       ),
     );
   }
+}
+
+class MapViewConfig {
+  const MapViewConfig({
+    this.mapPlacesZoomThreshold = 14.0,
+    this.clusterMinCount = 30,
+    this.placeCountForCluster = 120,
+    this.gridSizeMetersForZoom,
+    this.maxMarkersForZoom,
+  });
+
+  final double mapPlacesZoomThreshold;
+  final int clusterMinCount;
+  final int placeCountForCluster;
+  final int Function(double zoom)? gridSizeMetersForZoom;
+  final int Function(double zoom, {required bool isCluster})? maxMarkersForZoom;
 }

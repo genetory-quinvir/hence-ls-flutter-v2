@@ -6,7 +6,7 @@ import '../../common/widgets/common_empty_view.dart';
 import '../../common/widgets/common_navigation_view.dart';
 import '../../common/widgets/common_rounded_button.dart';
 import '../../common/widgets/common_textfield_view.dart';
-import '../../common/network/api_client.dart';
+import '../../common/state/placebook_cache.dart';
 import 'widgets/map_filter_theme_item_view.dart';
 
 class MapFilterView extends StatefulWidget {
@@ -53,7 +53,7 @@ class _MapFilterViewState extends State<MapFilterView> {
   }
 
   Future<void> _loadThemes() async {
-    final themes = await ApiClient.fetchPlacebookThemes(orderBy: 'title');
+    final themes = await PlacebookCache.loadThemes();
     if (!mounted) return;
     setState(() {
       _themes = themes.map(_resolveThemeData).toList()

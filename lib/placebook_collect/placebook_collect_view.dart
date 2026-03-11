@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:hence_ls_flutter_v2/placebook_create/placebook_create_view.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
-import 'placebook_collect_map_view.dart';
+import '../map/map_view.dart';
 import '../common/widgets/common_navigation_view.dart';
 
 class PlacebookCollectView extends StatefulWidget {
@@ -70,7 +70,7 @@ class _PlacebookCollectViewState extends State<PlacebookCollectView> {
                 backgroundColor: Colors.white,
               ),
               Expanded(
-                child: PlacebookCollectMapView(
+                child: MapView(
                   showFilterButton: false,
                   useBottomSafeArea: false,
                   fixedThemeIds: themeIdList,
