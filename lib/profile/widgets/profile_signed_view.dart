@@ -16,6 +16,7 @@ import '../../common/widgets/common_image_view.dart';
 import '../../common/widgets/common_livespace_list_item_view.dart';
 import '../../common/widgets/common_empty_view.dart';
 import '../../common/widgets/common_refresh_view.dart';
+import '../../common/state/placebook_cache.dart';
 import '../../placebook_detail/placebook_detail_view.dart';
 import '../../placebook_list/placebook_list_view.dart';
 import '../profile_feed_detail_view.dart';
@@ -132,8 +133,91 @@ class _ProfileSignedViewState extends State<ProfileSignedView> {
               ),
             ),
           ),
+          const SliverToBoxAdapter(child: SizedBox(height: 16)),
+          const SliverToBoxAdapter(
+            child: _ProfilePlacebookCategoryTabs(),
+          ),
           const SliverToBoxAdapter(child: SizedBox(height: 24)),
         ],
+      ),
+    );
+  }
+}
+
+class _ProfilePlacebookCategoryTabs extends StatefulWidget {
+  const _ProfilePlacebookCategoryTabs();
+
+  @override
+  State<_ProfilePlacebookCategoryTabs> createState() =>
+      _ProfilePlacebookCategoryTabsState();
+}
+
+class _ProfilePlacebookCategoryTabsState
+    extends State<_ProfilePlacebookCategoryTabs> {
+  List<Map<String, dynamic>> _categories = const [];
+  String? _selectedId;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCategories();
+  }
+
+  Future<void> _loadCategories() async {
+    final categories = await PlacebookCache.loadCategories();
+    if (!mounted) return;
+    setState(() {
+      _categories = categories;
+      if (_selectedId == null && categories.isNotEmpty) {
+        _selectedId = categories.first['id']?.toString();
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final items = _categories;
+    if (items.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return SizedBox(
+      height: 44,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        itemCount: items.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (context, index) {
+          final item = items[index];
+          final id = item['id']?.toString() ?? '';
+          final title = (item['title'] ?? '').toString();
+          final selected = id.isNotEmpty && id == _selectedId;
+          return GestureDetector(
+            onTap: () {
+              if (id.isEmpty) return;
+              setState(() => _selectedId = id);
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: ShapeDecoration(
+                color: selected ? Colors.black : Colors.white,
+                shape: const ContinuousRectangleBorder(
+                  borderRadius: BorderRadius.all(Radius.circular(28)),
+                  side: BorderSide(color: Color(0x22000000)),
+                ),
+              ),
+              child: Text(
+                title.isEmpty ? '카테고리' : title,
+                style: TextStyle(
+                  fontFamily: 'Pretendard',
+                  fontSize: 13,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
+                  color: selected ? Colors.white : const Color(0xFF9E9E9E),
+                ),
+              ),
+            ),
+          );
+        },
       ),
     );
   }

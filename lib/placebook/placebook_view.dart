@@ -1,1253 +1,881 @@
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:figma_squircle/figma_squircle.dart';
 
 import '../common/state/placebook_cache.dart';
-import '../common/network/api_client.dart';
-import '../common/state/home_tab_controller.dart';
-import '../placebook/widgets/placebook_item_view.dart';
-import '../placebook/widgets/placebook_empty_view.dart';
-import '../placebook_create/placebook_create_view.dart';
-import '../placebook_detail/placebook_detail_view.dart';
-import '../placebook_collect/placebook_collect_view.dart';
-import '../common/widgets/common_inkwell.dart';
-import '../common/widgets/common_textfield_view.dart';
-import '../common/widgets/common_empty_view.dart';
-import '../common/widgets/common_refresh_view.dart';
 import '../common/widgets/common_image_view.dart';
-import '../common/widgets/common_place_list_item_view.dart';
+import '../common/widgets/common_inkwell.dart';
+import '../common/widgets/common_navigation_view.dart';
 
 class PlacebookView extends StatefulWidget {
-  const PlacebookView({
-    super.key,
-    this.initialThemeId,
-    this.initialThemeTitle,
-  });
-
-  final String? initialThemeId;
-  final String? initialThemeTitle;
+  const PlacebookView({super.key});
 
   @override
   State<PlacebookView> createState() => _PlacebookViewState();
 }
 
 class _PlacebookViewState extends State<PlacebookView> {
-  static const double _kCommonTabHeight = 66;
-  bool _isLoading = true;
-  bool _isRefreshing = false;
   List<Map<String, dynamic>> _categories = const [];
   List<Map<String, dynamic>> _themes = const [];
-  Map<String, List<Map<String, dynamic>>> _placesByTheme = const {};
-  List<Map<String, dynamic>> _places = const [];
-  List<String> _searchThumbnails = const [];
-  bool _hasFixedSearchThumbnails = false;
-  int _createdCount = 0;
-  int _favoriteCount = 0;
-  int _totalCount = 0;
-  String _selectedThemeSort = 'places';
-  String _selectedCollection = 'mine';
-  String _selectedViewMode = 'theme';
-  String _selectedPlaceSort = 'latest';
-  String? _placeListThemeId;
-  String? _placesNextCursor;
-  bool _placesHasNext = true;
-  bool _isLoadingMorePlaces = false;
-  String? _placesRequestedCursor;
-  late final VoidCallback _tabListener;
-  bool _didInitialLoad = false;
-  final ScrollController _listController = ScrollController();
-  final TextEditingController _searchController = TextEditingController();
-  String _searchText = '';
-  String _pendingSearchText = '';
-  final Map<String, _PlacebookCacheSnapshot> _filterCache = {};
 
   @override
   void initState() {
     super.initState();
-    if ((widget.initialThemeId ?? '').trim().isNotEmpty) {
-      _selectedViewMode = 'place';
-      _selectedCollection = 'all';
-      _placeListThemeId = widget.initialThemeId?.trim();
-    }
-    if (HomeTabController.currentIndex.value == 2) {
-      _loadInitialIfNeeded();
-    }
-    _tabListener = () {
-      if (!mounted) return;
-      if (HomeTabController.currentIndex.value == 2) {
-        _loadInitialIfNeeded();
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted) return;
-          _loadPlacebookInfo();
-        });
-      }
-    };
-    HomeTabController.currentIndex.addListener(_tabListener);
+    _loadCachedData();
   }
 
-  void _loadInitialIfNeeded() {
-    if (_didInitialLoad) return;
-    _didInitialLoad = true;
-    if (_selectedViewMode == 'place') {
-      _loadPlacebookPlacesList(filter: _selectedCollection, forceRefresh: true);
-    } else {
-      _loadPlacebookData();
-    }
-  }
-
-  @override
-  void dispose() {
-    HomeTabController.currentIndex.removeListener(_tabListener);
-    _listController.dispose();
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  void _scrollToTop() {
-    if (!_listController.hasClients) return;
-    _listController.animateTo(
-      0,
-      duration: const Duration(milliseconds: 200),
-      curve: Curves.easeOut,
-    );
-  }
-
-  void _handleSearchChanged(String value) {
-    final nextValue = value.trim();
-    final shouldClear = nextValue.isEmpty && _searchText.trim().isNotEmpty;
-    setState(() => _pendingSearchText = value);
-    if (!shouldClear) return;
-    setState(() {
-      _searchText = '';
-      _pendingSearchText = '';
-    });
-    _scrollToTop();
-    if (_selectedViewMode == 'place') {
-      _loadPlacebookPlacesList(
-        filter: _selectedCollection,
-        forceRefresh: true,
-      );
-    }
-  }
-
-  void _handleSearchCancel() {
-    _searchController.clear();
-    setState(() {
-      _searchText = '';
-      _pendingSearchText = '';
-    });
-    _scrollToTop();
-    if (_selectedViewMode == 'place') {
-      _loadPlacebookPlacesList(
-        filter: _selectedCollection,
-        forceRefresh: true,
-      );
-    }
-  }
-
-  void _handleSearchSubmit() {
-    final next = _pendingSearchText.trim();
-    if (next == _searchText.trim()) return;
-    setState(() => _searchText = next);
-    _scrollToTop();
-    if (_selectedViewMode == 'place') {
-      _loadPlacebookPlacesList(
-        filter: _selectedCollection,
-        forceRefresh: true,
-      );
-    }
-  }
-
-  Future<void> _loadPlacebookData({
-    String? filter,
-    String? themeOrderBy,
-    String? themeOrderBy2,
-    bool forceRefresh = false,
-  }) async {
-    final activeFilter = filter ?? _selectedCollection;
-    final activeThemeOrderBy = themeOrderBy ?? _themeOrderBy(_selectedThemeSort);
-    final activeThemeOrderBy2 =
-        themeOrderBy2 ?? _themeOrderBy2(_selectedThemeSort);
-    final activeThemeOrder = _themeOrder(_selectedThemeSort);
-    final cacheKey =
-        '$activeFilter|$activeThemeOrderBy|$activeThemeOrder|${activeThemeOrderBy2 ?? ''}';
-    if (!forceRefresh) {
-      final cached = _filterCache[cacheKey];
-      if (cached != null && mounted) {
-        setState(() {
-          _categories = cached.categories;
-          _themes = cached.themes;
-          _placesByTheme = cached.placesByTheme;
-          if (!_hasFixedSearchThumbnails) {
-            _searchThumbnails =
-                _collectSearchThumbnails(cached.placesByTheme, maxCount: 4);
-            _hasFixedSearchThumbnails = true;
-          }
-          _isLoading = false;
-          _isRefreshing = false;
-        });
-        return;
-      }
-    }
-    if (mounted) {
-      final hasData = _themes.isNotEmpty || _placesByTheme.isNotEmpty;
-      setState(() {
-        if (hasData) {
-          _isRefreshing = true;
-        } else {
-          _isLoading = true;
-        }
-      });
-    }
+  Future<void> _loadCachedData() async {
     final categories = await PlacebookCache.loadCategories();
-    final themes = <Map<String, dynamic>>[];
-    final placesByTheme = <String, List<Map<String, dynamic>>>{};
-    final response = activeFilter == 'all'
-        ? await ApiClient.fetchPlacebookThemesPlaces(
-            themeOrderBy: activeThemeOrderBy,
-            themeOrder: activeThemeOrder,
-            themeOrderBy2: activeThemeOrderBy2,
-            placeOrderBy: 'title',
-            themeLimit: 200,
-            themePage: 1,
-            placeLimit: 3,
-            placePage: 1,
-            includeTotal: 0,
-          )
-        : await ApiClient.fetchMyPlacebookThemes(
-            filter: _collectionFilter(activeFilter),
-            themeOrderBy: activeThemeOrderBy,
-            themeOrder: activeThemeOrder,
-            themeOrderBy2: activeThemeOrderBy2,
-            placeOrderBy: 'title',
-            themeLimit: 200,
-            themePage: 1,
-            placeLimit: 3,
-            placePage: 1,
-            includeTotal: 0,
-          );
-    final items = _extractItems(response);
-    for (final item in items) {
-      final rawTheme = item['theme'];
-      final rawThemeId = item['themeId'];
-      Map<String, dynamic>? theme;
-      if (rawTheme is Map<String, dynamic>) {
-        theme = _resolveThemeData(rawTheme);
-      } else if (rawThemeId is Map<String, dynamic>) {
-        theme = _resolveThemeData(rawThemeId);
-      }
-      if (theme == null) continue;
-      final themeId = _themeId(theme);
-      if (themeId.isEmpty) continue;
-      themes.add(theme);
-      final rawPlaces = item['places'];
-      final placeList = rawPlaces is List
-          ? rawPlaces.whereType<Map<String, dynamic>>().toList()
-          : <Map<String, dynamic>>[];
-      placesByTheme[themeId] =
-          placeList.map(_resolvePlaceData).toList(growable: false);
-    }
+    final themes = await PlacebookCache.loadThemes();
     if (!mounted) return;
     setState(() {
       _categories = categories;
       _themes = themes;
-      _placesByTheme = placesByTheme;
-      if (!_hasFixedSearchThumbnails) {
-        _searchThumbnails =
-            _collectSearchThumbnails(placesByTheme, maxCount: 4);
-        _hasFixedSearchThumbnails = true;
-      }
-      _isLoading = false;
-      _isRefreshing = false;
     });
-    _filterCache[cacheKey] = _PlacebookCacheSnapshot(
-      categories: categories,
-      themes: themes,
-      placesByTheme: placesByTheme,
-    );
-    await _loadPlacebookInfo();
-  }
-
-  Future<void> _loadPlacebookInfo() async {
-    debugPrint('[PLACEBOOK] load my-places/info');
-    try {
-      final info = await ApiClient.fetchMyPlacebookMyPlacesInfo();
-      if (!mounted) return;
-      setState(() {
-        _createdCount = (info['createdCount'] as num?)?.toInt() ?? 0;
-        _favoriteCount = (info['favoriteCount'] as num?)?.toInt() ?? 0;
-        _totalCount = (info['publicTotalCount'] as num?)?.toInt() ??
-            (info['totalCount'] as num?)?.toInt() ??
-            0;
-      });
-    } catch (e) {
-      debugPrint('[PLACEBOOK] info load failed: $e');
-    }
-  }
-
-  Future<void> _loadPlacebookPlacesList({
-    String? filter,
-    bool forceRefresh = false,
-    bool loadMore = false,
-  }) async {
-    final activeFilter = filter ?? _selectedCollection;
-    if (loadMore) {
-      if (_isLoadingMorePlaces || _isLoading || _isRefreshing) return;
-      final nextCursor = _placesNextCursor;
-      if (nextCursor == null || nextCursor.isEmpty) return;
-      if (_placesRequestedCursor == nextCursor) return;
-    }
-    if (mounted) {
-      if (loadMore) {
-        setState(() => _isLoadingMorePlaces = true);
-      } else {
-        final hasData = _places.isNotEmpty;
-        setState(() {
-          if (hasData) {
-            _isRefreshing = true;
-          } else {
-            _isLoading = true;
-          }
-        });
-      }
-    }
-    if (!loadMore) {
-      _placesNextCursor = null;
-      _placesHasNext = true;
-      _placesRequestedCursor = null;
-    }
-    if (!_placesHasNext && loadMore) {
-      if (mounted) setState(() => _isLoadingMorePlaces = false);
-      return;
-    }
-    final placeOrderBy = _placeOrderBy(_selectedPlaceSort);
-    final placeOrder = _placeOrder(_selectedPlaceSort);
-    final requestCursor = loadMore ? _placesNextCursor : null;
-    _placesRequestedCursor = requestCursor;
-    final response = await ApiClient.fetchPlacebookPlacesList(
-      filter: _placeListFilter(activeFilter),
-      limit: 20,
-      orderBy: loadMore ? null : placeOrderBy,
-      order: loadMore ? null : placeOrder,
-      query: _searchText,
-      themeIds: _placeListThemeId?.isNotEmpty == true
-          ? [_placeListThemeId!]
-          : null,
-      cursor: requestCursor,
-      cursorOnly: loadMore,
-    );
-    final items = _extractPlaceListItems(response)
-        .map(_normalizePlaceListItem)
-        .toList(growable: false);
-    final dataNode = response['data'];
-    final meta = dataNode is Map<String, dynamic> ? dataNode['meta'] : response['meta'];
-    final hasNext = meta is Map<String, dynamic>
-        ? (meta['hasNext'] as bool?) ?? false
-        : false;
-    final nextCursor = meta is Map<String, dynamic>
-        ? meta['nextCursor']?.toString()
-        : null;
-    if (!mounted) return;
-    setState(() {
-      if (loadMore) {
-        _places = _mergeUniquePlaces(_places, items);
-      } else {
-        _places = items;
-      }
-      _isLoading = false;
-      _isRefreshing = false;
-      _isLoadingMorePlaces = false;
-      _placesRequestedCursor = null;
-      final hasValidCursor = nextCursor?.isNotEmpty ?? false;
-      final isSameCursor = hasValidCursor && nextCursor == _placesNextCursor;
-      _placesHasNext = hasNext && hasValidCursor && !isSameCursor;
-      _placesNextCursor = nextCursor;
-    });
-  }
-
-  Map<String, dynamic> _resolveThemeData(Map<String, dynamic> theme) {
-    final next = Map<String, dynamic>.from(theme);
-    final category = theme['category'];
-    if (category is Map<String, dynamic>) {
-      next['categoryId'] ??= category['id'];
-      next['categoryTitle'] ??= category['title'];
-      next['categorySubtitle'] ??= category['subtitle'];
-    }
-    return next;
-  }
-
-  Map<String, dynamic> _resolvePlaceData(Map<String, dynamic> place) {
-    final next = Map<String, dynamic>.from(place);
-    final idRaw = place['id'];
-    if (idRaw is Map<String, dynamic>) {
-      next.remove('id');
-      next.addAll(idRaw);
-      final nestedId = idRaw['id'];
-      if (nestedId != null) {
-        next['id'] = nestedId.toString();
-        next['placeId'] ??= nestedId.toString();
-      }
-    }
-    return next;
-  }
-
-  String _themeOrderBy(String sort) {
-    return sort == 'title' ? 'title' : 'placeCount';
-  }
-
-  String? _themeOrderBy2(String sort) {
-    return sort == 'title' ? null : 'title';
-  }
-
-  String _themeOrder(String sort) {
-    return sort == 'title' ? 'ASC' : 'DESC';
-  }
-
-  String _placeOrderBy(String sort) {
-    return sort == 'title' ? 'title' : 'createdAt';
-  }
-
-  String _placeOrder(String sort) {
-    return sort == 'title' ? 'ASC' : 'DESC';
-  }
-
-  String _collectionFilter(String filter) {
-    if (filter == 'mine') return 'all';
-    return 'all';
-  }
-
-  String _placeListFilter(String filter) {
-    if (filter == 'mine') return 'favorites_created';
-    return 'all';
-  }
-
-  List<Map<String, dynamic>> _extractItems(Map<String, dynamic> response) {
-    final data = response['data'];
-    if (data is Map<String, dynamic>) {
-      final items = data['items'];
-      if (items is List) {
-        return items.whereType<Map<String, dynamic>>().toList();
-      }
-    }
-    final items = response['items'];
-    if (items is List) {
-      return items.whereType<Map<String, dynamic>>().toList();
-    }
-    return const [];
-  }
-
-  List<Map<String, dynamic>> _extractPlaceListItems(
-    Map<String, dynamic> response,
-  ) {
-    final data = response['data'];
-    if (data is Map<String, dynamic>) {
-      final items = data['items'];
-      if (items is List) {
-        return items.whereType<Map<String, dynamic>>().toList();
-      }
-    }
-    final items = response['items'];
-    if (items is List) {
-      return items.whereType<Map<String, dynamic>>().toList();
-    }
-    return const [];
-  }
-
-  Map<String, dynamic> _normalizePlaceListItem(Map<String, dynamic> place) {
-    final next = Map<String, dynamic>.from(place);
-    final idRaw = place['id'];
-    if (idRaw is Map<String, dynamic>) {
-      next.remove('id');
-      next.addAll(idRaw);
-      final nestedId = idRaw['id'];
-      if (nestedId != null) {
-        next['id'] = nestedId.toString();
-        next['placeId'] ??= nestedId.toString();
-      }
-    }
-    return next;
-  }
-
-  List<Map<String, dynamic>> _mergeUniquePlaces(
-    List<Map<String, dynamic>> current,
-    List<Map<String, dynamic>> next,
-  ) {
-    final ids = <String>{};
-    final merged = <Map<String, dynamic>>[];
-    for (final item in current) {
-      final id = (item['id'] ?? item['placeId'])?.toString();
-      if (id == null || ids.contains(id)) continue;
-      ids.add(id);
-      merged.add(item);
-    }
-    for (final item in next) {
-      final id = (item['id'] ?? item['placeId'])?.toString();
-      if (id == null || ids.contains(id)) continue;
-      ids.add(id);
-      merged.add(item);
-    }
-    return merged;
-  }
-
-  Map<String, List<Map<String, dynamic>>> _applySearchFilter(
-    List<Map<String, dynamic>> themes,
-    Map<String, List<Map<String, dynamic>>> placesByTheme,
-    String query,
-  ) {
-    final trimmed = query.trim().toLowerCase();
-    if (trimmed.isEmpty) {
-      return Map<String, List<Map<String, dynamic>>>.from(placesByTheme);
-    }
-    final filtered = <String, List<Map<String, dynamic>>>{};
-    for (final theme in themes) {
-      final themeId = _themeId(theme);
-      if (themeId.isEmpty) continue;
-      final themeTitle = _themeTitle(theme).toLowerCase();
-      final places = placesByTheme[themeId] ?? const [];
-      final matchingPlaces = places.where((place) {
-        final title = (place['title'] ?? '').toString().toLowerCase();
-        final address = (place['address'] ?? '').toString().toLowerCase();
-        return title.contains(trimmed) || address.contains(trimmed);
-      }).toList();
-      if (matchingPlaces.isNotEmpty || themeTitle.contains(trimmed)) {
-        filtered[themeId] = matchingPlaces.isNotEmpty ? matchingPlaces : places;
-      }
-    }
-    return filtered;
-  }
-
-  String _themeId(Map<String, dynamic> theme) {
-    final raw = theme['id'] ?? theme['themeId'];
-    if (raw is Map<String, dynamic>) {
-      return (raw['id'] ?? '').toString();
-    }
-    return raw?.toString() ?? '';
-  }
-
-  String _themeTitle(Map<String, dynamic> theme) {
-    return (theme['title'] ?? theme['name'] ?? '').toString();
-  }
-
-  String _resolvePlaceImageUrl(Map<String, dynamic> place) {
-    final image = place['image'];
-    if (image is Map<String, dynamic>) {
-      return _firstValidImageUrl(image);
-    }
-    final thumbnail = place['thumbnail'];
-    if (thumbnail is Map<String, dynamic>) {
-      return _firstValidImageUrl(thumbnail);
-    }
-    return '';
-  }
-
-  String _firstValidImageUrl(Map<String, dynamic> image) {
-    final cdn = image['cdnUrl']?.toString().trim();
-    if (cdn != null && cdn.isNotEmpty) return cdn;
-    final thumb = image['thumbnailUrl']?.toString().trim();
-    if (thumb != null && thumb.isNotEmpty) return thumb;
-    final file = image['fileUrl']?.toString().trim();
-    if (file != null && file.isNotEmpty) return file;
-    return '';
-  }
-
-  List<String> _collectSearchThumbnails(
-    Map<String, List<Map<String, dynamic>>> placesByTheme, {
-    int maxCount = 4,
-  }) {
-    final thumbnails = <String>[];
-    for (final entry in placesByTheme.entries) {
-      for (final place in entry.value) {
-        if (thumbnails.length >= maxCount) break;
-        thumbnails.add(_resolvePlaceImageUrl(place));
-      }
-      if (thumbnails.length >= maxCount) break;
-    }
-    if (thumbnails.length < maxCount) {
-      thumbnails.addAll(List.filled(maxCount - thumbnails.length, ''));
-    }
-    return thumbnails;
   }
 
   @override
   Widget build(BuildContext context) {
-    final rootViewPadding =
-        MediaQueryData.fromView(View.of(context)).viewPadding.bottom;
-    final themes = _themes
-        .whereType<Map<String, dynamic>>()
-        .where((item) => item['isActive'] != false)
-        .toList();
-    if (_selectedThemeSort == 'title') {
-      themes.sort((a, b) =>
-          _themeTitle(a).toLowerCase().compareTo(_themeTitle(b).toLowerCase()));
-    }
-    final filteredPlacesByTheme =
-        _applySearchFilter(themes, _placesByTheme, _searchText);
-    final filteredThemes = _searchText.trim().isEmpty
-        ? themes
-        : themes
-            .where((theme) => filteredPlacesByTheme.containsKey(_themeId(theme)))
-            .toList();
+    final topPadding = MediaQuery.of(context).padding.top;
+    final summary = _buildSummary();
+    final categories = _buildCategoryCards();
+    final themes = _buildThemeCards();
+    final recommended = _buildRecommendedCards();
 
     return Scaffold(
       backgroundColor: Colors.white,
-      extendBody: true,
-      resizeToAvoidBottomInset: false,
       body: SafeArea(
-        top: true,
         bottom: false,
-        child: _isLoading
-            ? const Center(
-                child: SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-              )
-            : Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+        child: Column(
+          children: [
+            CommonNavigationView(
+              height: 50,
+              backgroundColor: Colors.white,
+              title: '도감',
+              right: Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  SizedBox(
-                    height: 96,
-                    child: Stack(
-                      clipBehavior: Clip.none,
-                      children: [
-                        Positioned(
-                          left: 16,
-                          right: 16,
-                          top: 0,
-                          child: _SearchThumbnailStack(
-                            thumbnails: _searchThumbnails,
-                          ),
-                        ),
-                        Positioned(
-                          left: 16,
-                          right: 16,
-                          bottom: 0,
-                          child: Container(
-                            decoration: BoxDecoration(
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.12),
-                                  blurRadius: 16,
-                                  offset: const Offset(0, 6),
-                                ),
-                              ],
-                            ),
-                            child: CommonTextFieldView(
-                              controller: _searchController,
-                              hintText: '검색',
-                              textInputAction: TextInputAction.search,
-                              onChanged: _handleSearchChanged,
-                              onSubmitted: (_) => _handleSearchSubmit(),
-                              backgroundColor: Colors.white,
-                              prefixIcon: const Icon(
-                                PhosphorIconsRegular.magnifyingGlass,
-                                size: 18,
-                                color: Color(0xFF9E9E9E),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
+                  CommonInkWell(
+                    onTap: () {},
+                    child: const SizedBox(
+                      width: 36,
+                      height: 36,
+                      child: Icon(
+                        PhosphorIconsRegular.magnifyingGlass,
+                        size: 20,
+                        color: Colors.black,
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                    child: Row(
-                      children: [
-                        _CollectionChip(
-                          label: '전체',
-                          selected: _selectedCollection == 'all',
-                          badgeCount: _totalCount,
-                          onTap: () {
-                            if (_selectedCollection == 'all') return;
-                            setState(() => _selectedCollection = 'all');
-                            if (_searchText.trim().isNotEmpty ||
-                                _selectedViewMode == 'place') {
-                              _loadPlacebookPlacesList(filter: 'all');
-                            } else {
-                              _loadPlacebookData(
-                                filter: 'all',
-                                themeOrderBy: _themeOrderBy(_selectedThemeSort),
-                                themeOrderBy2:
-                                    _themeOrderBy2(_selectedThemeSort),
-                              );
-                            }
-                            _scrollToTop();
-                          },
-                        ),
-                        const SizedBox(width: 24),
-                        _CollectionChip(
-                          label: '나의 장소',
-                          selected: _selectedCollection == 'mine',
-                          badgeCount: _createdCount + _favoriteCount,
-                          onTap: () {
-                            if (_selectedCollection == 'mine') return;
-                            setState(() => _selectedCollection = 'mine');
-                            if (_searchText.trim().isNotEmpty ||
-                                _selectedViewMode == 'place') {
-                              _loadPlacebookPlacesList(filter: 'mine');
-                            } else {
-                              _loadPlacebookData(
-                                filter: 'mine',
-                                themeOrderBy: _themeOrderBy(_selectedThemeSort),
-                                themeOrderBy2:
-                                    _themeOrderBy2(_selectedThemeSort),
-                              );
-                            }
-                            _scrollToTop();
-                          },
-                        ),
-                      ],
+                  const SizedBox(width: 8),
+                  CommonInkWell(
+                    onTap: () {},
+                    child: const SizedBox(
+                      width: 36,
+                      height: 36,
+                      child: Icon(
+                        PhosphorIconsRegular.funnel,
+                        size: 20,
+                        color: Colors.black,
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Row(
-                      children: [
-                        const Spacer(),
-                        Row(
-                          children: [
-                            GestureDetector(
-                              onTap: () {
-                                if (_selectedThemeSort == 'places') return;
-                                setState(() => _selectedThemeSort = 'places');
-                                _loadPlacebookData(
-                                  filter: _selectedCollection,
-                                  themeOrderBy: _themeOrderBy('places'),
-                                  themeOrderBy2: _themeOrderBy2('places'),
-                                );
-                              },
-                              behavior: HitTestBehavior.opaque,
-                              child: Text(
-                                '장소 순',
-                                style: TextStyle(
-                                  fontFamily: 'Pretendard',
-                                  fontSize: 13,
-                                  fontWeight: _selectedThemeSort == 'places'
-                                      ? FontWeight.w700
-                                      : FontWeight.w500,
-                                  color: _selectedThemeSort == 'places'
-                                      ? Colors.black
-                                      : const Color(0x88000000),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            GestureDetector(
-                              onTap: () {
-                                if (_selectedThemeSort == 'title') return;
-                                setState(() => _selectedThemeSort = 'title');
-                                _loadPlacebookData(
-                                  filter: _selectedCollection,
-                                  themeOrderBy: _themeOrderBy('title'),
-                                  themeOrderBy2: _themeOrderBy2('title'),
-                                );
-                              },
-                              behavior: HitTestBehavior.opaque,
-                              child: Text(
-                                '가나다',
-                                style: TextStyle(
-                                  fontFamily: 'Pretendard',
-                                  fontSize: 13,
-                                  fontWeight: _selectedThemeSort == 'title'
-                                      ? FontWeight.w700
-                                      : FontWeight.w500,
-                                  color: _selectedThemeSort == 'title'
-                                      ? Colors.black
-                                      : const Color(0x88000000),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 16),
-                            GestureDetector(
-                              onTap: () {
-                                if (_selectedViewMode == 'theme') return;
-                                setState(() => _selectedViewMode = 'theme');
-                                _placeListThemeId = null;
-                                _loadPlacebookData(
-                                  filter: _selectedCollection,
-                                );
-                              },
-                              behavior: HitTestBehavior.opaque,
-                              child: Text(
-                                '테마로 보기',
-                                style: TextStyle(
-                                  fontFamily: 'Pretendard',
-                                  fontSize: 13,
-                                  fontWeight: _selectedViewMode == 'theme'
-                                      ? FontWeight.w700
-                                      : FontWeight.w500,
-                                  color: _selectedViewMode == 'theme'
-                                      ? Colors.black
-                                      : const Color(0x88000000),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            GestureDetector(
-                              onTap: () {
-                                if (_selectedViewMode == 'place') return;
-                                setState(() => _selectedViewMode = 'place');
-                                _loadPlacebookPlacesList(
-                                  filter: _selectedCollection,
-                                );
-                              },
-                              behavior: HitTestBehavior.opaque,
-                              child: Text(
-                                '장소로 보기',
-                                style: TextStyle(
-                                  fontFamily: 'Pretendard',
-                                  fontSize: 13,
-                                  fontWeight: _selectedViewMode == 'place'
-                                      ? FontWeight.w700
-                                      : FontWeight.w500,
-                                  color: _selectedViewMode == 'place'
-                                      ? Colors.black
-                                      : const Color(0x88000000),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Expanded(
-                    child: _selectedViewMode == 'place'
-                        ? _PlaceListView(
-                            places: _places,
-                            isLoading: _isLoading,
-                            isRefreshing: _isRefreshing,
-                            isLoadingMore: _isLoadingMorePlaces,
-                            onRefresh: () => _loadPlacebookPlacesList(
-                              filter: _selectedCollection,
-                              forceRefresh: true,
-                            ),
-                            onLoadMore: () => _loadPlacebookPlacesList(
-                              filter: _selectedCollection,
-                              loadMore: true,
-                            ),
-                          )
-                        : _ThemeGridView(
-                            themes: filteredThemes,
-                            placesByTheme: filteredPlacesByTheme,
-                            isRefreshing: _isRefreshing,
-                            onRefresh: () => _loadPlacebookData(
-                              filter: _selectedCollection,
-                              forceRefresh: true,
-                            ),
-                          ),
-                  ),
-                  SizedBox(height: rootViewPadding == 0 ? 12 : rootViewPadding),
                 ],
               ),
+            ),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: EdgeInsets.fromLTRB(16, 8, 16, 32 + topPadding),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    summary,
+                    const SizedBox(height: 24),
+                    _SectionHeader(
+                      title: '카테고리 도감',
+                      subtitle: '분류별로 모아보기',
+                    ),
+                    const SizedBox(height: 12),
+                    categories,
+                    const SizedBox(height: 28),
+                    _SectionHeader(
+                      title: '진행 중인 테마',
+                      subtitle: '채우는 중인 테마를 이어보세요',
+                    ),
+                    const SizedBox(height: 12),
+                    themes,
+                    const SizedBox(height: 28),
+                    _SectionHeader(
+                      title: '이어서 채우기',
+                      subtitle: '바로 할 수 있는 미션',
+                    ),
+                    const SizedBox(height: 12),
+                    _MissionList(
+                      items: const [
+                        _MissionItem(
+                          title: '이번 주 산책 카테고리 3곳 채우기',
+                          subtitle: '산책 카테고리 진행률 +12%',
+                          icon: PhosphorIconsBold.footprints,
+                        ),
+                        _MissionItem(
+                          title: '무료 편의 테마 1곳 추가',
+                          subtitle: '무료 편의 수집률 +6%',
+                          icon: PhosphorIconsBold.storefront,
+                        ),
+                        _MissionItem(
+                          title: '분위기 테마 첫 장소 저장하기',
+                          subtitle: '새 테마 시작하기',
+                          icon: PhosphorIconsBold.sparkle,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 28),
+                    _SectionHeader(
+                      title: '추천 테마',
+                      subtitle: '지금 시작하기 좋은 테마',
+                    ),
+                    const SizedBox(height: 12),
+                    recommended,
+                    const SizedBox(height: 28),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
+    );
+  }
+
+  Widget _buildSummary() {
+    final categoryCount = _categories.length;
+    final themeCount = _themes.length;
+    final totalPlaces = _themes.fold<int>(
+      0,
+      (sum, theme) => sum + ((theme['placeCount'] as num?)?.toInt() ?? 0),
+    );
+    final progress = _calculateProgress(categoryCount, themeCount, totalPlaces);
+    return _RoundedCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: ShapeDecoration(
+                  color: const Color(0xFFF2F2F2),
+                  shape: const ContinuousRectangleBorder(
+                    borderRadius: BorderRadius.all(Radius.circular(24)),
+                  ),
+                ),
+                child: const Text(
+                  '도감 수집가',
+                  style: TextStyle(
+                    fontFamily: 'Pretendard',
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF616161),
+                  ),
+                ),
+              ),
+              const Spacer(),
+              const Text(
+                '최근 업적',
+                style: TextStyle(
+                  fontFamily: 'Pretendard',
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: Color(0xFF9E9E9E),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            '이번 달 도감 32% 달성',
+            style: TextStyle(
+              fontFamily: 'Pretendard',
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: Colors.black,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              _SummaryStat(label: '저장 장소', value: '$totalPlaces'),
+              _SummaryStat(label: '카테고리', value: '$categoryCount'),
+              _SummaryStat(label: '테마', value: '$themeCount'),
+            ],
+          ),
+          const SizedBox(height: 14),
+          _ProgressBar(progress: progress, label: '전체 진행률'),
+          const SizedBox(height: 10),
+          const Text(
+            '최근 업적: 무료 편의 카테고리 10곳 달성',
+            style: TextStyle(
+              fontFamily: 'Pretendard',
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: Color(0xFF9E9E9E),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCategoryCards() {
+    final items = _resolveCategoryCards();
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        mainAxisSpacing: 12,
+        crossAxisSpacing: 12,
+        mainAxisExtent: 176,
+      ),
+      itemCount: items.length,
+      itemBuilder: (context, index) {
+        final item = items[index];
+        return _CategoryCard(item: item);
+      },
+    );
+  }
+
+  Widget _buildThemeCards() {
+    final items = _resolveThemeCards(_themes);
+    return SizedBox(
+      height: 186,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.only(right: 16),
+        itemCount: items.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 12),
+        itemBuilder: (context, index) {
+          final item = items[index];
+          return _ThemeProgressCard(item: item);
+        },
+      ),
+    );
+  }
+
+  Widget _buildRecommendedCards() {
+    final items = _resolveThemeCards(_themes.reversed.toList());
+    return SizedBox(
+      height: 174,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.only(right: 16),
+        itemCount: items.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 12),
+        itemBuilder: (context, index) {
+          final item = items[index];
+          return _ThemeRecommendCard(item: item);
+        },
+      ),
+    );
+  }
+
+  List<_CategoryCardData> _resolveCategoryCards() {
+    const defaults = [
+      _CategoryCardData(
+        title: '쉬기',
+        icon: PhosphorIconsBold.umbrella,
+        tag: '#힐링',
+      ),
+      _CategoryCardData(
+        title: '집중',
+        icon: PhosphorIconsBold.target,
+        tag: '#몰입',
+      ),
+      _CategoryCardData(
+        title: '산책',
+        icon: PhosphorIconsBold.footprints,
+        tag: '#걷기',
+      ),
+      _CategoryCardData(
+        title: '분위기',
+        icon: PhosphorIconsBold.sparkle,
+        tag: '#감성',
+      ),
+      _CategoryCardData(
+        title: '잠깐 들르기',
+        icon: PhosphorIconsBold.timer,
+        tag: '#잠깐',
+      ),
+      _CategoryCardData(
+        title: '무료 편의',
+        icon: PhosphorIconsBold.wifiHigh,
+        tag: '#무료',
+      ),
+    ];
+
+    if (_categories.isEmpty) {
+      return defaults;
+    }
+    final items = <_CategoryCardData>[];
+    for (var i = 0; i < 6; i++) {
+      if (i < _categories.length) {
+        final category = _categories[i];
+        final title = (category['title'] ?? '').toString();
+        final count = (category['placeCount'] as num?)?.toInt() ?? (i + 2) * 3;
+        final progress = ((i + 1) / 6).clamp(0.1, 1.0);
+        items.add(
+          _CategoryCardData(
+            title: title.isEmpty ? defaults[i].title : title,
+            icon: defaults[i].icon,
+            tag: (category['subtitle'] ?? defaults[i].tag).toString(),
+            count: count,
+            progress: progress,
+          ),
+        );
+      } else {
+        items.add(defaults[i]);
+      }
+    }
+    return items;
+  }
+
+  List<_ThemeCardData> _resolveThemeCards(List<Map<String, dynamic>> source) {
+    final items = <_ThemeCardData>[];
+    final total = source.isEmpty ? 4 : source.length;
+    for (var i = 0; i < total && items.length < 6; i++) {
+      if (i < source.length) {
+        final theme = source[i];
+        final title = (theme['title'] ?? '').toString();
+        items.add(
+          _ThemeCardData(
+            title: title.isEmpty ? '테마 ${i + 1}' : title,
+            description: (theme['description'] ?? '').toString(),
+            imageUrl: _themeImageUrl(theme),
+            progress: ((i + 2) / (total + 2)).clamp(0.2, 0.95),
+          ),
+        );
+      } else {
+        items.add(
+          _ThemeCardData(
+            title: '테마 ${i + 1}',
+            description: '지금 시작하면 좋은 테마',
+            imageUrl: '',
+            progress: 0.3 + (i * 0.08),
+          ),
+        );
+      }
+    }
+    return items;
+  }
+
+  String _themeImageUrl(Map<String, dynamic> theme) {
+    final image = theme['image'];
+    if (image is Map<String, dynamic>) {
+      return (image['cdnUrl'] as String?) ??
+          (image['thumbnailUrl'] as String?) ??
+          (image['fileUrl'] as String?) ??
+          '';
+    }
+    return '';
+  }
+
+  double _calculateProgress(int categories, int themes, int places) {
+    final base = (categories + themes + places / 5) / 30;
+    return base.clamp(0.1, 0.95);
+  }
+}
+
+class _RoundedCard extends StatelessWidget {
+  const _RoundedCard({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: const ShapeDecoration(
+        color: Colors.white,
+        shape: ContinuousRectangleBorder(
+          borderRadius: BorderRadius.all(Radius.circular(28)),
+        ),
+        shadows: [
+          BoxShadow(
+            color: Color(0x14000000),
+            blurRadius: 18,
+            offset: Offset(0, 0),
+          ),
+        ],
+      ),
+      child: child,
     );
   }
 }
 
-class _PlacebookCacheSnapshot {
-  const _PlacebookCacheSnapshot({
-    required this.categories,
-    required this.themes,
-    required this.placesByTheme,
-  });
-
-  final List<Map<String, dynamic>> categories;
-  final List<Map<String, dynamic>> themes;
-  final Map<String, List<Map<String, dynamic>>> placesByTheme;
-}
-
-class _CollectionChip extends StatelessWidget {
-  const _CollectionChip({
-    required this.label,
-    required this.selected,
-    required this.badgeCount,
-    required this.onTap,
-  });
+class _SummaryStat extends StatelessWidget {
+  const _SummaryStat({required this.label, required this.value});
 
   final String label;
-  final bool selected;
-  final int badgeCount;
-  final VoidCallback onTap;
+  final String value;
 
   @override
   Widget build(BuildContext context) {
-    final safeCount = badgeCount < 0 ? 0 : badgeCount;
-    final textColor = selected ? Colors.black : const Color(0xFF9E9E9E);
-    final badgeBg = selected ? Colors.black : const Color(0xFFF2F2F2);
-    final badgeText = selected ? Colors.white : const Color(0xFF757575);
-    return CommonInkWell(
-      onTap: onTap,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
+    return Expanded(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             label,
-            style: TextStyle(
+            style: const TextStyle(
+              fontFamily: 'Pretendard',
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: Color(0xFF9E9E9E),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: const TextStyle(
+              fontFamily: 'Pretendard',
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: Colors.black,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProgressBar extends StatelessWidget {
+  const _ProgressBar({
+    required this.progress,
+    required this.label,
+  });
+
+  final double progress;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontFamily: 'Pretendard',
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF757575),
+          ),
+        ),
+        const SizedBox(height: 6),
+        ClipSmoothRect(
+          radius: SmoothBorderRadius(
+            cornerRadius: 12,
+            cornerSmoothing: 1,
+          ),
+          child: LinearProgressIndicator(
+            value: progress,
+            minHeight: 8,
+            backgroundColor: const Color(0xFFF2F2F2),
+            valueColor: const AlwaysStoppedAnimation<Color>(Colors.black),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader({
+    required this.title,
+    required this.subtitle,
+  });
+
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontFamily: 'Pretendard',
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.black,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                subtitle,
+                style: const TextStyle(
+                  fontFamily: 'Pretendard',
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: Color(0xFF9E9E9E),
+                ),
+              ),
+            ],
+          ),
+        ),
+        CommonInkWell(
+          onTap: () {},
+          child: Row(
+            children: const [
+              Text(
+                '전체보기',
+                style: TextStyle(
+                  fontFamily: 'Pretendard',
+                  fontSize: 12,
+                  fontWeight: FontWeight.w400,
+                  color: Color(0xFF9E9E9E),
+                ),
+              ),
+              SizedBox(width: 2),
+              Icon(
+                PhosphorIconsRegular.caretRight,
+                size: 14,
+                color: Color(0xFF9E9E9E),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _CategoryCardData {
+  const _CategoryCardData({
+    required this.title,
+    required this.icon,
+    required this.tag,
+    this.count = 0,
+    this.progress = 0.2,
+  });
+
+  final String title;
+  final IconData icon;
+  final String tag;
+  final int count;
+  final double progress;
+}
+
+class _CategoryCard extends StatelessWidget {
+  const _CategoryCard({required this.item});
+
+  final _CategoryCardData item;
+
+  @override
+  Widget build(BuildContext context) {
+    final progress = item.progress.clamp(0.05, 1.0);
+    return _RoundedCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: const ShapeDecoration(
+              color: Color(0xFFF2F2F2),
+              shape: ContinuousRectangleBorder(
+                borderRadius: BorderRadius.all(Radius.circular(24)),
+              ),
+            ),
+            child: Icon(
+              item.icon,
+              size: 18,
+              color: Colors.black,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            item.title,
+            style: const TextStyle(
               fontFamily: 'Pretendard',
               fontSize: 15,
-              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-              color: textColor,
+              fontWeight: FontWeight.w700,
+              color: Colors.black,
             ),
           ),
-          const SizedBox(width: 6),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: badgeBg,
-              borderRadius: BorderRadius.circular(999),
+          const SizedBox(height: 4),
+          Text(
+            '${item.count}곳 저장',
+            style: const TextStyle(
+              fontFamily: 'Pretendard',
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: Color(0xFF9E9E9E),
             ),
-            child: Text(
-              '$safeCount',
-              style: TextStyle(
+          ),
+          const Spacer(),
+          _ProgressBar(progress: progress, label: item.tag),
+        ],
+      ),
+    );
+  }
+}
+
+class _ThemeCardData {
+  const _ThemeCardData({
+    required this.title,
+    required this.description,
+    required this.imageUrl,
+    required this.progress,
+  });
+
+  final String title;
+  final String description;
+  final String imageUrl;
+  final double progress;
+}
+
+class _ThemeProgressCard extends StatelessWidget {
+  const _ThemeProgressCard({required this.item});
+
+  final _ThemeCardData item;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 240,
+      child: _RoundedCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: ClipSmoothRect(
+                radius: SmoothBorderRadius(
+                  cornerRadius: 20,
+                  cornerSmoothing: 1,
+                ),
+                child: CommonImageView(
+                  networkUrl: item.imageUrl,
+                  fit: BoxFit.cover,
+                  backgroundColor: const Color(0xFFF2F2F2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              item.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontFamily: 'Pretendard',
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: Colors.black,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              item.description.isEmpty ? '테마를 채워보세요' : item.description,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
                 fontFamily: 'Pretendard',
                 fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: badgeText,
+                fontWeight: FontWeight.w500,
+                color: Color(0xFF9E9E9E),
               ),
             ),
-          ),
-        ],
+            const SizedBox(height: 8),
+            _ProgressBar(
+              progress: item.progress,
+              label: '진행 중',
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
-class _SearchThumbnailStack extends StatelessWidget {
-  const _SearchThumbnailStack({
-    required this.thumbnails,
-  });
+class _ThemeRecommendCard extends StatelessWidget {
+  const _ThemeRecommendCard({required this.item});
 
-  final List<String> thumbnails;
+  final _ThemeCardData item;
 
   @override
   Widget build(BuildContext context) {
-    final items = thumbnails.isNotEmpty
-        ? thumbnails
-        : List.filled(4, '');
-    const double size = 64;
-    const double overlap = 22;
     return SizedBox(
-      height: size,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          for (var i = 0; i < items.length; i++)
-            Positioned(
-              left: i * overlap,
-              top: 0,
-              child: _SearchThumbnailItem(
-                url: items[i],
-                index: i,
-                size: size,
+      width: 200,
+      child: _RoundedCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: ClipSmoothRect(
+                radius: SmoothBorderRadius(
+                  cornerRadius: 20,
+                  cornerSmoothing: 1,
+                ),
+                child: CommonImageView(
+                  networkUrl: item.imageUrl,
+                  fit: BoxFit.cover,
+                  backgroundColor: const Color(0xFFF2F2F2),
+                ),
               ),
             ),
-        ],
+            const SizedBox(height: 10),
+            Text(
+              item.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontFamily: 'Pretendard',
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: Colors.black,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              item.description.isEmpty ? '지금 시작해보세요' : item.description,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontFamily: 'Pretendard',
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: Color(0xFF9E9E9E),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: const ShapeDecoration(
+                color: Colors.black,
+                shape: ContinuousRectangleBorder(
+                  borderRadius: BorderRadius.all(Radius.circular(20)),
+                ),
+              ),
+              child: const Text(
+                '추천',
+                style: TextStyle(
+                  fontFamily: 'Pretendard',
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
-class _SearchThumbnailItem extends StatelessWidget {
-  const _SearchThumbnailItem({
-    required this.url,
-    required this.index,
-    required this.size,
-  });
+class _MissionList extends StatelessWidget {
+  const _MissionList({required this.items});
 
-  final String url;
-  final int index;
-  final double size;
+  final List<_MissionItem> items;
 
   @override
   Widget build(BuildContext context) {
-    final rotation = _rotationDegrees(url, index);
-    return Transform.rotate(
-      angle: rotation * (3.141592653589793 / 180),
-      child: Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: Colors.white, width: 4),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.12),
-              blurRadius: 18,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(10),
-          child: CommonImageView(
-            networkUrl: url.isEmpty ? null : url,
-            fit: BoxFit.cover,
-            backgroundColor: const Color(0xFFF2F2F2),
-          ),
-        ),
-      ),
-    );
-  }
-
-  double _rotationDegrees(String seed, int index) {
-    final value = seed.isEmpty ? index * 31 : seed.hashCode;
-    final magnitude = 2 + (value.abs() % 4); // 2~5
-    final sign = value.isEven ? 1 : -1;
-    return magnitude * sign.toDouble();
-  }
-}
-
-class _ThemeGridView extends StatelessWidget {
-  const _ThemeGridView({
-    required this.themes,
-    required this.placesByTheme,
-    required this.isRefreshing,
-    required this.onRefresh,
-  });
-
-  final List<Map<String, dynamic>> themes;
-  final Map<String, List<Map<String, dynamic>>> placesByTheme;
-  final bool isRefreshing;
-  final Future<void> Function() onRefresh;
-
-  @override
-  Widget build(BuildContext context) {
-    if (themes.isEmpty) {
-      return CommonRefreshView(
-        onRefresh: onRefresh,
-        child: ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          children: const [
-            SizedBox(height: 48),
-            CommonEmptyView(
-              message: '등록된 테마가 없습니다.',
-              showButton: false,
-            ),
-          ],
-        ),
-      );
-    }
-    return CommonRefreshView(
-      onRefresh: onRefresh,
-      child: GridView.builder(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
-          mainAxisSpacing: 16,
-          crossAxisSpacing: 16,
-          mainAxisExtent: 100,
-        ),
-        itemCount: themes.length,
-        itemBuilder: (context, index) {
-          final theme = themes[index];
-          final themeId = _themeIdFromTheme(theme);
-          final title = (theme['title'] ?? '').toString();
-          final places = placesByTheme[themeId] ?? const [];
-          final placeCount =
-              (theme['placeCount'] as num?)?.toInt() ?? places.length;
-          final thumbnails = places
-              .map(_resolvePlaceImageUrl)
-              .where((url) => url.trim().isNotEmpty)
-              .toList();
-          return PlacebookItemView(
-            title: title,
-            placeCount: placeCount,
-            thumbnails: thumbnails,
-            hasPlaces: placeCount > 0,
-            onTap: () {
-              if (themeId.isEmpty) return;
-              Navigator.of(context).push(
-                CupertinoPageRoute(
-                  builder: (_) => PlacebookCollectView(
-                    themeId: themeId,
-                    themeTitle: title,
-                  ),
-                ),
-              );
-            },
-            onAddTap: () {
-              if (themeId.isEmpty) return;
-              Navigator.of(context).push(
-                CupertinoPageRoute(
-                  builder: (_) => PlacebookCreateView(
-                    themeId: themeId,
-                    themeTitle: title,
-                  ),
-                ),
-              );
-            },
-          );
-        },
-      ),
-    );
-  }
-
-  String _themeIdFromTheme(Map<String, dynamic> theme) {
-    final raw = theme['id'] ?? theme['themeId'];
-    if (raw is Map<String, dynamic>) {
-      return (raw['id'] ?? '').toString();
-    }
-    return raw?.toString() ?? '';
-  }
-
-  String _resolvePlaceImageUrl(Map<String, dynamic> place) {
-    final image = place['image'];
-    if (image is Map<String, dynamic>) {
-      return _firstValidImageUrl(image);
-    }
-    final thumbnail = place['thumbnail'];
-    if (thumbnail is Map<String, dynamic>) {
-      return _firstValidImageUrl(thumbnail);
-    }
-    return '';
-  }
-
-  String _firstValidImageUrl(Map<String, dynamic> image) {
-    final cdn = image['cdnUrl']?.toString().trim();
-    if (cdn != null && cdn.isNotEmpty) return cdn;
-    final thumb = image['thumbnailUrl']?.toString().trim();
-    if (thumb != null && thumb.isNotEmpty) return thumb;
-    final file = image['fileUrl']?.toString().trim();
-    if (file != null && file.isNotEmpty) return file;
-    return '';
-  }
-}
-
-class _PlaceListView extends StatelessWidget {
-  const _PlaceListView({
-    required this.places,
-    required this.isLoading,
-    required this.isRefreshing,
-    required this.isLoadingMore,
-    required this.onRefresh,
-    required this.onLoadMore,
-  });
-
-  final List<Map<String, dynamic>> places;
-  final bool isLoading;
-  final bool isRefreshing;
-  final bool isLoadingMore;
-  final Future<void> Function() onRefresh;
-  final VoidCallback onLoadMore;
-
-  @override
-  Widget build(BuildContext context) {
-    if (places.isEmpty && !isLoading) {
-      return CommonRefreshView(
-        onRefresh: onRefresh,
-        child: ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-          children: const [
-            CommonEmptyView(
-              message: '등록된 장소가 없습니다.',
-              showButton: false,
-            ),
-          ],
-        ),
-      );
-    }
-    return CommonRefreshView(
-      onRefresh: onRefresh,
-      child: NotificationListener<ScrollNotification>(
-        onNotification: (notification) {
-          if (notification.metrics.extentAfter < 200) {
-            onLoadMore();
-          }
-          return false;
-        },
-        child: ListView.separated(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-          itemCount: places.length + (isLoadingMore ? 1 : 0),
-          separatorBuilder: (_, __) => const Divider(height: 1),
-          itemBuilder: (context, index) {
-            if (index >= places.length) {
-              return const Padding(
-                padding: EdgeInsets.symmetric(vertical: 16),
-                child: Center(
-                  child: SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                ),
-              );
-            }
-            final place = places[index];
-            final title = (place['title'] ?? '').toString();
-            final address = (place['address'] ?? '').toString();
-            final commentCount = (place['commentCount'] as num?)?.toInt() ?? 0;
-            final likeCount = (place['likeCount'] as num?)?.toInt() ?? 0;
-            final theme = place['theme'];
-            final themeText =
-                theme is Map<String, dynamic> ? theme['title']?.toString() : null;
-            final distanceKm = place['distanceKm'];
-            final distanceText = distanceKm is num
-                ? '${distanceKm.toStringAsFixed(distanceKm < 1 ? 2 : 1)}km'
-                : null;
-            final favorited = (place['favorited'] as bool?) ??
-                (place['isFavorited'] as bool?) ??
-                false;
-            final placeId = (place['id'] ?? place['placeId'])?.toString() ?? '';
-            final themeId =
-                theme is Map<String, dynamic> ? theme['id']?.toString() : null;
-            final themeTitle =
-                theme is Map<String, dynamic> ? theme['title']?.toString() : null;
-            return CommonPlaceListItemView(
-              thumbnailUrl: _resolvePlaceImageUrl(place),
-              title: title,
-              address: address,
-              commentCount: commentCount,
-              likeCount: likeCount,
-              themeText: themeText,
-              distanceText: distanceText,
-              favorited: favorited,
-              onTap: () {
-                if (placeId.isEmpty) return;
-                Navigator.of(context).push(
-                  CupertinoPageRoute(
-                    builder: (_) => PlacebookDetailView(
-                      space: place,
+    return Column(
+      children: items.map((item) {
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: _RoundedCard(
+            child: Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: const ShapeDecoration(
+                    color: Color(0xFFF2F2F2),
+                    shape: ContinuousRectangleBorder(
+                      borderRadius: BorderRadius.all(Radius.circular(24)),
                     ),
                   ),
-                );
-              },
-            );
-          },
-        ),
-      ),
+                  child: Icon(
+                    item.icon,
+                    size: 18,
+                    color: Colors.black,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontFamily: 'Pretendard',
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.black,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        item.subtitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontFamily: 'Pretendard',
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          color: Color(0xFF9E9E9E),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: const ShapeDecoration(
+                    color: Colors.black,
+                    shape: ContinuousRectangleBorder(
+                      borderRadius: BorderRadius.all(Radius.circular(20)),
+                    ),
+                  ),
+                  child: const Text(
+                    '바로 하기',
+                    style: TextStyle(
+                      fontFamily: 'Pretendard',
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      }).toList(),
     );
   }
+}
 
-  String _resolvePlaceImageUrl(Map<String, dynamic> place) {
-    final image = place['image'];
-    if (image is Map<String, dynamic>) {
-      return _firstValidImageUrl(image);
-    }
-    final thumbnail = place['thumbnail'];
-    if (thumbnail is Map<String, dynamic>) {
-      return _firstValidImageUrl(thumbnail);
-    }
-    return '';
-  }
+class _MissionItem {
+  const _MissionItem({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+  });
 
-  String _firstValidImageUrl(Map<String, dynamic> image) {
-    final cdn = image['cdnUrl']?.toString().trim();
-    if (cdn != null && cdn.isNotEmpty) return cdn;
-    final thumb = image['thumbnailUrl']?.toString().trim();
-    if (thumb != null && thumb.isNotEmpty) return thumb;
-    final file = image['fileUrl']?.toString().trim();
-    if (file != null && file.isNotEmpty) return file;
-    return '';
-  }
+  final String title;
+  final String subtitle;
+  final IconData icon;
 }

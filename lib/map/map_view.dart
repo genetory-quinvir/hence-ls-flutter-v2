@@ -108,6 +108,7 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
   late final VoidCallback _mapFocusListener;
   late final VoidCallback _mapFilterListener;
   late final VoidCallback _tabIndexListener;
+  AnimationController? _shuffleController;
   bool _didInitialLoad = false;
   MapFocusRequest? _pendingMapFocusRequest;
   Map<String, dynamic>? _optimisticCreatedSpace;
@@ -422,6 +423,10 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
+    _shuffleController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 450),
+    );
     final fixed = widget.fixedThemeIds;
     if (fixed != null && fixed.isNotEmpty) {
       _selectedThemeIds = List<String>.from(fixed);
@@ -533,6 +538,7 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
 
   @override
   void dispose() {
+    _shuffleController?.dispose();
     HomeTabController.mapFocusRequest.removeListener(_mapFocusListener);
     HomeTabController.mapFilterRequest.removeListener(_mapFilterListener);
     HomeTabController.currentIndex.removeListener(_tabIndexListener);
@@ -728,6 +734,13 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _centerChip(animated: false);
+      if (_chipScrollController.hasClients) {
+        _chipScrollController.animateTo(
+          0,
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOut,
+        );
+      }
     });
     _fetchPlacebookSpaces();
   }
@@ -2020,9 +2033,9 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
     final effectiveThemeIds = _effectiveThemeIds;
     return Container(
       height: 56,
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.only(top: 8, bottom: 8, left: 8,),
       child: Padding(
-        padding: const EdgeInsets.only(left: 20, right: 32),
+        padding: const EdgeInsets.only(left: 36, right: 32),
         child: SingleChildScrollView(
           controller: _chipScrollController,
           scrollDirection: Axis.horizontal,
@@ -2055,13 +2068,17 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
                 )
               else
                 ...themeChips.map((theme) {
+                  final index = themeChips.indexOf(theme);
                   final themeId = theme['id']?.toString() ?? '';
                   final displayLabel = (theme['title'] as String?) ?? '';
                   final selected = themeId.isNotEmpty &&
                       effectiveThemeIds.length == 1 &&
                       effectiveThemeIds.first == themeId;
                   return Padding(
-                    padding: const EdgeInsets.only(right: 8,),
+                    padding: EdgeInsets.only(
+                      right: index == themeChips.length - 1 ? 8 : 4,
+                      left: index == 0 ? 8 : 4,
+                    ),
                     child: KeyedSubtree(
                       key: _chipKeys[themeId],
                       child: GestureDetector(
@@ -2143,7 +2160,10 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
 
   Widget _buildShuffleButton() {
     return GestureDetector(
-      onTap: _shuffleThemeChips,
+      onTap: () {
+        _shuffleController?.forward(from: 0);
+        _shuffleThemeChips();
+      },
       child: Container(
         width: 36,
         height: 36,
@@ -2161,10 +2181,18 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
             ),
           ],
         ),
-        child: const Icon(
-          PhosphorIconsBold.arrowsClockwise,
-          size: 16,
-          color: MyApp.primary200,
+        child: RotationTransition(
+          turns: Tween<double>(begin: 0, end: 1).animate(
+            CurvedAnimation(
+              parent: _shuffleController ?? kAlwaysDismissedAnimation,
+              curve: Curves.easeOutCubic,
+            ),
+          ),
+          child: const Icon(
+            PhosphorIconsBold.arrowsClockwise,
+            size: 16,
+            color: MyApp.primary200,
+          ),
         ),
       ),
     );
