@@ -386,7 +386,7 @@ class _ProfileUserContent extends StatelessWidget {
           ),
           if (showFollowActions) ...[
             if (name.isNotEmpty || representativeTitleName.isNotEmpty) ...[
-              const SizedBox(height: 14),
+              const SizedBox(height: 24),
               Container(
                 width: double.infinity,
                 padding:
@@ -497,17 +497,18 @@ class _ProfileUserContent extends StatelessWidget {
                                   },
                                   height: 32,
                                   radius: 8,
-                                  backgroundColor: const Color(0xFFE0E0E0),
-                                  textColor: const Color(0xFF757575),
-                                  textStyle: const TextStyle(
+                                  backgroundColor: const Color(0xFFF5F5F5),
+                                  textColor: Colors.black,
+                                  textStyle: TextStyle(
                                     fontFamily: 'Pretendard',
                                     fontSize: 12,
-                                    fontWeight: FontWeight.w600,
+                                    color: Colors.grey[600],
+                                    fontWeight: FontWeight.w500,
                                   ),
                                   trailing: Icon(
                                     PhosphorIconsBold.caretRight,
                                     size: 12,
-                                    color: const Color(0xFF757575),
+                                    color: Colors.grey[600],
                                   ),
                                   trailingCentered: true,
                                   trailingGap: 4,
@@ -528,7 +529,7 @@ class _ProfileUserContent extends StatelessWidget {
                               const SizedBox(width: 8),
                               Expanded(
                                 child: _StatItem(
-                                  label: '저장한 장소',
+                                  label: '찜한 장소',
                                   value: favoritePlaceCount ?? 0,
                                   alignCenter: true,
                                   onTap: onFavoritePlaceTap,
@@ -605,6 +606,17 @@ class _StatItem extends StatelessWidget {
       crossAxisAlignment:
           alignCenter ? CrossAxisAlignment.center : CrossAxisAlignment.start,
       children: [
+        Text(
+          label,
+          textAlign: alignCenter ? TextAlign.center : TextAlign.left,
+          style: const TextStyle(
+            fontFamily: 'Pretendard',
+            fontSize: 12,
+            fontWeight: FontWeight.w400,
+            color: Color(0xFF8E8E8E),
+          ),
+        ),
+        const SizedBox(height: 2),
         SizedBox(
           width: double.infinity,
           child: Text(
@@ -616,17 +628,6 @@ class _StatItem extends StatelessWidget {
               fontWeight: FontWeight.w800,
               color: Colors.black,
             ),
-          ),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          label,
-          textAlign: alignCenter ? TextAlign.center : TextAlign.left,
-          style: const TextStyle(
-            fontFamily: 'Pretendard',
-            fontSize: 12,
-            fontWeight: FontWeight.w400,
-            color: Color(0xFF8E8E8E),
           ),
         ),
       ],

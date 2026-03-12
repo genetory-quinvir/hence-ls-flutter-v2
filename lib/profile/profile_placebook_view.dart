@@ -139,7 +139,7 @@ class _ProfilePlacebookViewState extends State<ProfilePlacebookView> {
             padding: EdgeInsets.symmetric(vertical: 80),
             child: Center(
               child: CommonEmptyView(
-                message: '저장한 장소가 없습니다.',
+                message: '찜한 장소가 없습니다.',
                 showButton: false,
               ),
             ),
@@ -346,7 +346,7 @@ String _placeListFilter(String key) {
       return 'all';
     case 'mine':
     default:
-      return 'favorites_created';
+      return 'mine';
   }
 }
 

@@ -2126,13 +2126,6 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(
-                                PhosphorIconsFill.tag,
-                                size: 16,
-                                color:
-                                    selected ? Colors.white : Colors.black,
-                              ),
-                              const SizedBox(width: 6),
                               Text(
                                 displayLabel,
                                 style: TextStyle(

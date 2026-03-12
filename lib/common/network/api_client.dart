@@ -1412,6 +1412,21 @@ class ApiClient {
     return json is Map<String, dynamic> ? json : <String, dynamic>{};
   }
 
+  static Future<Map<String, dynamic>> fetchPlacebookHome() async {
+    final uri = Uri.parse('$baseUrl/api/v1/placebook/home');
+    _logRequest('GET', uri);
+    final response = await _sendWithAuthRetry(
+      () => http.get(uri, headers: _headers()),
+      retryRequest: () => http.get(uri, headers: _headers()),
+    );
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Placebook home request failed: ${response.statusCode}');
+    }
+    final json = jsonDecode(response.body);
+    return json is Map<String, dynamic> ? json : <String, dynamic>{};
+  }
+
   static Future<Map<String, dynamic>> fetchMyPlacebookMyPlacesInfo() async {
     final uri = Uri.parse('$baseUrl/api/v1/placebook/my-places/info');
     _logRequest('GET', uri);
@@ -1684,6 +1699,37 @@ class ApiClient {
     return _extractPlacebookItems(json);
   }
 
+  static Future<List<Map<String, dynamic>>> fetchPlacebookEmptyThemes() async {
+    final uri = Uri.parse('$baseUrl/api/v1/placebook/themes/empty');
+    _logRequest('GET', uri);
+    final response = await _sendWithAuthRetry(
+      () => http.get(uri, headers: _headers()),
+      retryRequest: () => http.get(uri, headers: _headers()),
+    );
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Placebook empty themes request failed: ${response.statusCode}');
+    }
+
+    final json = jsonDecode(response.body);
+    dynamic root = json;
+    if (root is Map<String, dynamic> && root['data'] != null) {
+      root = root['data'];
+    }
+    if (root is List) {
+      return root.whereType<Map<String, dynamic>>().toList();
+    }
+    if (root is Map<String, dynamic>) {
+      for (final key in ['items', 'themes', 'allThemes']) {
+        final list = root[key];
+        if (list is List) {
+          return list.whereType<Map<String, dynamic>>().toList();
+        }
+      }
+    }
+    return const <Map<String, dynamic>>[];
+  }
+
   static Future<Map<String, dynamic>> fetchMyPlacebookThemes({
     required String filter,
     String themeOrderBy = 'title',
@@ -1777,6 +1823,21 @@ class ApiClient {
     _logResponse(response);
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception('Featured request failed: ${response.statusCode}');
+    }
+    final json = jsonDecode(response.body);
+    return json is Map<String, dynamic> ? json : <String, dynamic>{};
+  }
+
+  static Future<Map<String, dynamic>> fetchAchievements() async {
+    final uri = Uri.parse('$baseUrl/api/v1/rewards/achievements');
+    _logRequest('GET', uri);
+    final response = await _sendWithAuthRetry(
+      () => http.get(uri, headers: _headers()),
+      retryRequest: () => http.get(uri, headers: _headers()),
+    );
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Achievements request failed: ${response.statusCode}');
     }
     final json = jsonDecode(response.body);
     return json is Map<String, dynamic> ? json : <String, dynamic>{};

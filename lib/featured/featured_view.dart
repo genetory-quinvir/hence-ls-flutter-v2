@@ -21,6 +21,7 @@ import '../common/widgets/common_profile_view.dart';
 import '../common/widgets/common_refresh_view.dart';
 import '../common/widgets/common_rounded_button.dart';
 import '../common/widgets/common_user_list_item.dart';
+import '../category_detail/category_detail_view.dart';
 import '../placebook_list/placebook_list_view.dart';
 import '../placebook_detail/placebook_detail_view.dart';
 import '../profile_info/profile_info_view.dart';
@@ -68,13 +69,17 @@ class _FeaturedViewState extends State<FeaturedView> {
     } on Exception {
       // Ignore location failures and fall back to non-location request.
     }
-    return ApiClient.fetchFeatured(
-      latitude: latitude,
-      longitude: longitude,
-    ).timeout(
-      const Duration(seconds: 10),
-      onTimeout: () => <String, dynamic>{},
-    );
+    try {
+      return await ApiClient.fetchFeatured(
+        latitude: latitude,
+        longitude: longitude,
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () => <String, dynamic>{},
+      );
+    } catch (_) {
+      return <String, dynamic>{};
+    }
   }
 
   Future<void> _reloadFeatured() async {
@@ -83,9 +88,13 @@ class _FeaturedViewState extends State<FeaturedView> {
       final data = await _requestFeatured();
       if (!mounted) return;
       setState(() {
-        _featuredData = data;
-        _featuredFuture = Future.value(data);
+        if (data.isNotEmpty) {
+          _featuredData = data;
+        }
+        _featuredFuture = Future.value(_featuredData ?? data);
       });
+    } catch (_) {
+      // Keep current data when refresh fails.
     } finally {
       if (mounted) {
         setState(() => _isRefreshing = false);
@@ -181,6 +190,20 @@ class _FeaturedViewState extends State<FeaturedView> {
             final rankingUsers = data is Map<String, dynamic>
                 ? (data['rankingUsers'] as List<dynamic>?) ?? const []
                 : const [];
+            final categories = data is Map<String, dynamic>
+                ? ((data['categories'] as List<dynamic>?) ?? const [])
+                    .whereType<Map<String, dynamic>>()
+                    .where((item) => item['isActive'] != false)
+                    .toList(growable: false)
+                : const <Map<String, dynamic>>[];
+            categories.sort((a, b) {
+              final aOrder = (a['sortOrder'] as num?)?.toInt() ?? 0;
+              final bOrder = (b['sortOrder'] as num?)?.toInt() ?? 0;
+              if (aOrder != bOrder) return aOrder.compareTo(bOrder);
+              final aTitle = (a['title'] ?? '').toString().toLowerCase();
+              final bTitle = (b['title'] ?? '').toString().toLowerCase();
+              return aTitle.compareTo(bTitle);
+            });
             final bottomInset = MediaQuery.of(context).padding.bottom;
             return CommonRefreshView(
               onRefresh: _reloadFeatured,
@@ -194,6 +217,12 @@ class _FeaturedViewState extends State<FeaturedView> {
                   const _FeaturedHeader(),
                   const SizedBox(height: 14),
                   _FeaturedBannerSection(items: banners),
+                  if (categories.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    _FeaturedCategorySection(
+                      items: categories,
+                    ),
+                  ],
                   const SizedBox(height: 20),
                   _FeaturedNearestPlacesSection(
                     places: nearbyPlaces
@@ -633,6 +662,99 @@ class _FeaturedNearestPlacesSection extends StatelessWidget {
             const SizedBox(height: 12),
         ],
       );
+  }
+}
+
+class _FeaturedCategorySection extends StatelessWidget {
+  const _FeaturedCategorySection({
+    required this.items,
+  });
+
+  final List<Map<String, dynamic>> items;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          height: 92,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: items.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 4),
+            itemBuilder: (context, index) {
+              final category = items[index];
+              final title = (category['title'] ?? '').toString().trim();
+              final categoryId = (category['id'] ?? '').toString();
+              final subtitle = (category['subtitle'] ?? '').toString();
+              final sortOrder = (category['sortOrder'] as num?)?.toInt();
+              final imageIndex = sortOrder != null
+                  ? (sortOrder - 1).clamp(0, 5)
+                  : (index % 6);
+              final safeTitle = title.isEmpty ? '카테고리' : title;
+              return CommonInkWell(
+                onTap: categoryId.isEmpty
+                    ? null
+                    : () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => CategoryDetailView(
+                              categoryId: categoryId,
+                              categoryTitle: safeTitle,
+                              categorySubtitle: subtitle,
+                            ),
+                          ),
+                        );
+                      },
+                borderRadius: BorderRadius.circular(10),
+                child: SizedBox(
+                  width: 68,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF3F3F3),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        alignment: Alignment.center,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(999),
+                          child: Image.asset(
+                            'assets/images/img_category_$imageIndex.webp',
+                            width: 48,
+                            height: 48,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        safeTitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontFamily: 'Pretendard',
+                          fontSize: 12,
+                          fontWeight: FontWeight.w400,
+                          color: Colors.black,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
   }
 }
 
