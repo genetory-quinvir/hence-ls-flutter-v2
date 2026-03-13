@@ -8,7 +8,7 @@ import '../common/widgets/common_activity.dart';
 import '../common/widgets/common_image_view.dart';
 import '../common/widgets/common_inkwell.dart';
 import '../common/widgets/common_navigation_view.dart';
-import '../common/widgets/common_place_list_item_view.dart';
+import '../common/widgets/common_place_carousel_list_item_view.dart';
 import '../common/widgets/common_refresh_view.dart';
 import '../common/widgets/common_rounded_button.dart';
 import '../main.dart';
@@ -26,6 +26,7 @@ class PlacebookView extends StatefulWidget {
 
 class _PlacebookViewState extends State<PlacebookView>
 {
+  final ScrollController _scrollController = ScrollController();
   Map<String, dynamic> _summary = const {};
   List<Map<String, dynamic>> _categories = const [];
   List<Map<String, dynamic>> _allThemes = const [];
@@ -41,6 +42,12 @@ class _PlacebookViewState extends State<PlacebookView>
   void initState() {
     super.initState();
     _loadHome(showLoading: true);
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadHome({bool showLoading = false}) async {
@@ -132,7 +139,9 @@ class _PlacebookViewState extends State<PlacebookView>
                       onRefresh: _refreshHome,
                       topPadding: 16,
                       child: SingleChildScrollView(
+                        key: const PageStorageKey<String>('placebook-scroll'),
                         physics: const AlwaysScrollableScrollPhysics(),
+                        controller: _scrollController,
                         padding: EdgeInsets.fromLTRB(16, 16, 16, 32 + topPadding),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -244,7 +253,7 @@ class _PlacebookViewState extends State<PlacebookView>
 
     final title = (place['title'] ?? '').toString().trim();
     final address = (place['address'] ?? '').toString().trim();
-    final subtitle = (place['subtitle'] ?? '').toString().trim();
+    final themeTitle = _placeThemeTitle(place);
     final imageUrl = _firstImageUrl(place['thumbnail'] ?? place['image']);
     final favoriteCount = (place['favoriteCount'] as num?)?.toInt() ?? 0;
     final verificationCount = (place['verificationCount'] as num?)?.toInt() ?? 0;
@@ -263,28 +272,18 @@ class _PlacebookViewState extends State<PlacebookView>
           ),
         ),
         const SizedBox(height: 8),
-        Container(
+        SizedBox(
           width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.08),
-                blurRadius: 16,
-                offset: const Offset(0, 0),
-              ),
-            ],
-          ),
-          child: CommonPlaceListItemView(
+          height: 124,
+          child: CommonPlaceCarouselListItemView(
             thumbnailUrl: imageUrl,
             title: title.isEmpty ? '이름 없는 장소' : title,
             address: address,
             commentCount: verificationCount,
             likeCount: favoriteCount,
-            themeText: subtitle.isEmpty ? null : subtitle,
+            themeText: themeTitle.isEmpty ? null : themeTitle,
             favorited: favorited,
+            height: 148,
             onTap: () {
               Navigator.of(context).push(
                 CupertinoPageRoute(
@@ -494,6 +493,21 @@ class _PlacebookViewState extends State<PlacebookView>
     if (thumb != null && thumb.isNotEmpty) return thumb;
     final file = image['fileUrl']?.toString().trim();
     if (file != null && file.isNotEmpty) return file;
+    return '';
+  }
+
+  String _placeThemeTitle(Map<String, dynamic> place) {
+    final theme = place['theme'];
+    if (theme is Map<String, dynamic>) {
+      final title = theme['title'];
+      if (title is String && title.trim().isNotEmpty) {
+        return title.trim();
+      }
+    }
+    final themeTitle = place['themeTitle'];
+    if (themeTitle is String && themeTitle.trim().isNotEmpty) {
+      return themeTitle.trim();
+    }
     return '';
   }
 

@@ -323,10 +323,18 @@ class _FeaturedRankingSection extends StatelessWidget {
   }
 
   String? _resolveSubtitle(Map<String, dynamic> user) {
+    final rawCount = user['createdPlaceCount'] ??
+        user['placeCreatedCount'] ??
+        user['createdPlacesCount'];
+    final count = rawCount is num
+        ? rawCount.toInt()
+        : int.tryParse(rawCount?.toString() ?? '');
+    final createdText = count != null ? '저장한 장소 $count' : null;
+    if (createdText != null) return createdText;
     final info = user['representativeTitleInfo'];
     if (info is Map<String, dynamic>) {
-      final title = (info['name'] ?? '').toString().trim();
-      if (title.isNotEmpty) return title;
+      final rawTitle = (info['name'] ?? '').toString().trim();
+      if (rawTitle.isNotEmpty) return rawTitle;
     }
     return null;
   }
@@ -634,7 +642,6 @@ class _FeaturedNearestPlacesSection extends StatelessWidget {
                       ? '${distanceKm.toStringAsFixed(distanceKm < 1 ? 2 : 1)}km'
                       : null;
                   final themeText = _placeThemeTitle(place);
-                  final categoryText = _placeCategoryTitle(place);
                   return SizedBox(
                     width: 320,
                     child: CommonPlaceCarouselListItemView(
@@ -644,7 +651,6 @@ class _FeaturedNearestPlacesSection extends StatelessWidget {
                       commentCount: commentCount,
                       likeCount: likeCount,
                       themeText: themeText,
-                      categoryText: categoryText,
                       distanceText: distanceText,
                       favorited: favorited,
                       onTap: () {
@@ -1281,17 +1287,6 @@ String _placeThemeTitle(Map<String, dynamic> place) {
   final themeTitle = place['themeTitle'];
   if (themeTitle is String && themeTitle.trim().isNotEmpty) {
     return themeTitle.trim();
-  }
-  final category = place['category'];
-  if (category is Map<String, dynamic>) {
-    final title = category['title'];
-    if (title is String && title.trim().isNotEmpty) {
-      return title.trim();
-    }
-  }
-  final subtitle = place['subtitle'];
-  if (subtitle is String && subtitle.trim().isNotEmpty) {
-    return subtitle.trim();
   }
   return '';
 }

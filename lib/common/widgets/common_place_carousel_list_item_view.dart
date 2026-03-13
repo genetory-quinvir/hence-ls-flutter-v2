@@ -13,7 +13,6 @@ class CommonPlaceCarouselListItemView extends StatelessWidget {
     required this.address,
     required this.commentCount,
     required this.likeCount,
-    this.categoryText,
     this.themeText,
     this.distanceText,
     this.favorited = false,
@@ -26,7 +25,6 @@ class CommonPlaceCarouselListItemView extends StatelessWidget {
   final String address;
   final int commentCount;
   final int likeCount;
-  final String? categoryText;
   final String? themeText;
   final String? distanceText;
   final bool favorited;
@@ -39,10 +37,7 @@ class CommonPlaceCarouselListItemView extends StatelessWidget {
     final safeAddress =
         address.trim().isEmpty ? '장소 등록 안됨' : address.trim();
     final safeTheme = themeText?.trim() ?? '';
-    final safeCategory = categoryText?.trim() ?? '';
     final hasTheme = safeTheme.isNotEmpty;
-    final hasCategory = safeCategory.isNotEmpty;
-    final hasMeta = hasTheme || hasCategory;
     final rotationDegrees = _thumbnailRotationDegrees(safeTitle, safeAddress);
     const metaStyle = TextStyle(
       fontFamily: 'Pretendard',
@@ -160,14 +155,11 @@ class CommonPlaceCarouselListItemView extends StatelessWidget {
                           color: Colors.black,
                         ),
                       ),
-                      if (hasMeta)
+                      if (hasTheme)
                         Padding(
                           padding: const EdgeInsets.only(top: 4),
                           child: Text(
-                            [
-                              if (hasCategory) safeCategory,
-                              if (hasTheme) safeTheme,
-                            ].join(' · '),
+                            safeTheme,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: metaStyle,
