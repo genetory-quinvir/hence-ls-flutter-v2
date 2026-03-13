@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:figma_squircle/figma_squircle.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../../common/styles/app_shadows.dart';
 import '../../common/widgets/common_inkwell.dart';
 
 class PlacebookEmptyView extends StatelessWidget {
@@ -35,13 +36,7 @@ class PlacebookEmptyView extends StatelessWidget {
                   ),
                   side: const BorderSide(color: Colors.white, width: 4),
                 ),
-                shadows: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.08),
-                    blurRadius: 20,
-                    offset: const Offset(0, 0),
-                  ),
-                ],
+                shadows: AppShadows.card,
               ),
               child: const Center(
                 child: Icon(

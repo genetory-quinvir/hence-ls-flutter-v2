@@ -353,7 +353,41 @@ class _SignViewState extends State<SignView> {
               ),
               onRightTap: () => Navigator.of(context).maybePop(),
             ),
-            const Expanded(child: SizedBox.shrink()),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Image.asset(
+                    'assets/images/img_sign.webp',
+                    width: 300,
+                    fit: BoxFit.contain,
+                  ),
+                  const SizedBox(height: 20),
+                  const Text(
+                    '나만의 장소가, 진짜 지도가 되다',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontFamily: 'Pretendard',
+                      fontSize: 22,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.black,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    '포털 지도에 없는 생활 속 찐 장소를\n저장하고, 기록하고, 함께 모아보세요.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontFamily: 'Pretendard',
+                      fontSize: 14,
+                      fontWeight: FontWeight.w400,
+                      color: Color(0xFF7A7A7A),
+                      height: 1.4,
+                    ),
+                  ),
+                ],
+              ),
+            ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Column(

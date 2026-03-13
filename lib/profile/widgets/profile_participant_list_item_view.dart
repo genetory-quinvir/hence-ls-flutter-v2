@@ -94,7 +94,7 @@ class _ThumbnailState extends State<_Thumbnail> {
             ? Image.network(
                 activeUrl,
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) {
+                errorBuilder: (_, _, _) {
                   if (!_useFallback && fallback.isNotEmpty) {
                     WidgetsBinding.instance.addPostFrameCallback((_) {
                       if (mounted) setState(() => _useFallback = true);

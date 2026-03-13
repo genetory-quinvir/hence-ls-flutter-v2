@@ -26,7 +26,9 @@ class CommonUserListItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final subtitleText = subtitle?.trim() ?? '';
     final hasBadge = pointsText != null && pointsText!.trim().isNotEmpty;
-    final content = SizedBox(
+    final content = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: SizedBox(
       height: 72,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
@@ -45,7 +47,7 @@ class CommonUserListItem extends StatelessWidget {
             ),
           ),
           CommonProfileView(
-            size: 56,
+            size: 50,
             networkUrl: imageUrl,
             placeholder: Container(
               color: const Color(0xFFF2F2F2),
@@ -110,7 +112,8 @@ class CommonUserListItem extends StatelessWidget {
               ],
             ),
           ),
-        ],
+          ],
+        ),
       ),
     );
 
@@ -161,7 +164,7 @@ class _SubtitleText extends StatelessWidget {
       );
     }
 
-    final prefix = match!.group(1) ?? '';
+    final prefix = match.group(1) ?? '';
     final count = match.group(2) ?? '';
     return RichText(
       maxLines: 1,

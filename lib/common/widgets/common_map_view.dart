@@ -4,6 +4,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../../main.dart';
+import '../styles/app_shadows.dart';
 import 'common_alert_view.dart';
 
 class CommonMapView extends StatefulWidget {
@@ -75,6 +76,8 @@ class _CommonMapViewState extends State<CommonMapView> {
   static const String _fixedMarkerId = 'common-fixed-marker';
 
   NaverMapController? _controller;
+  NaverMapViewOptions? _options;
+  NLatLng? _pendingCameraTarget;
   NOverlayImage? _myLocationIcon;
   NOverlayImage? _myLocationSubIcon;
   NMarker? _fixedMarker;
@@ -85,9 +88,35 @@ class _CommonMapViewState extends State<CommonMapView> {
   void initState() {
     super.initState();
     widget.controller?._attach(this);
+    _options = _buildOptions();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _ensureLocationPermission(autoPrompt: true);
     });
+  }
+
+  NaverMapViewOptions _buildOptions() {
+    return NaverMapViewOptions(
+      customStyleId: styleId,
+      initialCameraPosition: _initialCameraPosition(),
+    );
+  }
+
+  NaverMapViewOptions _mapOptions() {
+    _options ??= _buildOptions();
+    return _options!;
+  }
+
+  NCameraPosition _initialCameraPosition() {
+    final initialPosition = (widget.initialLatitude != null &&
+            widget.initialLongitude != null)
+        ? NLatLng(widget.initialLatitude!, widget.initialLongitude!)
+        : null;
+    return initialPosition == null
+        ? const NCameraPosition(
+            target: NLatLng(37.5665, 126.9780),
+            zoom: 12.5,
+          )
+        : NCameraPosition(target: initialPosition, zoom: 12.5);
   }
 
   @override
@@ -96,6 +125,10 @@ class _CommonMapViewState extends State<CommonMapView> {
     if (oldWidget.controller != widget.controller) {
       oldWidget.controller?._detach(this);
       widget.controller?._attach(this);
+    }
+    if (oldWidget.initialLatitude != widget.initialLatitude ||
+        oldWidget.initialLongitude != widget.initialLongitude) {
+      _syncInitialCameraPosition();
     }
     if (oldWidget.fixedMarkerLatitude != widget.fixedMarkerLatitude ||
         oldWidget.fixedMarkerLongitude != widget.fixedMarkerLongitude ||
@@ -117,27 +150,21 @@ class _CommonMapViewState extends State<CommonMapView> {
 
   @override
   Widget build(BuildContext context) {
-    final initialPosition = (widget.initialLatitude != null &&
-            widget.initialLongitude != null)
-        ? NLatLng(widget.initialLatitude!, widget.initialLongitude!)
-        : null;
-
     return Stack(
       alignment: Alignment.center,
       children: [
         NaverMap(
           forceGesture: widget.forceGesture ?? false,
-          options: NaverMapViewOptions(
-            customStyleId: styleId,
-            initialCameraPosition: initialPosition == null
-                ? const NCameraPosition(
-                    target: NLatLng(37.5665, 126.9780),
-                    zoom: 12.5,
-                  )
-                : NCameraPosition(target: initialPosition, zoom: 12.5),
-          ),
+          options: _mapOptions(),
           onMapReady: (controller) {
             _controller = controller;
+            final pendingTarget = _pendingCameraTarget;
+            if (pendingTarget != null) {
+              _pendingCameraTarget = null;
+              controller.updateCamera(
+                NCameraUpdate.withParams(target: pendingTarget),
+              );
+            }
             _configureLocationOverlay(context);
             _syncMyLocationOverlay();
             _syncFixedMarker();
@@ -186,6 +213,21 @@ class _CommonMapViewState extends State<CommonMapView> {
     );
   }
 
+  void _syncInitialCameraPosition() {
+    final latitude = widget.initialLatitude;
+    final longitude = widget.initialLongitude;
+    if (latitude == null || longitude == null) return;
+    final target = NLatLng(latitude, longitude);
+    final controller = _controller;
+    if (controller == null) {
+      _pendingCameraTarget = target;
+      return;
+    }
+    controller.updateCamera(
+      NCameraUpdate.withParams(target: target),
+    );
+  }
+
   Widget _buildFloatingButton({
     required IconData icon,
     required VoidCallback onTap,
@@ -198,13 +240,7 @@ class _CommonMapViewState extends State<CommonMapView> {
         decoration: BoxDecoration(
           color: Colors.white,
           shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.18),
-              blurRadius: 8,
-              offset: const Offset(0, 3),
-            ),
-          ],
+          boxShadow: AppShadows.card,
         ),
         alignment: Alignment.center,
         child: Icon(

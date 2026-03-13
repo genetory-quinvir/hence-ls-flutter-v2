@@ -14,6 +14,7 @@ import '../common/widgets/common_textfield_view.dart';
 import '../common/widgets/common_textview_view.dart';
 import '../common/widgets/common_inkwell.dart';
 import '../common/network/api_client.dart';
+import '../common/styles/app_shadows.dart';
 import '../common/media/media_picker_service.dart';
 import '../common/permissions/media_permission_service.dart';
 import '../common/media/media_conversion_service.dart';
@@ -898,13 +899,7 @@ class _MapFloatingButton extends StatelessWidget {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(8),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.18),
-              blurRadius: 8,
-              offset: const Offset(0, 0),
-            ),
-          ],
+          boxShadow: AppShadows.card,
         ),
         alignment: Alignment.center,
         child: Icon(

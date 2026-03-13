@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:hence_ls_flutter_v2/main.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../styles/app_shadows.dart';
 import 'common_image_view.dart';
 
 class CommonPlaceMarker extends StatelessWidget {
@@ -37,13 +38,7 @@ class CommonPlaceMarker extends StatelessWidget {
               borderRadius: BorderRadius.all(Radius.circular(24)),
               side: BorderSide(color: Colors.white, width: borderWidth),
             ),
-            shadows: [
-              BoxShadow(
-                color: Color(0x2E000000),
-                blurRadius: 8,
-                offset: Offset(0, 3),
-              ),
-            ],
+            shadows: AppShadows.card,
           ),
           child: Padding(
             padding: const EdgeInsets.all(borderWidth),

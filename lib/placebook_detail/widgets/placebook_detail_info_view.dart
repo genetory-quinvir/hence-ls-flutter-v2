@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
 
+import '../../common/styles/app_shadows.dart';
 import '../../common/widgets/common_map_view.dart';
 import '../../common/widgets/common_place_marker.dart';
 
@@ -122,13 +123,7 @@ class _PlacebookDetailInfoViewState extends State<PlacebookDetailInfoView> {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: Colors.white, width: 8),
-              boxShadow: const [
-                BoxShadow(
-                  color: Color(0x1A000000),
-                  blurRadius: 20,
-                  offset: Offset(0, 0),
-                ),
-              ],
+              boxShadow: AppShadows.card,
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(12),
@@ -251,13 +246,7 @@ class _MapFloatingButton extends StatelessWidget {
           shape: ContinuousRectangleBorder(
             borderRadius: BorderRadius.all(Radius.circular(16)),
           ),
-          shadows: [
-            BoxShadow(
-              color: Color(0x14000000),
-              blurRadius: 14,
-              offset: Offset(0, 0),
-            ),
-          ],
+          shadows: AppShadows.card,
         ),
         alignment: Alignment.center,
         child: Icon(
@@ -289,13 +278,7 @@ class _MapZoomButton extends StatelessWidget {
         shape: ContinuousRectangleBorder(
           borderRadius: BorderRadius.all(Radius.circular(18)),
         ),
-        shadows: [
-          BoxShadow(
-            color: Color(0x14000000),
-            blurRadius: 14,
-            offset: Offset(0, 6),
-          ),
-        ],
+        shadows: AppShadows.card,
       ),
       child: Column(
         children: [

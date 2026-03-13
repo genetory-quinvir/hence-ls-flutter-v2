@@ -14,6 +14,7 @@ import '../common/widgets/common_rounded_button.dart';
 import '../common/widgets/common_title_actionsheet.dart';
 import '../common/widgets/common_refresh_view.dart';
 import '../common/permissions/media_permission_service.dart';
+import '../common/styles/app_shadows.dart';
 import '../common/media/media_picker_service.dart';
 import '../common/media/media_conversion_service.dart';
 import 'models/feed_comment_model.dart';
@@ -905,13 +906,7 @@ class _FeedCommentViewState extends State<FeedCommentView> {
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(color: const Color(0xFFE0E0E0)),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.06),
-                            blurRadius: 12,
-                            offset: const Offset(0, 6),
-                          ),
-                        ],
+                        boxShadow: AppShadows.card,
                       ),
                       child: ListView.builder(
                         shrinkWrap: true,

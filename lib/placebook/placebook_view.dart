@@ -4,6 +4,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:figma_squircle/figma_squircle.dart';
 
 import '../common/network/api_client.dart';
+import '../common/styles/app_shadows.dart';
 import '../common/widgets/common_activity.dart';
 import '../common/widgets/common_image_view.dart';
 import '../common/widgets/common_inkwell.dart';
@@ -678,13 +679,7 @@ class _RoundedCard extends StatelessWidget {
         shape: ContinuousRectangleBorder(
           borderRadius: BorderRadius.all(Radius.circular(28)),
         ),
-        shadows: [
-          BoxShadow(
-            color: Color(0x14000000),
-            blurRadius: 18,
-            offset: Offset(0, 0),
-          ),
-        ],
+        shadows: AppShadows.card,
       ),
       child: child,
     );
@@ -1273,13 +1268,7 @@ class _PlaceListThumbnail extends StatelessWidget {
               ),
               side: const BorderSide(color: Colors.white, width: 4),
             ),
-            shadows: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.08),
-                blurRadius: 20,
-                offset: const Offset(0, 0),
-              ),
-            ],
+            shadows: AppShadows.card,
           ),
           child: ClipSmoothRect(
             radius: SmoothBorderRadius(

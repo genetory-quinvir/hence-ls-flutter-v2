@@ -10,13 +10,13 @@ import '../common/auth/auth_store.dart';
 import '../common/state/home_tab_controller.dart';
 import '../common/network/api_client.dart';
 import '../common/permissions/location_permission_service.dart';
+import '../common/styles/app_shadows.dart';
 import '../common/widgets/common_activity.dart';
 import '../common/widgets/common_empty_view.dart';
 import '../common/widgets/common_image_view.dart';
 import '../common/widgets/common_inkwell.dart';
 import '../common/widgets/common_place_list_item_view.dart';
 import '../common/widgets/common_place_carousel_list_item_view.dart';
-import '../common/widgets/common_profile_image_view.dart';
 import '../common/widgets/common_profile_view.dart';
 import '../common/widgets/common_refresh_view.dart';
 import '../common/widgets/common_rounded_button.dart';
@@ -108,7 +108,6 @@ class _FeaturedViewState extends State<FeaturedView> {
     final data = root['data'] is Map<String, dynamic>
         ? root['data'] as Map<String, dynamic>
         : root;
-    if (data is! Map<String, dynamic>) return;
     final themes = data['themes'];
     if (themes is! List) return;
     var changed = false;
@@ -215,15 +214,15 @@ class _FeaturedViewState extends State<FeaturedView> {
                     EdgeInsets.fromLTRB(0, 16, 0, _kTabBarHeight + bottomInset),
                 children: [
                   const _FeaturedHeader(),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 16),
                   _FeaturedBannerSection(items: banners),
                   if (categories.isNotEmpty) ...[
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 24),
                     _FeaturedCategorySection(
                       items: categories,
                     ),
                   ],
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 32),
                   _FeaturedNearestPlacesSection(
                     places: nearbyPlaces
                         .whereType<Map<String, dynamic>>()
@@ -240,8 +239,11 @@ class _FeaturedViewState extends State<FeaturedView> {
                             .toList(),
                       ),
                     ),
-                  const _FeaturedSingleCardBannerSection(),
-                  const SizedBox(height: 28),
+                  const _FeaturedSingleCardBannerSection(
+                    title: '장소를 등록하고 친구들과 공유해보세요',
+                    subtitle: '장소를 등록하고 친구들과 공유해보세요',
+                  ),
+                  const SizedBox(height: 32),
                   ...themes.map((entry) {
                     final item = entry is Map<String, dynamic>
                         ? entry
@@ -255,7 +257,7 @@ class _FeaturedViewState extends State<FeaturedView> {
                         longitude: _lastLongitude,
                       ),
                     );
-                  }).toList(),
+                  }),
                   if (themes.isEmpty)
                     const Padding(
                       padding: EdgeInsets.symmetric(horizontal: 16),
@@ -293,7 +295,7 @@ class _FeaturedBannerSection extends StatelessWidget {
             physics: const BouncingScrollPhysics(),
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
             itemCount: items.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 16),
+            separatorBuilder: (_, _) => const SizedBox(width: 16),
             itemBuilder: (context, index) {
               final banner = items[index] is Map<String, dynamic>
                   ? items[index] as Map<String, dynamic>
@@ -408,7 +410,7 @@ class _FeaturedRankingSection extends StatelessWidget {
                     );
                   },
           );
-        }).toList(),
+        }),
       ],
     );
   }
@@ -416,8 +418,8 @@ class _FeaturedRankingSection extends StatelessWidget {
 
 class _FeaturedSingleCardBannerSection extends StatelessWidget {
   const _FeaturedSingleCardBannerSection({
-    this.title = '나만 알고 있는 장소가 있나요?',
-    this.subtitle = '장소를 등록하고 친구들과 공유해보세요',
+    required this.title,
+    required this.subtitle,
   });
 
   final String title;
@@ -426,7 +428,7 @@ class _FeaturedSingleCardBannerSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
       child: Container(
         height: 156,
         decoration: ShapeDecoration(
@@ -626,7 +628,7 @@ class _FeaturedNearestPlacesSection extends StatelessWidget {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 itemCount: places.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 12),
+                separatorBuilder: (_, _) => const SizedBox(width: 12),
                 itemBuilder: (context, index) {
                   final place = places[index];
                   final title = (place['title'] as String?) ?? '장소';
@@ -665,7 +667,7 @@ class _FeaturedNearestPlacesSection extends StatelessWidget {
                 },
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 24),
         ],
       );
   }
@@ -690,7 +692,7 @@ class _FeaturedCategorySection extends StatelessWidget {
             physics: const BouncingScrollPhysics(),
             padding: const EdgeInsets.symmetric(horizontal: 16),
             itemCount: items.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 4),
+            separatorBuilder: (_, _) => const SizedBox(width: 4),
             itemBuilder: (context, index) {
               final category = items[index];
               final title = (category['title'] ?? '').toString().trim();
@@ -845,7 +847,7 @@ class _FeaturedHeader extends StatelessWidget {
                   borderRadius: BorderRadius.circular(999),
                   child: CommonProfileView(
                     size: 48,
-                    networkUrl: user?.profileImageUrl,
+                    networkUrl: user.profileImageUrl,
                     placeholder: Container(
                       color: const Color(0xFFF2F2F2),
                       alignment: Alignment.center,
@@ -920,13 +922,7 @@ class _FeaturedBannerCard extends StatelessWidget {
         width: 280,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(18),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.18),
-              blurRadius: 18,
-              offset: const Offset(0, 0),
-            ),
-          ],
+          boxShadow: AppShadows.card,
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(18),
@@ -1287,17 +1283,6 @@ String _placeThemeTitle(Map<String, dynamic> place) {
   final themeTitle = place['themeTitle'];
   if (themeTitle is String && themeTitle.trim().isNotEmpty) {
     return themeTitle.trim();
-  }
-  return '';
-}
-
-String _placeCategoryTitle(Map<String, dynamic> place) {
-  final category = place['category'];
-  if (category is Map<String, dynamic>) {
-    final title = category['title'];
-    if (title is String && title.trim().isNotEmpty) {
-      return title.trim();
-    }
   }
   return '';
 }

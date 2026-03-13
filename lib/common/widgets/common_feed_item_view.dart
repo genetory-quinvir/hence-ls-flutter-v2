@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/cupertino.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../feed_list/models/feed_models.dart';
@@ -775,7 +774,6 @@ class _FeedImagePager extends StatefulWidget {
 
 class _FeedImagePagerState extends State<_FeedImagePager> {
   late final PageController _controller;
-  int _currentIndex = 0;
 
   @override
   void initState() {
@@ -795,7 +793,7 @@ class _FeedImagePagerState extends State<_FeedImagePager> {
       controller: _controller,
       itemCount: widget.images.length,
       onPageChanged: (index) {
-        setState(() => _currentIndex = index);
+        if (!mounted) return;
         widget.onIndexChanged?.call(index);
       },
       itemBuilder: (context, index) {

@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:figma_squircle/figma_squircle.dart';
 
+import '../../common/styles/app_shadows.dart';
 import '../../common/widgets/common_image_view.dart';
 import '../../common/widgets/common_inkwell.dart';
 import '../../common/widgets/common_rounded_button.dart';
@@ -77,13 +78,7 @@ class PlacebookItemView extends StatelessWidget {
                         bottomLeft: Radius.circular(18),
                         bottomRight: Radius.circular(18),
                       ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.08),
-                          blurRadius: 18,
-                          offset: const Offset(0, 0),
-                        ),
-                      ],
+                      boxShadow: AppShadows.card,
                     ),
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -167,13 +162,7 @@ class _ThumbnailPeek extends StatelessWidget {
         color: const Color(0xFFF2F2F2),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.white, width: 3),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
-            blurRadius: 12,
-            offset: const Offset(0, 0),
-          ),
-        ],
+        boxShadow: AppShadows.card,
       ),
       child: ClipSmoothRect(
         radius: SmoothBorderRadius(

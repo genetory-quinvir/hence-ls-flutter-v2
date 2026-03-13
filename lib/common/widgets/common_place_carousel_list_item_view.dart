@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:figma_squircle/figma_squircle.dart';
 
+import '../styles/app_shadows.dart';
 import 'common_image_view.dart';
 import 'common_inkwell.dart';
 
@@ -59,13 +60,7 @@ class CommonPlaceCarouselListItemView extends StatelessWidget {
                 cornerSmoothing: 1,
               ),
             ),
-            shadows: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.04),
-                blurRadius: 20,
-                offset: const Offset(0, 0),
-              ),
-            ],
+            shadows: AppShadows.card,
           ),
           child: Row(
             children: [
@@ -91,13 +86,7 @@ class CommonPlaceCarouselListItemView extends StatelessWidget {
                                 width: 4,
                               ),
                             ),
-                            shadows: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.08),
-                                blurRadius: 20,
-                                offset: const Offset(0, 0),
-                              ),
-                            ],
+                            shadows: AppShadows.card,
                           ),
                           child: ClipSmoothRect(
                             radius: SmoothBorderRadius(

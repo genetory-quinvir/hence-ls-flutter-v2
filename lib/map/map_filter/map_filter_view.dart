@@ -3,7 +3,6 @@ import 'package:hence_ls_flutter_v2/common/widgets/common_inkwell.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../common/widgets/common_empty_view.dart';
-import '../../common/widgets/common_navigation_view.dart';
 import '../../common/widgets/common_rounded_button.dart';
 import '../../common/widgets/common_textfield_view.dart';
 import '../../common/state/placebook_cache.dart';
@@ -26,7 +25,6 @@ class MapFilterView extends StatefulWidget {
 }
 
 class _MapFilterViewState extends State<MapFilterView> {
-  String? _selectedId;
   final Set<String> _selectedThemeIds = <String>{};
   List<Map<String, dynamic>> _themes = const [];
   String _query = '';
@@ -36,7 +34,6 @@ class _MapFilterViewState extends State<MapFilterView> {
   @override
   void initState() {
     super.initState();
-    _selectedId = widget.selectedCategoryId;
     _selectedThemeIds
       ..clear()
       ..addAll(widget.selectedThemeIds);
@@ -287,7 +284,6 @@ class _MapFilterViewState extends State<MapFilterView> {
                       _BulkActionButton(
                         title: '결과만 선택',
                         onTap: () => setState(() {
-                          _selectedId = null;
                           _selectedThemeIds
                             ..clear()
                             ..addAll(searchResults
@@ -380,44 +376,6 @@ class _MapFilterViewState extends State<MapFilterView> {
   }
 }
 
-class _FilterRow extends StatelessWidget {
-  const _FilterRow({
-    required this.title,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String title;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        height: 48,
-        padding: const EdgeInsets.symmetric(horizontal: 14),
-        decoration: BoxDecoration(
-          color: selected ? Colors.black : const Color(0xFFF2F2F2),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        alignment: Alignment.centerLeft,
-        child: Text(
-          title,
-          style: TextStyle(
-            fontFamily: 'Pretendard',
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: selected ? Colors.white : Colors.black,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _BulkActionButton extends StatelessWidget {
   const _BulkActionButton({
     required this.title,
@@ -453,156 +411,3 @@ class _BulkActionButton extends StatelessWidget {
   }
 }
 
-class _CategoryAccordion extends StatelessWidget {
-  const _CategoryAccordion({
-    required this.title,
-    required this.children,
-    this.count,
-    this.selectedCount,
-    this.onSelectAll,
-    this.onClearAll,
-    this.initiallyExpanded = false,
-    this.onHeaderTap,
-  });
-
-  final String title;
-  final List<Widget> children;
-  final int? count;
-  final int? selectedCount;
-  final VoidCallback? onSelectAll;
-  final VoidCallback? onClearAll;
-  final bool initiallyExpanded;
-  final VoidCallback? onHeaderTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFFF2F2F2),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Theme(
-        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-        child: ExpansionTile(
-          initiallyExpanded: initiallyExpanded,
-          onExpansionChanged: (_) => onHeaderTap?.call(),
-          title: Text(
-            title,
-            style: const TextStyle(
-              fontFamily: 'Pretendard',
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: Colors.black,
-            ),
-          ),
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (count != null && selectedCount != null)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFEAEAEA),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(
-                    '${selectedCount!}/${count!}',
-                    style: const TextStyle(
-                      fontFamily: 'Pretendard',
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.black,
-                    ),
-                  ),
-                ),
-              const SizedBox(width: 6),
-              const Icon(
-                PhosphorIconsRegular.caretDown,
-                size: 16,
-                color: Colors.black,
-              ),
-            ],
-          ),
-          childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-          children: [
-            Row(
-              children: [
-                TextButton(
-                  onPressed: onSelectAll,
-                  child: const Text(
-                    '전체선택',
-                    style: TextStyle(
-                      fontFamily: 'Pretendard',
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.black,
-                    ),
-                  ),
-                ),
-                TextButton(
-                  onPressed: onClearAll,
-                  child: const Text(
-                    '전체해제',
-                    style: TextStyle(
-                      fontFamily: 'Pretendard',
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.black,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            ...children,
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ThemeRow extends StatelessWidget {
-  const _ThemeRow({
-    required this.title,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String title;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        height: 44,
-        padding: const EdgeInsets.symmetric(horizontal: 8),
-        alignment: Alignment.centerLeft,
-        child: Row(
-          children: [
-            Icon(
-              selected ? PhosphorIconsFill.checkCircle : PhosphorIconsRegular.circle,
-              size: 16,
-              color: selected ? Colors.black : const Color(0xFFBDBDBD),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                title,
-                style: TextStyle(
-                  fontFamily: 'Pretendard',
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                  color: selected ? Colors.black : const Color(0xFF333333),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}

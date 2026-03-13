@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
-import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../common/widgets/common_image_view.dart';
-import 'package:figma_squircle/figma_squircle.dart';
 
 import '../../common/widgets/common_profile_image_view.dart';
 import '../../common/widgets/common_inkwell.dart';
@@ -240,20 +238,6 @@ class _HeaderSection extends StatelessWidget {
   static const double defaultHeight = 317;
   static const double titleBlockHeight = 96;
 
-  String? _extractProfileImageUrl(dynamic user) {
-    if (user is Map<String, dynamic>) {
-      final profile = user['profileImage'];
-      if (profile is Map<String, dynamic>) {
-        return profile['cdnUrl'] as String? ??
-            profile['fileUrl'] as String? ??
-            profile['thumbnailUrl'] as String?;
-      }
-      return user['profileImageUrl'] as String? ??
-          user['thumbnailUrl'] as String?;
-    }
-    return null;
-  }
-
   @override
   Widget build(BuildContext context) {
     return SizedBox(
@@ -344,89 +328,3 @@ class _HeaderSection extends StatelessWidget {
   }
 }
 
-class _OverlayProfileDot extends StatelessWidget {
-  const _OverlayProfileDot({
-    required this.index,
-    this.imageUrl,
-  });
-
-  final int index;
-  final String? imageUrl;
-
-  @override
-  Widget build(BuildContext context) {
-    const double size = 28;
-    const double overlap = 10;
-    return Positioned(
-      left: index * (size - overlap),
-      child: ClipSmoothRect(
-        radius: SmoothBorderRadius(
-          cornerRadius: size * 0.34,
-          cornerSmoothing: 1,
-        ),
-        child: Container(
-          color: Colors.white,
-          padding: const EdgeInsets.all(2),
-          child: ClipSmoothRect(
-            radius: SmoothBorderRadius(
-              cornerRadius: (size - 4) * 0.34,
-              cornerSmoothing: 1,
-            ),
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                border: Border.all(
-                  color: Colors.white,
-                  width: 1.5,
-                ),
-              ),
-              child: CommonProfileImageView(
-                size: size,
-                imageUrl: imageUrl,
-                useSquircle: true,
-                placeholderIconSize: 12,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _OverlayCountDot extends StatelessWidget {
-  const _OverlayCountDot({
-    required this.index,
-    required this.label,
-  });
-
-  final int index;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    const double size = 28;
-    const double overlap = 10;
-    return Positioned(
-      left: index * (size - overlap),
-      child: Container(
-        width: size,
-        height: size,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: const Color(0xFFE0E0E0),
-          borderRadius: BorderRadius.circular(size * 0.34),
-          border: Border.all(color: Colors.white, width: 1.5),
-        ),
-        child: Text(
-          label,
-          style: const TextStyle(
-            fontFamily: 'Pretendard',
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
-            color: Color(0xFF424242),
-          ),
-        ),
-      ),
-    );
-  }
-}

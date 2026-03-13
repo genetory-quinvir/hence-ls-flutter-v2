@@ -12,6 +12,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../common/location/naver_location_service.dart';
 import '../common/permissions/location_permission_service.dart';
+import '../common/styles/app_shadows.dart';
 import '../common/auth/auth_store.dart';
 import '../common/state/home_tab_controller.dart';
 import '../sign/sign_view.dart';
@@ -97,7 +98,7 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
   double _lastViewportHeight = 0;
   static const String _radiusOverlayId = 'api-radius';
   NCircleOverlay? _radiusOverlay;
-  bool _showRadiusOverlay = false;
+  final bool _showRadiusOverlay = false;
   late final Widget _mapWidget;
   final CommonMapViewController _mapViewController = CommonMapViewController();
   List<Map<String, dynamic>> _categoryFilters = const [];
@@ -122,13 +123,13 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
 
   Map<String, dynamic> _normalizePlaceItem(Map<String, dynamic> item) {
     final next = Map<String, dynamic>.from(item);
-    String? _asString(dynamic value) {
+    String? asString(dynamic value) {
       if (value == null) return null;
       if (value is String && value.trim().isNotEmpty) return value;
       return null;
     }
 
-    num? _asNum(dynamic value) {
+    num? asNum(dynamic value) {
       if (value is num) return value;
       if (value is String) return num.tryParse(value);
       return null;
@@ -165,9 +166,9 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
       }
     }
 
-    final rawTitle = _asString(next['title']) ?? _asString(next['name']);
-    final rawSubtitle = _asString(next['subtitle']);
-    final rawDescription = _asString(next['description']);
+    final rawTitle = asString(next['title']) ?? asString(next['name']);
+    final rawSubtitle = asString(next['subtitle']);
+    final rawDescription = asString(next['description']);
     if (rawTitle != null) {
       next['title'] = rawTitle;
       next['placeName'] ??= rawTitle;
@@ -179,8 +180,8 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
       next['description'] = rawDescription;
     }
 
-    final lat = _asNum(next['latitude']);
-    final lng = _asNum(next['longitude']);
+    final lat = asNum(next['latitude']);
+    final lng = asNum(next['longitude']);
     if (lat != null) next['latitude'] = lat.toDouble();
     if (lng != null) next['longitude'] = lng.toDouble();
 
@@ -616,14 +617,14 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
         final aDist = _distanceMeters(
           lat1: center.latitude,
           lng1: center.longitude,
-          lat2: aLat!,
-          lng2: aLng!,
+          lat2: aLat,
+          lng2: aLng,
         );
         final bDist = _distanceMeters(
           lat1: center.latitude,
           lng1: center.longitude,
-          lat2: bLat!,
-          lng2: bLng!,
+          lat2: bLat,
+          lng2: bLng,
         );
         return aDist.compareTo(bDist);
       });
@@ -2115,13 +2116,7 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
                               borderRadius:
                                   BorderRadius.all(Radius.circular(16)),
                             ),
-                            shadows: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.08),
-                                blurRadius: 8,
-                                offset: const Offset(0, 0),
-                              ),
-                            ],
+                            shadows: AppShadows.card,
                           ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
@@ -2143,7 +2138,7 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
                       ),
                     ),
                   );
-                }).toList(),
+                }),
             ],
           ),
         ),
@@ -2166,13 +2161,7 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
           shape: ContinuousRectangleBorder(
             borderRadius: BorderRadius.all(Radius.circular(16)),
           ),
-          shadows: [
-            BoxShadow(
-              color: Color(0x2E000000),
-              blurRadius: 8,
-              offset: Offset(0, 0),
-            ),
-          ],
+          shadows: AppShadows.card,
         ),
         child: RotationTransition(
           turns: Tween<double>(begin: 0, end: 1).animate(
@@ -2480,7 +2469,7 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
                             space['placeName'] ??
                             space['location'] ??
                             '') as String;
-                    String? _pickTitle(dynamic raw) {
+                    String? pickTitle(dynamic raw) {
                       if (raw is Map<String, dynamic>) {
                         final title = raw['title'];
                         if (title is String && title.trim().isNotEmpty) {
@@ -2493,9 +2482,9 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
                       return null;
                     }
                     final categoryText =
-                        _pickTitle(space['category']) ?? _pickTitle(space['categoryTitle']);
+                        pickTitle(space['category']) ?? pickTitle(space['categoryTitle']);
                     final themeText =
-                        _pickTitle(space['theme']) ?? _pickTitle(space['themeTitle']);
+                        pickTitle(space['theme']) ?? pickTitle(space['themeTitle']);
                     final commentCount = (space['commentCount'] as num?)?.toInt() ?? 0;
                     final likeCount = (space['likeCount'] as num?)?.toInt() ?? 0;
                     final dateText =
@@ -2589,8 +2578,8 @@ class _PlaceDotMarker extends StatelessWidget {
 class _MapToggleButton extends StatelessWidget {
   const _MapToggleButton({
     required this.isSharedMap,
-    this.icon,
-    this.isLight = false,
+    required this.icon,
+    required this.isLight,
     required this.onTap,
   });
 
@@ -2612,13 +2601,7 @@ class _MapToggleButton extends StatelessWidget {
           shape: const ContinuousRectangleBorder(
             borderRadius: BorderRadius.all(Radius.circular(20)),
           ),
-          shadows: const [
-            BoxShadow(
-              color: Color(0x14000000),
-              blurRadius: 14,
-              offset: Offset(0, 6),
-            ),
-          ],
+          shadows: AppShadows.card,
         ),
         alignment: Alignment.center,
         child: Icon(
@@ -2732,13 +2715,7 @@ class _MapToggleVertical extends StatelessWidget {
         shape: const ContinuousRectangleBorder(
           borderRadius: BorderRadius.all(Radius.circular(24)),
         ),
-        shadows: const [
-          BoxShadow(
-            color: Color(0x14000000),
-            blurRadius: 14,
-            offset: Offset(0, 6),
-          ),
-        ],
+        shadows: AppShadows.card,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -2828,13 +2805,7 @@ class _MapFloatingButton extends StatelessWidget {
           shape: ContinuousRectangleBorder(
             borderRadius: BorderRadius.all(Radius.circular(20)),
           ),
-          shadows: [
-            BoxShadow(
-              color: Color(0x14000000),
-              blurRadius: 14,
-              offset: Offset(0, 6),
-            ),
-          ],
+          shadows: AppShadows.card,
         ),
         alignment: Alignment.center,
         child: Icon(
@@ -2866,13 +2837,7 @@ class _MapZoomButton extends StatelessWidget {
         shape: ContinuousRectangleBorder(
           borderRadius: BorderRadius.all(Radius.circular(20)),
         ),
-        shadows: [
-          BoxShadow(
-            color: Color(0x14000000),
-            blurRadius: 14,
-            offset: Offset(0, 6),
-          ),
-        ],
+        shadows: AppShadows.card,
       ),
       child: Column(
         children: [

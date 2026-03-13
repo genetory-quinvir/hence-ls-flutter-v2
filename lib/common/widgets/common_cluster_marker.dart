@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../styles/app_shadows.dart';
+
 class CommonClusterMarker extends StatelessWidget {
   const CommonClusterMarker({
     super.key,
@@ -23,13 +25,7 @@ class CommonClusterMarker extends StatelessWidget {
         color: Colors.black,
         borderRadius: BorderRadius.circular(borderRadius),
         border: Border.all(color: Colors.white, width: 2),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x2E000000),
-            blurRadius: 8,
-            offset: Offset(0, 3),
-          ),
-        ],
+        boxShadow: AppShadows.card,
       ),
       alignment: Alignment.center,
       child: Text(

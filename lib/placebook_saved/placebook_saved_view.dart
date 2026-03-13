@@ -9,6 +9,7 @@ import '../common/widgets/common_rounded_button.dart';
 import '../common/widgets/common_image_view.dart';
 import '../common/network/api_client.dart';
 import '../common/auth/auth_store.dart';
+import '../common/styles/app_shadows.dart';
 
 class PlacebookSavedView extends StatefulWidget {
   const PlacebookSavedView({
@@ -264,13 +265,7 @@ class _SavedPlaceMarker extends StatelessWidget {
             borderRadius: BorderRadius.all(Radius.circular(48)),
             side: BorderSide(color: Colors.white, width: 1),
           ),
-          shadows: [
-            BoxShadow(
-              color: Color(0xFFe2e2e2),
-              blurRadius: 16,
-              offset: Offset(0, 0),
-            ),
-          ],
+          shadows: AppShadows.card,
         ),
         child: Padding(
           padding: const EdgeInsets.all(4),
