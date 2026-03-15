@@ -10,10 +10,7 @@ import '../profile/models/profile_display_user.dart';
 import '../profile/widgets/profile_user_section.dart';
 
 class ProfileInfoView extends StatelessWidget {
-  const ProfileInfoView({
-    super.key,
-    this.user,
-  });
+  const ProfileInfoView({super.key, this.user});
 
   final ProfileDisplayUser? user;
 
@@ -22,8 +19,8 @@ class ProfileInfoView extends StatelessWidget {
     final displayUser = user;
     final Future<ProfileDisplayUser>? userFuture =
         displayUser?.id.isNotEmpty == true
-            ? ApiClient.fetchUserDetail(displayUser!.id)
-            : null;
+        ? ApiClient.fetchUserDetail(displayUser!.id)
+        : null;
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.dark,
@@ -35,7 +32,7 @@ class ProfileInfoView extends StatelessWidget {
             CommonNavigationView(
               title: '프로필 정보',
               left: const Icon(
-                PhosphorIconsBold.caretLeft,
+                PhosphorIconsBold.x,
                 size: 24,
                 color: Colors.black,
               ),
@@ -50,9 +47,7 @@ class ProfileInfoView extends StatelessWidget {
                       builder: (context, snapshot) {
                         if (snapshot.connectionState ==
                             ConnectionState.waiting) {
-                          return const Center(
-                            child: CommonActivityIndicator(),
-                          );
+                          return const Center(child: CommonActivityIndicator());
                         }
                         final resolved = snapshot.data ?? displayUser;
                         return _ProfileInfoBody(user: resolved);
@@ -67,9 +62,7 @@ class ProfileInfoView extends StatelessWidget {
 }
 
 class _ProfileInfoBody extends StatefulWidget {
-  const _ProfileInfoBody({
-    required this.user,
-  });
+  const _ProfileInfoBody({required this.user});
 
   final ProfileDisplayUser? user;
 

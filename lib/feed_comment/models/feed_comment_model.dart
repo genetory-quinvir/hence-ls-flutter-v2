@@ -5,6 +5,7 @@ class FeedCommentItem {
     required this.createdAt,
     required this.authorName,
     required this.authorId,
+    this.parentCommentId,
     this.authorProfileUrl,
     this.authorDeletedAt,
     this.imageId,
@@ -20,6 +21,7 @@ class FeedCommentItem {
   final String createdAt;
   final String authorName;
   final String authorId;
+  final String? parentCommentId;
   final String? authorProfileUrl;
   final String? authorDeletedAt;
   final String? imageId;
@@ -30,7 +32,9 @@ class FeedCommentItem {
   final List<String> mentionNames;
 
   factory FeedCommentItem.fromJson(Map<String, dynamic> json) {
-    final author = json['author'];
+    final author = json['author'] is Map<String, dynamic>
+        ? json['author']
+        : json['user'];
     String authorName = '';
     String authorId = '';
     String? profileUrl;
@@ -44,32 +48,50 @@ class FeedCommentItem {
       final profileImage = author['profileImage'];
       if (profileImage is Map<String, dynamic>) {
         profileUrl =
-            profileImage['cdnUrl'] as String? ?? profileImage['fileUrl'] as String?;
+            profileImage['cdnUrl'] as String? ??
+            profileImage['fileUrl'] as String?;
       }
       deletedAt = author['deletedAt'] as String?;
     }
-    final image = json['image'];
+    final image =
+        json['image'] ??
+        ((json['images'] is List && (json['images'] as List).isNotEmpty)
+            ? (json['images'] as List).first
+            : null);
     String? imageId;
     String? imageUrl;
     if (image is Map<String, dynamic>) {
       imageId = image['id'] as String?;
-      imageUrl = image['cdnUrl'] as String? ??
+      imageUrl =
+          image['cdnUrl'] as String? ??
           image['fileUrl'] as String? ??
           image['thumbnailUrl'] as String?;
     }
+    String? parentCommentId;
+    final parentRaw = json['parentCommentId'] ?? json['parentId'];
+    if (parentRaw is String && parentRaw.trim().isNotEmpty) {
+      parentCommentId = parentRaw.trim();
+    }
+
+    final repliesRaw = json['replies'];
+    final repliesCount = repliesRaw is List ? repliesRaw.length : null;
+
     return FeedCommentItem(
       id: json['id'] as String? ?? '',
       content: json['content'] as String? ?? '',
       createdAt: json['createdAt'] as String? ?? '',
       authorName: authorName,
       authorId: authorId,
+      parentCommentId: parentCommentId,
       authorProfileUrl: profileUrl,
       authorDeletedAt: deletedAt,
       imageId: imageId,
       imageUrl: imageUrl,
       isLiked: (json['isLiked'] as bool?) ?? false,
       likeCount: (json['likeCount'] as num?)?.toInt() ?? 0,
-      replyCount: (json['replyCount'] as num?)?.toInt() ??
+      replyCount:
+          (json['replyCount'] as num?)?.toInt() ??
+          repliesCount ??
           (json['repliesCount'] as num?)?.toInt() ??
           (json['childCount'] as num?)?.toInt() ??
           0,

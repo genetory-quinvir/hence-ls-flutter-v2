@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../common/styles/app_shadows.dart';
 import '../../common/widgets/common_map_view.dart';
 import '../../common/widgets/common_place_marker.dart';
+import '../../common/widgets/common_rounded_button.dart';
 
 class PlacebookDetailInfoView extends StatefulWidget {
   const PlacebookDetailInfoView({
@@ -148,7 +149,7 @@ class _PlacebookDetailInfoViewState extends State<PlacebookDetailInfoView> {
   Widget build(BuildContext context) {
     final mapController = CommonMapViewController();
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -278,45 +279,56 @@ class _PlacebookDetailInfoViewState extends State<PlacebookDetailInfoView> {
           const SizedBox(height: 10),
           Row(
             children: [
-              _MapAppChip(label: '티맵', onTap: () => _openMapApp('tmap')),
-              const SizedBox(width: 8),
-              _MapAppChip(label: '네이버맵', onTap: () => _openMapApp('naver')),
-              const SizedBox(width: 8),
-              _MapAppChip(label: '카카오맵', onTap: () => _openMapApp('kakao')),
+              Expanded(
+                child: CommonRoundedButton(
+                  title: '티맵',
+                  height: 44,
+                  radius: 8,
+                  backgroundColor: const Color(0xFFF5F5F5),
+                  textColor: const Color(0xFF424242),
+                  textStyle: const TextStyle(
+                    fontFamily: 'Pretendard',
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  onTap: () => _openMapApp('tmap'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: CommonRoundedButton(
+                  title: '네이버맵',
+                  height: 44,
+                  radius: 8,
+                  backgroundColor: const Color(0xFFF5F5F5),
+                  textColor: const Color(0xFF424242),
+                  textStyle: const TextStyle(
+                    fontFamily: 'Pretendard',
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  onTap: () => _openMapApp('naver'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: CommonRoundedButton(
+                  title: '카카오맵',
+                  height: 44,
+                  radius: 8,
+                  backgroundColor: const Color(0xFFF5F5F5),
+                  textColor: const Color(0xFF424242),
+                  textStyle: const TextStyle(
+                    fontFamily: 'Pretendard',
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  onTap: () => _openMapApp('kakao'),
+                ),
+              ),
             ],
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _MapAppChip extends StatelessWidget {
-  const _MapAppChip({required this.label, required this.onTap});
-
-  final String label;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF5F5F5),
-          borderRadius: BorderRadius.circular(999),
-        ),
-        child: Text(
-          label,
-          style: const TextStyle(
-            fontFamily: 'Pretendard',
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: Color(0xFF424242),
-          ),
-        ),
       ),
     );
   }

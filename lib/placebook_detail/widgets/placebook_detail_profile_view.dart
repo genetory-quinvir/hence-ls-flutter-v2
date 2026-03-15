@@ -188,8 +188,8 @@ class _PlacebookDetailProfileViewState
                                   overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(
                                     fontFamily: 'Pretendard',
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w700,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500,
                                     color: Colors.black,
                                   ),
                                 ),

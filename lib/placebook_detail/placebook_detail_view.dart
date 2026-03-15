@@ -65,7 +65,7 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
   final Set<String> _loadingReplies = {};
   final Set<String> _togglingReplyLikeIds = {};
   FeedCommentItem? _replyTarget;
-  String? _mentionBadgeName;
+  final List<_MentionTarget> _mentionTargets = [];
   Timer? _favoriteToastTimer;
   bool _isFavoriteToastVisible = false;
   String _favoriteToastMessage = '';
@@ -79,6 +79,7 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
   int _helpfulRate = 0;
   String? _trustLabel;
   String? _userVote;
+  String _selectedMainTab = 'detail';
 
   @override
   void initState() {
@@ -273,13 +274,14 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
   }
 
   Future<void> _refreshAll({bool fromPull = false, bool silent = false}) async {
+    final useSilent = silent || fromPull || _didInitialReveal;
     if (fromPull) {
       setState(() => _isPullRefreshing = true);
     }
     try {
-      await _loadDetail(silent: silent);
-      await _loadPlaceTrust(silent: silent);
-      await _loadCommentPreview(silent: silent);
+      await _loadDetail(silent: useSilent);
+      await _loadPlaceTrust(silent: useSilent);
+      await _loadCommentPreview(silent: useSilent);
     } finally {
       if (mounted && fromPull) {
         setState(() => _isPullRefreshing = false);
@@ -295,28 +297,33 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
       setState(() => _isLoadingComments = true);
     }
     try {
-      final page = await ApiClient.fetchEntityComments(
-        entityType: 'PLACEBOOK',
-        entityId: placeId,
+      final page = await ApiClient.fetchPlaceComments(
+        placeId: placeId,
         limit: 50,
-        orderBy: _selectedCommentSort,
+        orderBy: _selectedCommentSort.toUpperCase(),
       );
+      final split = _splitPlaceComments(page.comments);
       if (!mounted) return;
       setState(() {
-        _commentPreview = page.comments;
+        _commentPreview = split.topLevel;
+        _repliesByCommentId.clear();
         _hasMoreComments = page.hasNext;
         _nextCommentCursor = page.nextCursor;
         if (page.totalCount != null) {
           _commentCount = page.totalCount!;
+        } else {
+          _commentCount = split.totalCount;
         }
       });
     } catch (_) {
       if (!mounted) return;
-      setState(() {
-        _commentPreview = const [];
-        _hasMoreComments = false;
-        _nextCommentCursor = null;
-      });
+      if (!silent) {
+        setState(() {
+          _commentPreview = const [];
+          _hasMoreComments = false;
+          _nextCommentCursor = null;
+        });
+      }
     } finally {
       if (!silent && mounted) {
         setState(() => _isLoadingComments = false);
@@ -340,20 +347,22 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
     if (cursor == null || cursor.isEmpty) return;
     setState(() => _isLoadingMoreComments = true);
     try {
-      final page = await ApiClient.fetchEntityComments(
-        entityType: 'PLACEBOOK',
-        entityId: placeId,
+      final page = await ApiClient.fetchPlaceComments(
+        placeId: placeId,
         cursor: cursor,
         limit: 50,
-        orderBy: _selectedCommentSort,
+        orderBy: _selectedCommentSort.toUpperCase(),
       );
+      final split = _splitPlaceComments(page.comments);
       if (!mounted) return;
       setState(() {
-        _commentPreview = List.of(_commentPreview)..addAll(page.comments);
+        _commentPreview = List.of(_commentPreview)..addAll(split.topLevel);
         _hasMoreComments = page.hasNext;
         _nextCommentCursor = page.nextCursor;
         if (page.totalCount != null) {
           _commentCount = page.totalCount!;
+        } else {
+          _commentCount += split.totalCount;
         }
       });
     } catch (_) {
@@ -386,27 +395,32 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
         imageId = await ApiClient.uploadCommentImage(webp);
       }
       final target = _replyTarget;
-      final badgeName = _mentionBadgeName?.trim();
-      final mentionPrefix = badgeName != null && badgeName.isNotEmpty
-          ? '@$badgeName '
-          : '';
+      final mentionedUserIds = _mentionTargets
+          .map((item) => item.userId)
+          .where((id) => id.isNotEmpty)
+          .toSet()
+          .toList(growable: false);
+      final mentionPrefix = _mentionTargets
+          .map((item) => '@${item.displayName}')
+          .where((name) => name.trim().isNotEmpty)
+          .join(' ');
       final payloadContent =
           mentionPrefix.isNotEmpty && !content.startsWith(mentionPrefix)
-          ? '$mentionPrefix$content'.trimRight()
+          ? '$mentionPrefix $content'.trimRight()
           : content;
-      await ApiClient.createEntityComment(
-        entityType: 'PLACEBOOK',
-        entityId: placeId,
+      await ApiClient.createPlaceComment(
+        placeId: placeId,
         content: payloadContent,
-        parentId: target?.id,
-        imageId: imageId,
+        parentCommentId: target?.id,
+        mentionedUserIds: mentionedUserIds,
+        imageFileIds: [if (imageId != null && imageId.isNotEmpty) imageId],
       );
       if (!mounted) return;
       _commentController.clear();
       setState(() => _commentImageFile = null);
       setState(() {
         _replyTarget = null;
-        _mentionBadgeName = null;
+        _mentionTargets.clear();
       });
       _refreshAll(silent: true);
     } catch (_) {
@@ -426,9 +440,10 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
     }
     setState(() {
       _replyTarget = target;
-      _mentionBadgeName = target.authorName.trim().isEmpty
-          ? null
-          : target.authorName.trim();
+      _upsertMentionTarget(
+        userId: target.authorId,
+        displayName: target.authorName,
+      );
     });
     FocusScope.of(context).requestFocus(_commentFocusNode);
   }
@@ -443,15 +458,92 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
     }
     setState(() {
       _replyTarget = null;
-      _mentionBadgeName = target.authorName.trim().isEmpty
-          ? null
-          : target.authorName.trim();
+      _upsertMentionTarget(
+        userId: target.authorId,
+        displayName: target.authorName,
+      );
     });
     FocusScope.of(context).requestFocus(_commentFocusNode);
   }
 
+  void _upsertMentionTarget({
+    required String userId,
+    required String displayName,
+  }) {
+    final trimmedId = userId.trim();
+    final trimmedName = displayName.trim();
+    if (trimmedId.isEmpty || trimmedName.isEmpty) return;
+    final next = _MentionTarget(userId: trimmedId, displayName: trimmedName);
+    final index = _mentionTargets.indexWhere(
+      (item) => item.userId == trimmedId,
+    );
+    if (index >= 0) {
+      _mentionTargets[index] = next;
+      return;
+    }
+    _mentionTargets.add(next);
+  }
+
+  _PlaceCommentSplitResult _splitPlaceComments(List<FeedCommentItem> items) {
+    final topLevel = <FeedCommentItem>[];
+    final repliesByParent = <String, List<FeedCommentItem>>{};
+    for (final item in items) {
+      final parentId = item.parentCommentId?.trim();
+      if (parentId == null || parentId.isEmpty) {
+        topLevel.add(item);
+      } else {
+        repliesByParent.putIfAbsent(parentId, () => []).add(item);
+      }
+    }
+    return _PlaceCommentSplitResult(
+      topLevel: topLevel,
+      repliesByParent: repliesByParent,
+      totalCount: items.length,
+    );
+  }
+
+  Future<void> _confirmDeleteComment(FeedCommentItem comment) async {
+    final currentUserId = AuthStore.instance.currentUser.value?.id ?? '';
+    if (currentUserId.isEmpty || comment.authorId != currentUserId) return;
+    final placeId = _extractPlaceId(_space) ?? '';
+    if (placeId.isEmpty) return;
+    showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      barrierColor: const Color(0x99000000),
+      builder: (_) {
+        return Material(
+          type: MaterialType.transparency,
+          child: CommonAlertView(
+            title: '댓글을 삭제할까요?',
+            subTitle: '삭제한 댓글은 복구할 수 없어요.',
+            primaryButtonTitle: '삭제하기',
+            secondaryButtonTitle: '취소',
+            onPrimaryTap: () async {
+              Navigator.of(context).pop();
+              try {
+                await ApiClient.deletePlaceComment(
+                  placeId: placeId,
+                  commentId: comment.id,
+                );
+                if (!mounted) return;
+                _showFavoriteToast('댓글을 삭제했어요.');
+                _refreshAll(silent: true);
+              } catch (_) {
+                // ignore for now
+              }
+            },
+            onSecondaryTap: () => Navigator.of(context).pop(),
+          ),
+        );
+      },
+    );
+  }
+
   Future<void> _toggleCommentLikeAt(int index) async {
     if (index < 0 || index >= _commentPreview.length) return;
+    final placeId = _extractPlaceId(_space) ?? '';
+    if (placeId.isEmpty) return;
     if (!await CommonLoginGuard.ensureSignedIn(
       context,
       title: '로그인이 필요합니다.',
@@ -482,7 +574,11 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
         );
     });
     try {
-      await ApiClient.setCommentLike(commentId: comment.id, isLiked: nextLiked);
+      await ApiClient.setPlaceCommentLike(
+        placeId: placeId,
+        commentId: comment.id,
+        isLiked: nextLiked,
+      );
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -506,19 +602,23 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
     if (_loadingReplies.contains(commentId)) return;
     setState(() => _loadingReplies.add(commentId));
     try {
-      final replies = await ApiClient.fetchCommentReplies(commentId: commentId);
+      final replies = await ApiClient.fetchCommentReplies(
+        commentId: commentId,
+        limit: 50,
+      );
       if (!mounted) return;
       setState(() => _repliesByCommentId[commentId] = replies);
     } catch (_) {
-      // Ignore load errors for now.
+      // ignore for now
     } finally {
-      if (mounted) {
-        setState(() => _loadingReplies.remove(commentId));
-      }
+      if (!mounted) return;
+      setState(() => _loadingReplies.remove(commentId));
     }
   }
 
   Future<void> _toggleReplyLike(String parentId, int index) async {
+    final placeId = _extractPlaceId(_space) ?? '';
+    if (placeId.isEmpty) return;
     if (!await CommonLoginGuard.ensureSignedIn(
       context,
       title: '로그인이 필요합니다.',
@@ -552,7 +652,11 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
       _repliesByCommentId[parentId] = nextReplies;
     });
     try {
-      await ApiClient.setCommentLike(commentId: reply.id, isLiked: nextLiked);
+      await ApiClient.setPlaceCommentLike(
+        placeId: placeId,
+        commentId: reply.id,
+        isLiked: nextLiked,
+      );
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -689,53 +793,85 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
     EdgeInsetsGeometry padding = const EdgeInsets.only(top: 12),
   }) {
     const inputHeight = 50.0;
-    final replyLabel = _mentionBadgeName?.trim().isNotEmpty == true
-        ? _mentionBadgeName
-        : null;
+    final mentionTargets = List<_MentionTarget>.from(_mentionTargets);
     return Padding(
       padding: padding,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (replyLabel != null) ...[
+          if (mentionTargets.isNotEmpty) ...[
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final target in mentionTargets)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF2F2F2),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          '@${target.displayName}',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.black,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        CommonInkWell(
+                          onTap: () {
+                            setState(() {
+                              _mentionTargets.removeWhere(
+                                (item) => item.userId == target.userId,
+                              );
+                              if (_replyTarget?.authorId == target.userId) {
+                                _replyTarget = null;
+                              }
+                            });
+                          },
+                          borderRadius: BorderRadius.circular(8),
+                          child: const Icon(
+                            PhosphorIconsRegular.x,
+                            size: 12,
+                            color: Color(0xFF9E9E9E),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+          ],
+          if (_replyTarget != null) ...[
             Row(
               children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
+                Text(
+                  '답글 작성 중',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.grey.shade700,
                   ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF2F2F2),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        '@$replyLabel',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.black,
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      CommonInkWell(
-                        onTap: () {
-                          setState(() {
-                            _replyTarget = null;
-                            _mentionBadgeName = null;
-                          });
-                        },
-                        borderRadius: BorderRadius.circular(8),
-                        child: const Icon(
-                          PhosphorIconsRegular.x,
-                          size: 12,
-                          color: Color(0xFF9E9E9E),
-                        ),
-                      ),
-                    ],
+                ),
+                const SizedBox(width: 8),
+                CommonInkWell(
+                  onTap: () => setState(() => _replyTarget = null),
+                  child: const Text(
+                    '취소',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: Color(0xFF9E9E9E),
+                    ),
                   ),
                 ),
               ],
@@ -1046,7 +1182,8 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
       child: Scaffold(
         backgroundColor: Colors.white,
         resizeToAvoidBottomInset: false,
-        bottomNavigationBar: placeId.isNotEmpty
+        bottomNavigationBar:
+            placeId.isNotEmpty && _selectedMainTab == 'comments'
             ? AnimatedPadding(
                 duration: const Duration(milliseconds: 150),
                 curve: Curves.easeOut,
@@ -1098,7 +1235,8 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
                                 if (shouldShow != _showFloatingNav) {
                                   setState(() => _showFloatingNav = shouldShow);
                                 }
-                                if (notification.metrics.extentAfter < 300) {
+                                if (_selectedMainTab == 'comments' &&
+                                    notification.metrics.extentAfter < 300) {
                                   _loadMoreComments();
                                 }
                               }
@@ -1147,75 +1285,91 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
                                   ),
                                 ),
                                 SliverToBoxAdapter(
-                                  child: PlacebookDetailInfoView(
-                                    title: title,
-                                    place: place,
-                                    latitude: latitude,
-                                    longitude: longitude,
-                                    time: time,
-                                    status: status,
-                                    profileImageUrl: profileImageUrl,
-                                    nickname: nickname,
-                                  ),
-                                ),
-                                SliverToBoxAdapter(
-                                  child: _PlacebookTrustVoteSection(
-                                    isLoading: _isLoadingTrust,
-                                    isSubmitting: _isSubmittingTrustVote,
-                                    helpfulCount: _helpfulCount,
-                                    suspiciousCount: _suspiciousCount,
-                                    totalVotes: _totalVotes,
-                                    helpfulRate: _helpfulRate,
-                                    trustLabel: _trustLabel,
-                                    userVote: _userVote,
-                                    onHelpfulTap: () =>
-                                        _submitTrustVote('HELPFUL'),
-                                    onSuspiciousTap: () =>
-                                        _submitTrustVote('SUSPICIOUS'),
-                                  ),
-                                ),
-                                SliverToBoxAdapter(
-                                  child: _NearbyPlacesSection(
-                                    isLoading: false,
-                                    places: relatedPlaces,
-                                    themeId: themeId,
-                                    themeTitle: themeLabel,
-                                  ),
-                                ),
-                                const SliverToBoxAdapter(
-                                  child: _SectionDivider(),
-                                ),
-                                SliverToBoxAdapter(
-                                  child: _PlacebookDetailCommentsSection(
+                                  child: _PlacebookContentTabBar(
+                                    selectedTab: _selectedMainTab,
                                     commentCount: _commentCount,
-                                    comments: _commentPreview,
-                                    isLoading: _isLoadingComments,
-                                    selectedSort: _selectedCommentSort,
-                                    onLikeTap: _toggleCommentLikeAt,
-                                    onReplyTap: _handleReplyTap,
-                                    onMentionTap: _handleMentionTap,
-                                    onToggleReplies: _toggleReplies,
-                                    onReplyLikeTap: _toggleReplyLike,
-                                    repliesByCommentId: _repliesByCommentId,
-                                    expandedReplies: _expandedReplies,
-                                    isLoadingMore: _isLoadingMoreComments,
-                                    onSortSelected: (next) {
-                                      if (next == _selectedCommentSort) return;
-                                      _pendingScrollOffset =
-                                          _scrollController.hasClients
-                                          ? _scrollController.offset
-                                          : null;
-                                      setState(
-                                        () => _selectedCommentSort = next,
-                                      );
-                                      _loadCommentPreview();
+                                    onChanged: (tab) {
+                                      if (tab == _selectedMainTab) return;
+                                      setState(() => _selectedMainTab = tab);
                                     },
                                   ),
                                 ),
+                                if (_selectedMainTab == 'detail') ...[
+                                  SliverToBoxAdapter(
+                                    child: PlacebookDetailInfoView(
+                                      title: title,
+                                      place: place,
+                                      latitude: latitude,
+                                      longitude: longitude,
+                                      time: time,
+                                      status: status,
+                                      profileImageUrl: profileImageUrl,
+                                      nickname: nickname,
+                                    ),
+                                  ),
+                                  SliverToBoxAdapter(
+                                    child: _PlacebookTrustVoteSection(
+                                      isLoading: _isLoadingTrust,
+                                      isSubmitting: _isSubmittingTrustVote,
+                                      helpfulCount: _helpfulCount,
+                                      suspiciousCount: _suspiciousCount,
+                                      totalVotes: _totalVotes,
+                                      helpfulRate: _helpfulRate,
+                                      trustLabel: _trustLabel,
+                                      userVote: _userVote,
+                                      onHelpfulTap: () =>
+                                          _submitTrustVote('HELPFUL'),
+                                      onSuspiciousTap: () =>
+                                          _submitTrustVote('SUSPICIOUS'),
+                                    ),
+                                  ),
+                                  SliverToBoxAdapter(
+                                    child: _NearbyPlacesSection(
+                                      isLoading: false,
+                                      places: relatedPlaces,
+                                      themeId: themeId,
+                                      themeTitle: themeLabel,
+                                    ),
+                                  ),
+                                ] else ...[
+                                  SliverToBoxAdapter(
+                                    child: _PlacebookDetailCommentsSection(
+                                      commentCount: _commentCount,
+                                      comments: _commentPreview,
+                                      isLoading: _isLoadingComments,
+                                      selectedSort: _selectedCommentSort,
+                                      onLikeTap: _toggleCommentLikeAt,
+                                      onReplyTap: _handleReplyTap,
+                                      onMentionTap: _handleMentionTap,
+                                      onCommentLongPress: _confirmDeleteComment,
+                                      onToggleReplies: _toggleReplies,
+                                      onReplyLikeTap: _toggleReplyLike,
+                                      onReplyLongPress: _confirmDeleteComment,
+                                      repliesByCommentId: _repliesByCommentId,
+                                      loadingReplies: _loadingReplies,
+                                      expandedReplies: _expandedReplies,
+                                      isLoadingMore: _isLoadingMoreComments,
+                                      onSortSelected: (next) {
+                                        if (next == _selectedCommentSort)
+                                          return;
+                                        _pendingScrollOffset =
+                                            _scrollController.hasClients
+                                            ? _scrollController.offset
+                                            : null;
+                                        setState(
+                                          () => _selectedCommentSort = next,
+                                        );
+                                        _loadCommentPreview();
+                                      },
+                                    ),
+                                  ),
+                                ],
                                 SliverToBoxAdapter(
                                   child: SizedBox(
                                     height:
-                                        commentInputTotalHeight +
+                                        (_selectedMainTab == 'comments'
+                                            ? commentInputTotalHeight
+                                            : 0.0) +
                                         safeBottom +
                                         (hasCheckedIn ? 16.0 : 24.0),
                                   ),
@@ -1259,7 +1413,10 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
                         ),
                       ),
                     ),
-                  if (showContent && _isLoadingComments && !_isPullRefreshing)
+                  if (showContent &&
+                      _selectedMainTab == 'comments' &&
+                      _isLoadingComments &&
+                      !_isPullRefreshing)
                     const Positioned.fill(
                       child: ColoredBox(
                         color: Color(0x80FFFFFF),
@@ -1779,6 +1936,70 @@ class _PlacebookTrustVoteSection extends StatelessWidget {
   }
 }
 
+class _PlacebookContentTabBar extends StatelessWidget {
+  const _PlacebookContentTabBar({
+    required this.selectedTab,
+    required this.commentCount,
+    required this.onChanged,
+  });
+
+  final String selectedTab;
+  final int commentCount;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget tabTextButton(String id, String label) {
+      final selected = selectedTab == id;
+      return CommonInkWell(
+        onTap: () => onChanged(id),
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
+          child: IntrinsicWidth(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontFamily: 'Pretendard',
+                    fontSize: 20,
+                    fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                    height: 1.0,
+                    color: selected ? Colors.black : const Color(0xFFB0B0B0),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  height: 2,
+                  decoration: BoxDecoration(
+                    color: selected ? Colors.black : Colors.transparent,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 18, 16, 12),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.start,
+        children: [
+          tabTextButton('detail', '상세'),
+          const SizedBox(width: 16),
+          tabTextButton('comments', '댓글 $commentCount'),
+        ],
+      ),
+    );
+  }
+}
+
 class _TrustVoteButton extends StatelessWidget {
   const _TrustVoteButton({
     required this.emoji,
@@ -1836,15 +2057,6 @@ class _TrustVoteButton extends StatelessWidget {
         ),
       ),
     );
-  }
-}
-
-class _SectionDivider extends StatelessWidget {
-  const _SectionDivider();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(height: 8, color: const Color(0xFFF5F5F5));
   }
 }
 
@@ -1978,9 +2190,12 @@ class _PlacebookDetailCommentsSection extends StatelessWidget {
     required this.onLikeTap,
     required this.onReplyTap,
     required this.onMentionTap,
+    required this.onCommentLongPress,
     required this.onToggleReplies,
     required this.onReplyLikeTap,
+    required this.onReplyLongPress,
     required this.repliesByCommentId,
+    required this.loadingReplies,
     required this.expandedReplies,
     required this.isLoadingMore,
   });
@@ -1993,9 +2208,12 @@ class _PlacebookDetailCommentsSection extends StatelessWidget {
   final ValueChanged<int> onLikeTap;
   final ValueChanged<FeedCommentItem> onReplyTap;
   final ValueChanged<FeedCommentItem> onMentionTap;
+  final ValueChanged<FeedCommentItem> onCommentLongPress;
   final ValueChanged<FeedCommentItem> onToggleReplies;
   final void Function(String parentId, int index) onReplyLikeTap;
+  final ValueChanged<FeedCommentItem> onReplyLongPress;
   final Map<String, List<FeedCommentItem>> repliesByCommentId;
+  final Set<String> loadingReplies;
   final Set<String> expandedReplies;
   final bool isLoadingMore;
 
@@ -2077,6 +2295,7 @@ class _PlacebookDetailCommentsSection extends StatelessWidget {
                           onLikeTap: () => onLikeTap(i),
                           onReplyTap: () => onReplyTap(comments[i]),
                           onMentionTap: () => onMentionTap(comments[i]),
+                          onLongPress: () => onCommentLongPress(comments[i]),
                           onToggleReplies:
                               comments[i].replyCount != null &&
                                   comments[i].replyCount! > 0
@@ -2093,8 +2312,10 @@ class _PlacebookDetailCommentsSection extends StatelessWidget {
                           parentId: comments[i].id,
                           replies:
                               repliesByCommentId[comments[i].id] ?? const [],
+                          isLoading: loadingReplies.contains(comments[i].id),
                           onLikeTap: onReplyLikeTap,
                           onMentionTap: onMentionTap,
+                          onLongPress: onReplyLongPress,
                         ),
                     ],
                     if (isLoadingMore)
@@ -2120,17 +2341,30 @@ class _CommentRepliesList extends StatelessWidget {
   const _CommentRepliesList({
     required this.parentId,
     required this.replies,
+    required this.isLoading,
     required this.onLikeTap,
     required this.onMentionTap,
+    required this.onLongPress,
   });
 
   final String parentId;
   final List<FeedCommentItem> replies;
+  final bool isLoading;
   final void Function(String parentId, int index) onLikeTap;
   final ValueChanged<FeedCommentItem> onMentionTap;
+  final ValueChanged<FeedCommentItem> onLongPress;
 
   @override
   Widget build(BuildContext context) {
+    if (isLoading) {
+      return const Padding(
+        padding: EdgeInsets.only(left: 44, bottom: 16),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: CommonActivityIndicator(size: 18, strokeWidth: 2),
+        ),
+      );
+    }
     if (replies.isEmpty) {
       return const SizedBox.shrink();
     }
@@ -2145,10 +2379,30 @@ class _CommentRepliesList extends StatelessWidget {
                 comment: replies[i],
                 onLikeTap: () => onLikeTap(parentId, i),
                 onMentionTap: () => onMentionTap(replies[i]),
+                onLongPress: () => onLongPress(replies[i]),
               ),
             ),
         ],
       ),
     );
   }
+}
+
+class _PlaceCommentSplitResult {
+  const _PlaceCommentSplitResult({
+    required this.topLevel,
+    required this.repliesByParent,
+    required this.totalCount,
+  });
+
+  final List<FeedCommentItem> topLevel;
+  final Map<String, List<FeedCommentItem>> repliesByParent;
+  final int totalCount;
+}
+
+class _MentionTarget {
+  const _MentionTarget({required this.userId, required this.displayName});
+
+  final String userId;
+  final String displayName;
 }

@@ -1058,6 +1058,52 @@ class ApiClient {
     return const FeedCommentPage(comments: [], hasNext: false);
   }
 
+  static Future<FeedCommentPage> fetchPlaceComments({
+    required String placeId,
+    String? cursor,
+    int limit = 20,
+    String? orderBy,
+  }) async {
+    final query = <String, String>{
+      'limit': '$limit',
+      if (cursor != null && cursor.isNotEmpty) 'cursor': cursor,
+      if (orderBy != null && orderBy.isNotEmpty) 'orderBy': orderBy,
+    };
+    final uri = Uri.parse(
+      '$baseUrl/api/v1/comments/places/$placeId',
+    ).replace(queryParameters: query);
+    _logRequest('GET', uri);
+    final response = await _sendWithAuthRetry(
+      () => http.get(uri, headers: _headers()),
+      retryRequest: () => http.get(uri, headers: _headers()),
+    );
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Place comments request failed: ${response.statusCode}');
+    }
+    final json = jsonDecode(response.body);
+    if (json is! Map<String, dynamic>) {
+      return const FeedCommentPage(comments: [], hasNext: false);
+    }
+    final data = json['data'];
+    final root = data is Map<String, dynamic> ? data : json;
+    final items = root['items'];
+    final comments = items is List
+        ? items
+              .whereType<Map<String, dynamic>>()
+              .map(FeedCommentItem.fromJson)
+              .toList()
+        : const <FeedCommentItem>[];
+    final hasMore = (root['hasMore'] as bool?) ?? false;
+    final nextCursor = root['nextCursor']?.toString();
+    return FeedCommentPage(
+      comments: comments,
+      hasNext: hasMore,
+      nextCursor: nextCursor,
+      totalCount: null,
+    );
+  }
+
   static Future<List<MentionUser>> fetchSpaceParticipants({
     required String spaceId,
     int limit = 50,
@@ -1191,6 +1237,52 @@ class ApiClient {
     }
   }
 
+  static Future<void> createPlaceComment({
+    required String placeId,
+    required String content,
+    String? parentCommentId,
+    List<String> mentionedUserIds = const [],
+    List<String> imageFileIds = const [],
+  }) async {
+    final uri = Uri.parse('$baseUrl/api/v1/comments/places/$placeId');
+    final body = <String, dynamic>{
+      'content': content,
+      'mentionedUserIds': mentionedUserIds,
+      'imageFileIds': imageFileIds,
+      if (parentCommentId != null && parentCommentId.isNotEmpty)
+        'parentCommentId': parentCommentId,
+    };
+    _logJsonRequest('POST', uri, body);
+    final response = await _sendWithAuthRetry(
+      () =>
+          http.post(uri, headers: _headers(json: true), body: jsonEncode(body)),
+      retryRequest: () =>
+          http.post(uri, headers: _headers(json: true), body: jsonEncode(body)),
+    );
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Place comment create failed: ${response.statusCode}');
+    }
+  }
+
+  static Future<void> deletePlaceComment({
+    required String placeId,
+    required String commentId,
+  }) async {
+    final uri = Uri.parse(
+      '$baseUrl/api/v1/comments/places/$placeId/$commentId',
+    );
+    _logRequest('DELETE', uri);
+    final response = await _sendWithAuthRetry(
+      () => http.delete(uri, headers: _headers()),
+      retryRequest: () => http.delete(uri, headers: _headers()),
+    );
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Place comment delete failed: ${response.statusCode}');
+    }
+  }
+
   static Future<void> setCommentLike({
     required String commentId,
     required bool isLiked,
@@ -1211,11 +1303,42 @@ class ApiClient {
     }
   }
 
+  static Future<void> setPlaceCommentLike({
+    required String placeId,
+    required String commentId,
+    required bool isLiked,
+  }) async {
+    final uri = Uri.parse(
+      '$baseUrl/api/v1/comments/places/$placeId/$commentId/like',
+    );
+    _logRequest(isLiked ? 'POST' : 'DELETE', uri);
+    final response = await _sendWithAuthRetry(
+      () => isLiked
+          ? http.post(uri, headers: _headers())
+          : http.delete(uri, headers: _headers()),
+      retryRequest: () => isLiked
+          ? http.post(uri, headers: _headers())
+          : http.delete(uri, headers: _headers()),
+    );
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        'Place comment like request failed: ${response.statusCode}',
+      );
+    }
+  }
+
   static Future<List<FeedCommentItem>> fetchCommentReplies({
     required String commentId,
+    String? cursor,
+    int limit = 20,
   }) async {
     final uri = Uri.parse('$baseUrl/api/v1/comments/replies').replace(
-      queryParameters: {'parentId': commentId, 'dir': 'next', 'limit': '20'},
+      queryParameters: {
+        'parentId': commentId,
+        'limit': '$limit',
+        if (cursor != null && cursor.isNotEmpty) 'cursor': cursor,
+      },
     );
     _logRequest('GET', uri);
     final response = await _sendWithAuthRetry(
@@ -1230,7 +1353,7 @@ class ApiClient {
     final data = json is Map<String, dynamic> ? json['data'] : null;
     final root = data is Map<String, dynamic> ? data : json;
     if (root is Map<String, dynamic>) {
-      final replies = root['replies'] ?? root['comments'] ?? root['items'];
+      final replies = root['items'] ?? root['replies'] ?? root['comments'];
       if (replies is List) {
         return replies
             .whereType<Map<String, dynamic>>()
