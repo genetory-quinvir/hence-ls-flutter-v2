@@ -1852,85 +1852,93 @@ class _PlacebookTrustVoteSection extends StatelessWidget {
     final helpfulSelected = userVote == 'HELPFUL';
     final suspiciousSelected = userVote == 'SUSPICIOUS';
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            '장소 검증',
-            style: TextStyle(
-              fontFamily: 'Pretendard',
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-              color: Colors.black,
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF8FAFD),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFEAF0F8)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              '장소 검증',
+              style: TextStyle(
+                fontFamily: 'Pretendard',
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                color: Colors.black,
+              ),
             ),
-          ),
-          const SizedBox(height: 12),
-          if (helpfulCount > 0)
-            Text.rich(
-              TextSpan(
+            const SizedBox(height: 12),
+            if (helpfulCount > 0)
+              Text.rich(
+                TextSpan(
+                  children: [
+                    TextSpan(
+                      text: '$helpfulCount',
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    const TextSpan(text: '명의 유저들이 도움을 받았어요!'),
+                  ],
+                ),
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w400,
+                  color: Colors.black,
+                ),
+              )
+            else
+              const Text(
+                '아직 첫 검증을 기다리고 있어요.',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w400,
+                  color: Colors.black,
+                ),
+              ),
+            const SizedBox(height: 2),
+            Text(
+              trustMetaText,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: Color(0xFF9E9E9E),
+              ),
+            ),
+            const SizedBox(height: 16),
+            if (isLoading)
+              const Center(child: CommonActivityIndicator(size: 20))
+            else
+              Row(
                 children: [
-                  TextSpan(
-                    text: '$helpfulCount',
-                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  Expanded(
+                    child: _TrustVoteButton(
+                      emoji: '😊',
+                      label: '도움돼요',
+                      count: helpfulCount,
+                      selected: helpfulSelected,
+                      enabled: !isSubmitting && !helpfulSelected,
+                      onTap: onHelpfulTap,
+                    ),
                   ),
-                  const TextSpan(text: '명의 유저들이 도움을 받았어요!'),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _TrustVoteButton(
+                      emoji: '😟',
+                      label: '의심돼요',
+                      count: suspiciousCount,
+                      selected: suspiciousSelected,
+                      enabled: !isSubmitting && !suspiciousSelected,
+                      onTap: onSuspiciousTap,
+                    ),
+                  ),
                 ],
               ),
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w400,
-                color: Colors.black,
-              ),
-            )
-          else
-            const Text(
-              '아직 첫 검증을 기다리고 있어요.',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w400,
-                color: Colors.black,
-              ),
-            ),
-          const SizedBox(height: 2),
-          Text(
-            trustMetaText,
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-              color: Color(0xFF9E9E9E),
-            ),
-          ),
-          const SizedBox(height: 16),
-          if (isLoading)
-            const Center(child: CommonActivityIndicator(size: 20))
-          else
-            Row(
-              children: [
-                Expanded(
-                  child: _TrustVoteButton(
-                    emoji: '😊',
-                    label: '도움돼요',
-                    count: helpfulCount,
-                    selected: helpfulSelected,
-                    enabled: !isSubmitting && !helpfulSelected,
-                    onTap: onHelpfulTap,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _TrustVoteButton(
-                    emoji: '😟',
-                    label: '의심돼요',
-                    count: suspiciousCount,
-                    selected: suspiciousSelected,
-                    enabled: !isSubmitting && !suspiciousSelected,
-                    onTap: onSuspiciousTap,
-                  ),
-                ),
-              ],
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1987,7 +1995,7 @@ class _PlacebookContentTabBar extends StatelessWidget {
     }
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 18, 16, 12),
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 14),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.start,
         children: [
@@ -2082,7 +2090,7 @@ class _NearbyPlacesSection extends StatelessWidget {
       );
     }
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -2090,12 +2098,12 @@ class _NearbyPlacesSection extends StatelessWidget {
             '같은 테마를 가지고 있는 장소',
             style: TextStyle(
               fontFamily: 'Pretendard',
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
               color: Colors.black,
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           if (places.isEmpty)
             Padding(
               padding: EdgeInsets.symmetric(vertical: 16),
@@ -2120,12 +2128,12 @@ class _NearbyPlacesSection extends StatelessWidget {
           else
             SizedBox(
               width: double.infinity,
-              height: 148,
+              height: 164,
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(
                   horizontal: 0,
-                  vertical: 12,
+                  vertical: 10,
                 ),
                 itemCount: places.length,
                 separatorBuilder: (_, _) => const SizedBox(width: 12),
@@ -2225,7 +2233,7 @@ class _PlacebookDetailCommentsSection extends StatelessWidget {
       {'label': '인기순', 'value': 'popular'},
     ];
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -2235,8 +2243,8 @@ class _PlacebookDetailCommentsSection extends StatelessWidget {
                 '댓글',
                 style: const TextStyle(
                   fontFamily: 'Pretendard',
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
                   color: Colors.black,
                 ),
               ),
