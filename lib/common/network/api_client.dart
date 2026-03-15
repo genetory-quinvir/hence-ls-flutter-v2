@@ -45,7 +45,9 @@ class ApiClient {
 
     debugPrint('[API][AUTH] 401 received, attempting refresh');
     try {
-      await AuthStore.instance.refreshSession(refresher: (token) => refreshSession(refreshToken: token));
+      await AuthStore.instance.refreshSession(
+        refresher: (token) => refreshSession(refreshToken: token),
+      );
     } catch (e) {
       debugPrint('[API][AUTH] refresh failed: $e');
       // Refresh failed: clear local session so UI can fall back to signed-out.
@@ -72,10 +74,9 @@ class ApiClient {
     required String platform,
     required String version,
   }) async {
-    final uri = Uri.parse('$baseUrl/config').replace(queryParameters: {
-      'platform': platform,
-      'version': version,
-    });
+    final uri = Uri.parse(
+      '$baseUrl/config',
+    ).replace(queryParameters: {'platform': platform, 'version': version});
     _logRequest('GET', uri);
     final response = await http.get(uri, headers: _headers());
     _logResponse(response);
@@ -151,9 +152,7 @@ class ApiClient {
     String? dateOfBirth,
   }) async {
     final uri = Uri.parse('$baseUrl/api/v1/users/profile');
-    final body = <String, dynamic>{
-      'nickname': nickname,
-    };
+    final body = <String, dynamic>{'nickname': nickname};
     if (name != null) body['name'] = name;
     if (gender != null) body['gender'] = gender;
     if (marketingConsent != null) body['marketingConsent'] = marketingConsent;
@@ -163,8 +162,16 @@ class ApiClient {
 
     _logJsonRequest('PATCH', uri, body);
     final response = await _sendWithAuthRetry(
-      () => http.patch(uri, headers: _headers(json: true), body: jsonEncode(body)),
-      retryRequest: () => http.patch(uri, headers: _headers(json: true), body: jsonEncode(body)),
+      () => http.patch(
+        uri,
+        headers: _headers(json: true),
+        body: jsonEncode(body),
+      ),
+      retryRequest: () => http.patch(
+        uri,
+        headers: _headers(json: true),
+        body: jsonEncode(body),
+      ),
     );
     _logResponse(response);
     if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -226,15 +233,14 @@ class ApiClient {
   }) async {
     // Push token register: POST /api/v1/push/tokens
     final uri = Uri.parse('$baseUrl/api/v1/push/tokens');
-    final body = <String, dynamic>{
-      'token': fcmToken,
-      'platform': platform,
-    };
+    final body = <String, dynamic>{'token': fcmToken, 'platform': platform};
 
     _logJsonRequest('POST', uri, body, redactKeys: const {'token'});
     final response = await _sendWithAuthRetry(
-      () => http.post(uri, headers: _headers(json: true), body: jsonEncode(body)),
-      retryRequest: () => http.post(uri, headers: _headers(json: true), body: jsonEncode(body)),
+      () =>
+          http.post(uri, headers: _headers(json: true), body: jsonEncode(body)),
+      retryRequest: () =>
+          http.post(uri, headers: _headers(json: true), body: jsonEncode(body)),
     );
     _logResponse(response);
     if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -277,22 +283,37 @@ class ApiClient {
     };
     _logJsonRequest('DELETE', uri, fallbackBody, redactKeys: const {'token'});
     final fallbackResponse = await _sendWithAuthRetry(
-      () => http.delete(uri, headers: _headers(json: true), body: jsonEncode(fallbackBody)),
-      retryRequest: () => http.delete(uri, headers: _headers(json: true), body: jsonEncode(fallbackBody)),
+      () => http.delete(
+        uri,
+        headers: _headers(json: true),
+        body: jsonEncode(fallbackBody),
+      ),
+      retryRequest: () => http.delete(
+        uri,
+        headers: _headers(json: true),
+        body: jsonEncode(fallbackBody),
+      ),
     );
     _logResponse(fallbackResponse);
-    if (fallbackResponse.statusCode < 200 || fallbackResponse.statusCode >= 300) {
-      throw Exception('Push token delete failed: ${fallbackResponse.statusCode}');
+    if (fallbackResponse.statusCode < 200 ||
+        fallbackResponse.statusCode >= 300) {
+      throw Exception(
+        'Push token delete failed: ${fallbackResponse.statusCode}',
+      );
     }
   }
 
-  static Future<void> withdrawAccount({required String withdrawalReason}) async {
+  static Future<void> withdrawAccount({
+    required String withdrawalReason,
+  }) async {
     final uri = Uri.parse('$authBaseUrl/api/v1/auth/withdrawal');
     final body = <String, dynamic>{'withdrawalReason': withdrawalReason.trim()};
     _logJsonRequest('POST', uri, body);
     final response = await _sendWithAuthRetry(
-      () => http.post(uri, headers: _headers(json: true), body: jsonEncode(body)),
-      retryRequest: () => http.post(uri, headers: _headers(json: true), body: jsonEncode(body)),
+      () =>
+          http.post(uri, headers: _headers(json: true), body: jsonEncode(body)),
+      retryRequest: () =>
+          http.post(uri, headers: _headers(json: true), body: jsonEncode(body)),
     );
     _logResponse(response);
     if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -453,7 +474,8 @@ class ApiClient {
     _logResponse(response);
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception(
-          'Placebook place image upload failed: ${response.statusCode}');
+        'Placebook place image upload failed: ${response.statusCode}',
+      );
     }
     if (response.body.isEmpty) {
       throw Exception('Placebook place image upload failed: empty response');
@@ -521,8 +543,10 @@ class ApiClient {
 
     _logJsonRequest('POST', uri, body);
     final response = await _sendWithAuthRetry(
-      () => http.post(uri, headers: _headers(json: true), body: jsonEncode(body)),
-      retryRequest: () => http.post(uri, headers: _headers(json: true), body: jsonEncode(body)),
+      () =>
+          http.post(uri, headers: _headers(json: true), body: jsonEncode(body)),
+      retryRequest: () =>
+          http.post(uri, headers: _headers(json: true), body: jsonEncode(body)),
     );
     _logResponse(response);
     if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -549,9 +573,7 @@ class ApiClient {
     String? expiresAt,
   }) async {
     final uri = Uri.parse('$baseUrl/api/v1/feeds/$feedId');
-    final body = <String, dynamic>{
-      'content': content,
-    };
+    final body = <String, dynamic>{'content': content};
     if (placeName != null) {
       body['placeName'] = placeName;
     }
@@ -585,8 +607,16 @@ class ApiClient {
 
     _logJsonRequest('PATCH', uri, body);
     final response = await _sendWithAuthRetry(
-      () => http.patch(uri, headers: _headers(json: true), body: jsonEncode(body)),
-      retryRequest: () => http.patch(uri, headers: _headers(json: true), body: jsonEncode(body)),
+      () => http.patch(
+        uri,
+        headers: _headers(json: true),
+        body: jsonEncode(body),
+      ),
+      retryRequest: () => http.patch(
+        uri,
+        headers: _headers(json: true),
+        body: jsonEncode(body),
+      ),
     );
     _logResponse(response);
     if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -594,9 +624,7 @@ class ApiClient {
     }
   }
 
-  static Future<void> deletePersonalFeed({
-    required String feedId,
-  }) async {
+  static Future<void> deletePersonalFeed({required String feedId}) async {
     final uri = Uri.parse('$baseUrl/api/v1/feeds/$feedId');
     _logRequest('DELETE', uri);
     final response = await _sendWithAuthRetry(
@@ -654,7 +682,10 @@ class ApiClient {
         for (final entry in uploadedFiles) {
           if (entry is Map<String, dynamic>) {
             final candidate =
-                entry['fileId'] ?? entry['id'] ?? entry['fileID'] ?? entry['file_id'];
+                entry['fileId'] ??
+                entry['id'] ??
+                entry['fileID'] ??
+                entry['file_id'];
             if (candidate is String && candidate.isNotEmpty) {
               ids.add(candidate);
             }
@@ -695,7 +726,9 @@ class ApiClient {
     if (hashtags != null && hashtags.isNotEmpty) {
       query['hashtags'] = hashtags.join(',');
     }
-    final uri = Uri.parse('$baseUrl/api/v1/feeds').replace(queryParameters: query);
+    final uri = Uri.parse(
+      '$baseUrl/api/v1/feeds',
+    ).replace(queryParameters: query);
     _logRequest('GET', uri);
     final response = await _sendWithAuthRetry(
       () => http.get(uri, headers: _headers()),
@@ -722,9 +755,7 @@ class ApiClient {
     final json = jsonDecode(response.body) as Map<String, dynamic>;
     final data = json['data'];
     if (data is Map<String, dynamic>) return data;
-    if (data is List &&
-        data.isNotEmpty &&
-        data.first is Map<String, dynamic>) {
+    if (data is List && data.isNotEmpty && data.first is Map<String, dynamic>) {
       return data.first as Map<String, dynamic>;
     }
     return json;
@@ -735,15 +766,13 @@ class ApiClient {
     String dir = 'next',
     String? cursor,
   }) async {
-    final query = <String, String>{
-      'dir': dir,
-      'limit': '$limit',
-    };
+    final query = <String, String>{'dir': dir, 'limit': '$limit'};
     if (cursor != null && cursor.isNotEmpty) {
       query['cursor'] = cursor;
     }
-    final uri =
-        Uri.parse('$baseUrl/api/v1/feeds/mine').replace(queryParameters: query);
+    final uri = Uri.parse(
+      '$baseUrl/api/v1/feeds/mine',
+    ).replace(queryParameters: query);
     _logRequest('GET', uri);
     final response = await _sendWithAuthRetry(
       () => http.get(uri, headers: _headers()),
@@ -762,15 +791,13 @@ class ApiClient {
     String dir = 'next',
     String? cursor,
   }) async {
-    final query = <String, String>{
-      'dir': dir,
-      'limit': '$limit',
-    };
+    final query = <String, String>{'dir': dir, 'limit': '$limit'};
     if (cursor != null && cursor.isNotEmpty) {
       query['cursor'] = cursor;
     }
-    final uri = Uri.parse('$baseUrl/api/v1/feeds/user/$userId')
-        .replace(queryParameters: query);
+    final uri = Uri.parse(
+      '$baseUrl/api/v1/feeds/user/$userId',
+    ).replace(queryParameters: query);
     _logRequest('GET', uri);
     final response = await _sendWithAuthRetry(
       () => http.get(uri, headers: _headers()),
@@ -815,16 +842,14 @@ class ApiClient {
     String dir = 'next',
     String? cursor,
   }) async {
-    final query = <String, String>{
-      'dir': dir,
-      'limit': '$limit',
-    };
+    final query = <String, String>{'dir': dir, 'limit': '$limit'};
     if (cursor != null && cursor.isNotEmpty) {
       query['cursor'] = cursor;
     }
     final candidates = <Uri>[
-      Uri.parse('$baseUrl/api/v1/users/followers/$userId')
-          .replace(queryParameters: query),
+      Uri.parse(
+        '$baseUrl/api/v1/users/followers/$userId',
+      ).replace(queryParameters: query),
     ];
     http.Response? lastResponse;
     for (final uri in candidates) {
@@ -839,7 +864,9 @@ class ApiClient {
         return jsonDecode(response.body) as Map<String, dynamic>;
       }
     }
-    throw Exception('Followers request failed: ${lastResponse?.statusCode ?? 'unknown'}');
+    throw Exception(
+      'Followers request failed: ${lastResponse?.statusCode ?? 'unknown'}',
+    );
   }
 
   static Future<Map<String, dynamic>> fetchFollowing({
@@ -848,16 +875,14 @@ class ApiClient {
     String dir = 'next',
     String? cursor,
   }) async {
-    final query = <String, String>{
-      'dir': dir,
-      'limit': '$limit',
-    };
+    final query = <String, String>{'dir': dir, 'limit': '$limit'};
     if (cursor != null && cursor.isNotEmpty) {
       query['cursor'] = cursor;
     }
     final candidates = <Uri>[
-      Uri.parse('$baseUrl/api/v1/users/followings/$userId')
-          .replace(queryParameters: query),
+      Uri.parse(
+        '$baseUrl/api/v1/users/followings/$userId',
+      ).replace(queryParameters: query),
     ];
     http.Response? lastResponse;
     for (final uri in candidates) {
@@ -872,7 +897,9 @@ class ApiClient {
         return jsonDecode(response.body) as Map<String, dynamic>;
       }
     }
-    throw Exception('Following request failed: ${lastResponse?.statusCode ?? 'unknown'}');
+    throw Exception(
+      'Following request failed: ${lastResponse?.statusCode ?? 'unknown'}',
+    );
   }
 
   static Future<Map<String, dynamic>> fetchMySpaceParticipants({
@@ -892,8 +919,9 @@ class ApiClient {
     if (userId.isNotEmpty) {
       query['authorUserId'] = userId;
     }
-    final uri = Uri.parse('$baseUrl/api/v1/feeds')
-        .replace(queryParameters: query);
+    final uri = Uri.parse(
+      '$baseUrl/api/v1/feeds',
+    ).replace(queryParameters: query);
     _logRequest('GET', uri);
     final response = await _sendWithAuthRetry(
       () => http.get(uri, headers: _headers()),
@@ -901,11 +929,12 @@ class ApiClient {
     );
     _logResponse(response);
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception('My space participants request failed: ${response.statusCode}');
+      throw Exception(
+        'My space participants request failed: ${response.statusCode}',
+      );
     }
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
-
 
   static Future<FeedCommentPage> fetchFeedComments({
     required String feedId,
@@ -924,8 +953,9 @@ class ApiClient {
     if (cursor != null && cursor.isNotEmpty) {
       query['cursor'] = cursor;
     }
-    final uri =
-        Uri.parse('$baseUrl/api/v1/comments').replace(queryParameters: query);
+    final uri = Uri.parse(
+      '$baseUrl/api/v1/comments',
+    ).replace(queryParameters: query);
     _logRequest('GET', uri);
     final response = await _sendWithAuthRetry(
       () => http.get(uri, headers: _headers()),
@@ -939,9 +969,12 @@ class ApiClient {
     final data = json is Map<String, dynamic> ? json['data'] : null;
     final root = data is Map<String, dynamic> ? data : json;
     final meta = root is Map<String, dynamic> ? root['meta'] : null;
-    final metaMap = meta is Map<String, dynamic> ? meta : const <String, dynamic>{};
+    final metaMap = meta is Map<String, dynamic>
+        ? meta
+        : const <String, dynamic>{};
     final hasNext = (metaMap['hasNext'] as bool?) ?? false;
-    final totalCount = (metaMap['totalCount'] as num?)?.toInt() ??
+    final totalCount =
+        (metaMap['totalCount'] as num?)?.toInt() ??
         (metaMap['count'] as num?)?.toInt();
     final nextCursor =
         metaMap['nextCursor'] as String? ?? metaMap['cursor'] as String?;
@@ -982,9 +1015,9 @@ class ApiClient {
       if (cursor != null && cursor.isNotEmpty) 'cursor': cursor,
       if (orderBy != null && orderBy.isNotEmpty) 'orderBy': orderBy,
     };
-    final uri = Uri.parse('$baseUrl/api/v1/comments').replace(
-      queryParameters: query,
-    );
+    final uri = Uri.parse(
+      '$baseUrl/api/v1/comments',
+    ).replace(queryParameters: query);
     _logRequest('GET', uri);
     final response = await _sendWithAuthRetry(
       () => http.get(uri, headers: _headers()),
@@ -1001,12 +1034,17 @@ class ApiClient {
       final items = root['items'];
       final meta = root['meta'] ?? json['meta'];
       final comments = items is List
-          ? items.whereType<Map<String, dynamic>>().map(FeedCommentItem.fromJson).toList()
+          ? items
+                .whereType<Map<String, dynamic>>()
+                .map(FeedCommentItem.fromJson)
+                .toList()
           : const <FeedCommentItem>[];
       final hasNext = meta is Map<String, dynamic>
           ? (meta['hasNext'] as bool?) ?? false
           : false;
-      final nextCursor = meta is Map<String, dynamic> ? meta['nextCursor'] as String? : null;
+      final nextCursor = meta is Map<String, dynamic>
+          ? meta['nextCursor'] as String?
+          : null;
       final totalCount = meta is Map<String, dynamic>
           ? (meta['totalCount'] as num?)?.toInt()
           : null;
@@ -1025,15 +1063,13 @@ class ApiClient {
     int limit = 50,
     String? cursor,
   }) async {
-    final query = <String, String>{
-      'spaceId': spaceId,
-      'limit': '$limit',
-    };
+    final query = <String, String>{'spaceId': spaceId, 'limit': '$limit'};
     if (cursor != null && cursor.isNotEmpty) {
       query['cursor'] = cursor;
     }
-    final uri = Uri.parse('$baseUrl/api/v1/space-participants')
-        .replace(queryParameters: query);
+    final uri = Uri.parse(
+      '$baseUrl/api/v1/space-participants',
+    ).replace(queryParameters: query);
     _logRequest('GET', uri);
     final response = await _sendWithAuthRetry(
       () => http.get(uri, headers: _headers()),
@@ -1041,13 +1077,16 @@ class ApiClient {
     );
     _logResponse(response);
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception('Space participants request failed: ${response.statusCode}');
+      throw Exception(
+        'Space participants request failed: ${response.statusCode}',
+      );
     }
     final json = jsonDecode(response.body);
     final data = json is Map<String, dynamic> ? json['data'] : null;
     final root = data is Map<String, dynamic> ? data : json;
     if (root is Map<String, dynamic>) {
-      final participants = root['participants'] ?? root['users'] ?? root['items'];
+      final participants =
+          root['participants'] ?? root['users'] ?? root['items'];
       if (participants is List) {
         return participants
             .whereType<Map<String, dynamic>>()
@@ -1079,8 +1118,10 @@ class ApiClient {
     }
     _logJsonRequest('POST', uri, body);
     final response = await _sendWithAuthRetry(
-      () => http.post(uri, headers: _headers(json: true), body: jsonEncode(body)),
-      retryRequest: () => http.post(uri, headers: _headers(json: true), body: jsonEncode(body)),
+      () =>
+          http.post(uri, headers: _headers(json: true), body: jsonEncode(body)),
+      retryRequest: () =>
+          http.post(uri, headers: _headers(json: true), body: jsonEncode(body)),
     );
     _logResponse(response);
     if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -1107,8 +1148,10 @@ class ApiClient {
     }
     _logJsonRequest('POST', uri, body);
     final response = await _sendWithAuthRetry(
-      () => http.post(uri, headers: _headers(json: true), body: jsonEncode(body)),
-      retryRequest: () => http.post(uri, headers: _headers(json: true), body: jsonEncode(body)),
+      () =>
+          http.post(uri, headers: _headers(json: true), body: jsonEncode(body)),
+      retryRequest: () =>
+          http.post(uri, headers: _headers(json: true), body: jsonEncode(body)),
     );
     _logResponse(response);
     if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -1137,8 +1180,10 @@ class ApiClient {
     }
     _logJsonRequest('POST', uri, body);
     final response = await _sendWithAuthRetry(
-      () => http.post(uri, headers: _headers(json: true), body: jsonEncode(body)),
-      retryRequest: () => http.post(uri, headers: _headers(json: true), body: jsonEncode(body)),
+      () =>
+          http.post(uri, headers: _headers(json: true), body: jsonEncode(body)),
+      retryRequest: () =>
+          http.post(uri, headers: _headers(json: true), body: jsonEncode(body)),
     );
     _logResponse(response);
     if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -1170,11 +1215,7 @@ class ApiClient {
     required String commentId,
   }) async {
     final uri = Uri.parse('$baseUrl/api/v1/comments/replies').replace(
-      queryParameters: {
-        'parentId': commentId,
-        'dir': 'next',
-        'limit': '20',
-      },
+      queryParameters: {'parentId': commentId, 'dir': 'next', 'limit': '20'},
     );
     _logRequest('GET', uri);
     final response = await _sendWithAuthRetry(
@@ -1205,15 +1246,13 @@ class ApiClient {
     String dir = 'next',
     String? cursor,
   }) async {
-    final query = <String, String>{
-      'dir': dir,
-      'limit': '$limit',
-    };
+    final query = <String, String>{'dir': dir, 'limit': '$limit'};
     if (cursor != null && cursor.isNotEmpty) {
       query['cursor'] = cursor;
     }
-    final uri = Uri.parse('$baseUrl/api/v1/notifications')
-        .replace(queryParameters: query);
+    final uri = Uri.parse(
+      '$baseUrl/api/v1/notifications',
+    ).replace(queryParameters: query);
     _logRequest('GET', uri);
     final response = await _sendWithAuthRetry(
       () => http.get(uri, headers: _headers()),
@@ -1254,7 +1293,11 @@ class ApiClient {
     };
 
     _logJsonRequest('POST', uri, body, redactKeys: const {'accessToken'});
-    final response = await http.post(uri, headers: _headers(json: true), body: jsonEncode(body));
+    final response = await http.post(
+      uri,
+      headers: _headers(json: true),
+      body: jsonEncode(body),
+    );
     _logResponse(response);
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception('Social login failed: ${response.statusCode}');
@@ -1271,9 +1314,7 @@ class ApiClient {
     _logRequest('POST', uri);
     final response = await http.post(
       uri,
-      headers: {
-        'Authorization': 'Basic $encoded',
-      },
+      headers: {'Authorization': 'Basic $encoded'},
     );
     _logResponse(response);
     if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -1304,8 +1345,10 @@ class ApiClient {
       if (order != null && order.isNotEmpty) 'order': order,
       if (categoryId != null && categoryId.isNotEmpty) 'categoryId': categoryId,
       if (query != null && query.isNotEmpty) 'q': query,
-      if (themeIds != null && themeIds.isNotEmpty) 'themeIds': themeIds.join(','),
-      if (hashtags != null && hashtags.isNotEmpty) 'hashtags': hashtags.join(','),
+      if (themeIds != null && themeIds.isNotEmpty)
+        'themeIds': themeIds.join(','),
+      if (hashtags != null && hashtags.isNotEmpty)
+        'hashtags': hashtags.join(','),
     };
     uri = uri.replace(queryParameters: queryParams);
     _logRequest('GET', uri);
@@ -1315,7 +1358,9 @@ class ApiClient {
     );
     _logResponse(response);
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception('My placebook places request failed: ${response.statusCode}');
+      throw Exception(
+        'My placebook places request failed: ${response.statusCode}',
+      );
     }
     return _extractPlacebookItems(jsonDecode(response.body));
   }
@@ -1329,7 +1374,9 @@ class ApiClient {
     );
     _logResponse(response);
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception('My placebook places request failed: ${response.statusCode}');
+      throw Exception(
+        'My placebook places request failed: ${response.statusCode}',
+      );
     }
     final json = jsonDecode(response.body);
     if (json is Map<String, dynamic>) {
@@ -1376,8 +1423,9 @@ class ApiClient {
     if (latitude != null) params['latitude'] = '$latitude';
     if (longitude != null) params['longitude'] = '$longitude';
     if (cursor != null && cursor.isNotEmpty) params['cursor'] = cursor;
-    final uri = Uri.parse('$baseUrl/api/v1/placebook/places')
-        .replace(queryParameters: params);
+    final uri = Uri.parse(
+      '$baseUrl/api/v1/placebook/places',
+    ).replace(queryParameters: params);
     _logRequest('GET', uri);
     final response = await _sendWithAuthRetry(
       () => http.get(uri, headers: _headers()),
@@ -1386,7 +1434,8 @@ class ApiClient {
     _logResponse(response);
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception(
-          'Placebook places list request failed: ${response.statusCode}');
+        'Placebook places list request failed: ${response.statusCode}',
+      );
     }
     final json = jsonDecode(response.body);
     return json is Map<String, dynamic> ? json : <String, dynamic>{};
@@ -1396,17 +1445,30 @@ class ApiClient {
     required String placeId,
     int limit = 3,
   }) async {
-    final uri = Uri.parse('$baseUrl/api/v1/placebook/places/$placeId/nearby')
-        .replace(queryParameters: {'limit': '$limit'});
-    _logRequest('GET', uri);
-    final response = await _sendWithAuthRetry(
-      () => http.get(uri, headers: _headers()),
-      retryRequest: () => http.get(uri, headers: _headers()),
+    final primaryUri = Uri.parse(
+      '$baseUrl/api/v1/placebook/places/$placeId/nearby',
+    ).replace(queryParameters: {'limit': '$limit'});
+    final fallbackUri = Uri.parse(
+      '$baseUrl/v1/placebook/places/$placeId/nearby',
+    ).replace(queryParameters: {'limit': '$limit'});
+    _logRequest('GET', primaryUri);
+    var response = await _sendWithAuthRetry(
+      () => http.get(primaryUri, headers: _headers()),
+      retryRequest: () => http.get(primaryUri, headers: _headers()),
     );
+    if (response.statusCode == 404) {
+      _logResponse(response);
+      _logRequest('GET', fallbackUri);
+      response = await _sendWithAuthRetry(
+        () => http.get(fallbackUri, headers: _headers()),
+        retryRequest: () => http.get(fallbackUri, headers: _headers()),
+      );
+    }
     _logResponse(response);
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception(
-          'Placebook places nearby request failed: ${response.statusCode}');
+        'Placebook places nearby request failed: ${response.statusCode}',
+      );
     }
     final json = jsonDecode(response.body);
     return json is Map<String, dynamic> ? json : <String, dynamic>{};
@@ -1436,7 +1498,9 @@ class ApiClient {
     );
     _logResponse(response);
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception('My placebook info request failed: ${response.statusCode}');
+      throw Exception(
+        'My placebook info request failed: ${response.statusCode}',
+      );
     }
     final json = jsonDecode(response.body);
     if (json is Map<String, dynamic>) {
@@ -1461,8 +1525,7 @@ class ApiClient {
     );
     _logResponse(response);
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception(
-          'Placebook place delete failed: ${response.statusCode}');
+      throw Exception('Placebook place delete failed: ${response.statusCode}');
     }
   }
 
@@ -1476,8 +1539,9 @@ class ApiClient {
       'limit': '$limit',
       if (cursor != null && cursor.isNotEmpty) 'cursor': cursor,
     };
-    final uri = Uri.parse('$baseUrl/api/v1/placebook/my-places/search')
-        .replace(queryParameters: params);
+    final uri = Uri.parse(
+      '$baseUrl/api/v1/placebook/my-places/search',
+    ).replace(queryParameters: params);
     _logRequest('GET', uri);
     final response = await _sendWithAuthRetry(
       () => http.get(uri, headers: _headers()),
@@ -1486,7 +1550,8 @@ class ApiClient {
     _logResponse(response);
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception(
-          'My placebook search request failed: ${response.statusCode}');
+        'My placebook search request failed: ${response.statusCode}',
+      );
     }
     final json = jsonDecode(response.body);
     if (json is Map<String, dynamic>) {
@@ -1500,8 +1565,9 @@ class ApiClient {
       final hasNext = meta is Map<String, dynamic>
           ? (meta['hasNext'] as bool?) ?? false
           : false;
-      final nextCursor =
-          meta is Map<String, dynamic> ? meta['nextCursor'] as String? : null;
+      final nextCursor = meta is Map<String, dynamic>
+          ? meta['nextCursor'] as String?
+          : null;
       final totalCount = meta is Map<String, dynamic>
           ? (meta['totalCount'] as num?)?.toInt()
           : null;
@@ -1542,15 +1608,19 @@ class ApiClient {
       if (order != null && order.isNotEmpty) 'order': order,
       if (categoryId != null && categoryId.isNotEmpty) 'categoryId': categoryId,
       if (query != null && query.isNotEmpty) 'q': query,
-      if (themeIds != null && themeIds.isNotEmpty) 'themeIds': themeIds.join(','),
-      if (hashtags != null && hashtags.isNotEmpty) 'hashtags': hashtags.join(','),
+      if (themeIds != null && themeIds.isNotEmpty)
+        'themeIds': themeIds.join(','),
+      if (hashtags != null && hashtags.isNotEmpty)
+        'hashtags': hashtags.join(','),
     };
     uri = uri.replace(queryParameters: queryParams);
     _logRequest('GET', uri);
     final response = await http.get(uri, headers: _headers());
     _logResponse(response);
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception('Top placebook themes request failed: ${response.statusCode}');
+      throw Exception(
+        'Top placebook themes request failed: ${response.statusCode}',
+      );
     }
     return _extractPlacebookItems(jsonDecode(response.body));
   }
@@ -1647,7 +1717,9 @@ class ApiClient {
     );
     _logResponse(response);
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception('Map place clusters request failed: ${response.statusCode}');
+      throw Exception(
+        'Map place clusters request failed: ${response.statusCode}',
+      );
     }
     final json = jsonDecode(response.body);
     return json is Map<String, dynamic> ? json : <String, dynamic>{};
@@ -1659,7 +1731,9 @@ class ApiClient {
     final response = await http.get(uri, headers: _headers());
     _logResponse(response);
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception('Placebook categories request failed: ${response.statusCode}');
+      throw Exception(
+        'Placebook categories request failed: ${response.statusCode}',
+      );
     }
     final json = jsonDecode(response.body);
     return _extractPlacebookItems(json);
@@ -1676,7 +1750,9 @@ class ApiClient {
     final response = await http.get(uri, headers: _headers());
     _logResponse(response);
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception('Placebook themes request failed: ${response.statusCode}');
+      throw Exception(
+        'Placebook themes request failed: ${response.statusCode}',
+      );
     }
     final json = jsonDecode(response.body);
     return _extractPlacebookItems(json);
@@ -1693,7 +1769,9 @@ class ApiClient {
     final response = await http.get(uri, headers: _headers());
     _logResponse(response);
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception('Placebook themes simple request failed: ${response.statusCode}');
+      throw Exception(
+        'Placebook themes simple request failed: ${response.statusCode}',
+      );
     }
     final json = jsonDecode(response.body);
     return _extractPlacebookItems(json);
@@ -1708,7 +1786,9 @@ class ApiClient {
     );
     _logResponse(response);
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception('Placebook empty themes request failed: ${response.statusCode}');
+      throw Exception(
+        'Placebook empty themes request failed: ${response.statusCode}',
+      );
     }
 
     final json = jsonDecode(response.body);
@@ -1763,7 +1843,9 @@ class ApiClient {
     final response = await http.get(uri, headers: _headers());
     _logResponse(response);
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception('My placebook themes request failed: ${response.statusCode}');
+      throw Exception(
+        'My placebook themes request failed: ${response.statusCode}',
+      );
     }
     final json = jsonDecode(response.body);
     return json is Map<String, dynamic> ? json : <String, dynamic>{};
@@ -1801,7 +1883,8 @@ class ApiClient {
     _logResponse(response);
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception(
-          'Placebook themes places request failed: ${response.statusCode}');
+        'Placebook themes places request failed: ${response.statusCode}',
+      );
     }
     final json = jsonDecode(response.body);
     return json is Map<String, dynamic> ? json : <String, dynamic>{};
@@ -1813,10 +1896,9 @@ class ApiClient {
   }) async {
     var uri = Uri.parse('$baseUrl/api/v1/featured');
     if (latitude != null && longitude != null) {
-      uri = uri.replace(queryParameters: {
-        'latitude': '$latitude',
-        'longitude': '$longitude',
-      });
+      uri = uri.replace(
+        queryParameters: {'latitude': '$latitude', 'longitude': '$longitude'},
+      );
     }
     _logRequest('GET', uri);
     final response = await http.get(uri, headers: _headers());
@@ -1871,7 +1953,8 @@ class ApiClient {
     _logResponse(response);
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception(
-          'Placebook created places request failed: ${response.statusCode}');
+        'Placebook created places request failed: ${response.statusCode}',
+      );
     }
     final json = jsonDecode(response.body);
     return json is Map<String, dynamic> ? json : <String, dynamic>{};
@@ -1905,7 +1988,8 @@ class ApiClient {
     _logResponse(response);
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception(
-          'Placebook favorite places request failed: ${response.statusCode}');
+        'Placebook favorite places request failed: ${response.statusCode}',
+      );
     }
     final json = jsonDecode(response.body);
     return json is Map<String, dynamic> ? json : <String, dynamic>{};
@@ -1955,8 +2039,10 @@ class ApiClient {
     };
     _logJsonRequest('POST', uri, body);
     final response = await _sendWithAuthRetry(
-      () => http.post(uri, headers: _headers(json: true), body: jsonEncode(body)),
-      retryRequest: () => http.post(uri, headers: _headers(json: true), body: jsonEncode(body)),
+      () =>
+          http.post(uri, headers: _headers(json: true), body: jsonEncode(body)),
+      retryRequest: () =>
+          http.post(uri, headers: _headers(json: true), body: jsonEncode(body)),
     );
     _logResponse(response);
     if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -1997,8 +2083,16 @@ class ApiClient {
     }
     _logJsonRequest('PATCH', uri, body);
     final response = await _sendWithAuthRetry(
-      () => http.patch(uri, headers: _headers(json: true), body: jsonEncode(body)),
-      retryRequest: () => http.patch(uri, headers: _headers(json: true), body: jsonEncode(body)),
+      () => http.patch(
+        uri,
+        headers: _headers(json: true),
+        body: jsonEncode(body),
+      ),
+      retryRequest: () => http.patch(
+        uri,
+        headers: _headers(json: true),
+        body: jsonEncode(body),
+      ),
     );
     _logResponse(response);
     if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -2014,7 +2108,9 @@ class ApiClient {
     return <String, dynamic>{};
   }
 
-  static Future<Map<String, dynamic>> fetchPlacebookPlaceDetail(String placeId) async {
+  static Future<Map<String, dynamic>> fetchPlacebookPlaceDetail(
+    String placeId,
+  ) async {
     final uri = Uri.parse('$baseUrl/api/v1/placebook/places/$placeId');
     _logRequest('GET', uri);
     final response = await _sendWithAuthRetry(
@@ -2023,7 +2119,9 @@ class ApiClient {
     );
     _logResponse(response);
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception('Placebook place detail request failed: ${response.statusCode}');
+      throw Exception(
+        'Placebook place detail request failed: ${response.statusCode}',
+      );
     }
     final json = jsonDecode(response.body);
     if (json is Map<String, dynamic>) {
@@ -2046,6 +2144,101 @@ class ApiClient {
       return json;
     }
     return const <String, dynamic>{};
+  }
+
+  static Future<Map<String, dynamic>> fetchPlacebookPlaceTrust(
+    String placeId,
+  ) async {
+    final primaryUri = Uri.parse(
+      '$baseUrl/api/v1/placebook/places/$placeId/trust',
+    );
+    final fallbackUri = Uri.parse(
+      '$baseUrl/v1/placebook/places/$placeId/trust',
+    );
+    _logRequest('GET', primaryUri);
+    var response = await _sendWithAuthRetry(
+      () => http.get(primaryUri, headers: _headers()),
+      retryRequest: () => http.get(primaryUri, headers: _headers()),
+    );
+    if (response.statusCode == 404) {
+      _logResponse(response);
+      _logRequest('GET', fallbackUri);
+      response = await _sendWithAuthRetry(
+        () => http.get(fallbackUri, headers: _headers()),
+        retryRequest: () => http.get(fallbackUri, headers: _headers()),
+      );
+    }
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Placebook trust request failed: ${response.statusCode}');
+    }
+    if (response.body.isEmpty) return <String, dynamic>{};
+    final json = jsonDecode(response.body);
+    if (json is Map<String, dynamic>) {
+      final data = json['data'];
+      if (data is Map<String, dynamic>) return data;
+      return json;
+    }
+    return <String, dynamic>{};
+  }
+
+  static Future<Map<String, dynamic>> votePlacebookPlace({
+    required String placeId,
+    required String voteType,
+  }) async {
+    final primaryUri = Uri.parse(
+      '$baseUrl/api/v1/placebook/places/$placeId/votes',
+    );
+    final fallbackUri = Uri.parse(
+      '$baseUrl/v1/placebook/places/$placeId/votes',
+    );
+    final body = <String, dynamic>{'voteType': voteType};
+    _logJsonRequest('POST', primaryUri, body);
+    var response = await _sendWithAuthRetry(
+      () => http.post(
+        primaryUri,
+        headers: _headers(json: true),
+        body: jsonEncode(body),
+      ),
+      retryRequest: () => http.post(
+        primaryUri,
+        headers: _headers(json: true),
+        body: jsonEncode(body),
+      ),
+    );
+    if (response.statusCode == 404) {
+      _logResponse(response);
+      _logJsonRequest('POST', fallbackUri, body);
+      response = await _sendWithAuthRetry(
+        () => http.post(
+          fallbackUri,
+          headers: _headers(json: true),
+          body: jsonEncode(body),
+        ),
+        retryRequest: () => http.post(
+          fallbackUri,
+          headers: _headers(json: true),
+          body: jsonEncode(body),
+        ),
+      );
+    }
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Placebook vote request failed: ${response.statusCode}');
+    }
+    if (response.body.isEmpty) return <String, dynamic>{};
+    final json = jsonDecode(response.body);
+    if (json is Map<String, dynamic>) {
+      final data = json['data'];
+      if (data is Map<String, dynamic>) {
+        return {
+          ...data,
+          if (json['message'] is String) 'message': json['message'],
+        };
+      }
+      return json;
+    }
+    return <String, dynamic>{};
   }
 
   static List<Map<String, dynamic>> _extractPlacebookItems(dynamic json) {
@@ -2112,7 +2305,9 @@ class ApiClient {
   }) {
     final redacted = <String, dynamic>{};
     for (final entry in body.entries) {
-      redacted[entry.key] = redactKeys.contains(entry.key) ? '<redacted>' : entry.value;
+      redacted[entry.key] = redactKeys.contains(entry.key)
+          ? '<redacted>'
+          : entry.value;
     }
     debugPrint('[API][REQ] $method $uri');
     debugPrint('[API][REQ] ${jsonEncode(redacted)}');
@@ -2136,8 +2331,9 @@ class ApiClient {
     const sensitiveKeys = {'token', 'accessToken', 'refreshToken', 'fcmToken'};
     final redacted = <String, String>{};
     for (final entry in uri.queryParameters.entries) {
-      redacted[entry.key] =
-          sensitiveKeys.contains(entry.key) ? '<redacted>' : entry.value;
+      redacted[entry.key] = sensitiveKeys.contains(entry.key)
+          ? '<redacted>'
+          : entry.value;
     }
     return uri.replace(queryParameters: redacted);
   }

@@ -19,22 +19,18 @@ import '../common/widgets/common_refresh_view.dart';
 import '../common/widgets/common_rounded_button.dart';
 import '../common/widgets/common_title_actionsheet.dart';
 import '../common/widgets/common_alert_view.dart';
-import '../common/widgets/common_place_list_item_view.dart';
+import '../common/widgets/common_place_carousel_list_item_view.dart';
 import '../report/report_view.dart';
 import '../common/permissions/media_permission_service.dart';
 import '../common/media/media_picker_service.dart';
 import '../common/media/media_conversion_service.dart';
 import 'widgets/placebook_detail_profile_view.dart';
 import 'widgets/placebook_detail_info_view.dart';
-import 'widgets/placebook_detail_content_view.dart';
 import '../feed_comment/models/feed_comment_model.dart';
 import '../feed_comment/widgets/feed_comment_list_item_view.dart';
 
 class PlacebookDetailView extends StatefulWidget {
-  const PlacebookDetailView({
-    super.key,
-    required this.space,
-  });
+  const PlacebookDetailView({super.key, required this.space});
 
   final Map<String, dynamic> space;
 
@@ -75,8 +71,14 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
   String _favoriteToastMessage = '';
   bool _skipFavoriteToastOut = false;
   int _favoriteToastSequence = 0;
-  bool _isLoadingNearby = false;
-  List<Map<String, dynamic>> _nearbyPlaces = const [];
+  bool _isLoadingTrust = false;
+  bool _isSubmittingTrustVote = false;
+  int _helpfulCount = 0;
+  int _suspiciousCount = 0;
+  int _totalVotes = 0;
+  int _helpfulRate = 0;
+  String? _trustLabel;
+  String? _userVote;
 
   @override
   void initState() {
@@ -160,15 +162,99 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
 
   void _showPermissionSnack(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
-  Future<void> _loadDetail() async {
+  int _intFromAny(dynamic value, {int fallback = 0}) {
+    if (value is num) return value.toInt();
+    if (value is String) return int.tryParse(value.trim()) ?? fallback;
+    return fallback;
+  }
+
+  void _applyTrustPayload(Map<String, dynamic> payload) {
+    final helpful = _intFromAny(payload['helpfulCount']);
+    final suspicious = _intFromAny(payload['suspiciousCount']);
+    final totalRaw = _intFromAny(
+      payload['totalVotes'],
+      fallback: helpful + suspicious,
+    );
+    final total = totalRaw > 0 ? totalRaw : helpful + suspicious;
+    final rateRaw = _intFromAny(payload['helpfulRate'], fallback: 0);
+    final nextRate = total > 0 ? rateRaw.clamp(0, 100).toInt() : 0;
+    setState(() {
+      _helpfulCount = helpful;
+      _suspiciousCount = suspicious;
+      _totalVotes = total;
+      _helpfulRate = nextRate;
+      _trustLabel = _stringOrEmpty(payload['trustLabel']);
+      _userVote = _stringOrEmpty(payload['userVote']);
+    });
+  }
+
+  Future<void> _loadPlaceTrust({bool silent = false}) async {
     final placeId = _extractPlaceId(_space) ?? '';
-    if (placeId == null || placeId.isEmpty) return;
-    setState(() => _isLoading = true);
+    if (placeId.isEmpty) return;
+    if (_isLoadingTrust) return;
+    if (!silent) {
+      setState(() => _isLoadingTrust = true);
+    }
+    try {
+      final trust = await ApiClient.fetchPlacebookPlaceTrust(placeId);
+      if (!mounted) return;
+      _applyTrustPayload(trust);
+    } catch (_) {
+      // ignore
+    } finally {
+      if (!silent && mounted) {
+        setState(() => _isLoadingTrust = false);
+      }
+    }
+  }
+
+  Future<void> _submitTrustVote(String voteType) async {
+    if (_isSubmittingTrustVote) return;
+    if (_userVote == voteType) {
+      _showFavoriteToast('이미 같은 의견에 투표했어요.');
+      return;
+    }
+    final placeId = _extractPlaceId(_space) ?? '';
+    if (placeId.isEmpty) return;
+    if (!await CommonLoginGuard.ensureSignedIn(
+      context,
+      title: '로그인이 필요합니다.',
+      subTitle: '장소 평가를 남기려면 로그인해주세요.',
+    )) {
+      return;
+    }
+    setState(() => _isSubmittingTrustVote = true);
+    try {
+      final result = await ApiClient.votePlacebookPlace(
+        placeId: placeId,
+        voteType: voteType,
+      );
+      if (!mounted) return;
+      _applyTrustPayload(result);
+      final message = _stringOrEmpty(result['message']);
+      if (message != null) {
+        _showFavoriteToast(message);
+      }
+    } catch (_) {
+      // ignore
+    } finally {
+      if (mounted) {
+        setState(() => _isSubmittingTrustVote = false);
+      }
+    }
+  }
+
+  Future<void> _loadDetail({bool silent = false}) async {
+    final placeId = _extractPlaceId(_space) ?? '';
+    if (placeId.isEmpty) return;
+    if (!silent) {
+      setState(() => _isLoading = true);
+    }
     try {
       final detail = await ApiClient.fetchPlacebookPlaceDetail(placeId);
       if (!mounted) return;
@@ -180,18 +266,20 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
     } catch (_) {
       // ignore for now, keep initial data
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (!silent && mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
-  Future<void> _refreshAll({bool fromPull = false}) async {
+  Future<void> _refreshAll({bool fromPull = false, bool silent = false}) async {
     if (fromPull) {
       setState(() => _isPullRefreshing = true);
     }
     try {
-      await _loadDetail();
-      await _loadNearbyPlaces();
-      await _loadCommentPreview();
+      await _loadDetail(silent: silent);
+      await _loadPlaceTrust(silent: silent);
+      await _loadCommentPreview(silent: silent);
     } finally {
       if (mounted && fromPull) {
         setState(() => _isPullRefreshing = false);
@@ -199,38 +287,13 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
     }
   }
 
-  Future<void> _loadNearbyPlaces() async {
+  Future<void> _loadCommentPreview({bool silent = false}) async {
     final placeId = _extractPlaceId(_space) ?? '';
     if (placeId.isEmpty) return;
-    if (_isLoadingNearby) return;
-    setState(() => _isLoadingNearby = true);
-    try {
-      final response = await ApiClient.fetchPlacebookPlacesNearby(
-        placeId: placeId,
-        limit: 3,
-      );
-      var items = _extractPlaceListItems(response);
-      final dataNode = response['data'];
-      if (items.isEmpty && dataNode is Map<String, dynamic>) {
-        items = _extractPlaceListItems(dataNode);
-      }
-      final normalized = items
-          .map(_normalizePlaceListItem)
-          .toList(growable: false);
-      if (!mounted) return;
-      setState(() => _nearbyPlaces = normalized);
-    } catch (_) {
-      if (!mounted) return;
-    } finally {
-      if (mounted) setState(() => _isLoadingNearby = false);
-    }
-  }
-
-  Future<void> _loadCommentPreview() async {
-    final placeId = _extractPlaceId(_space) ?? '';
-    if (placeId == null || placeId.isEmpty) return;
     if (_isLoadingComments) return;
-    setState(() => _isLoadingComments = true);
+    if (!silent) {
+      setState(() => _isLoadingComments = true);
+    }
     try {
       final page = await ApiClient.fetchEntityComments(
         entityType: 'PLACEBOOK',
@@ -255,7 +318,9 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
         _nextCommentCursor = null;
       });
     } finally {
-      if (mounted) setState(() => _isLoadingComments = false);
+      if (!silent && mounted) {
+        setState(() => _isLoadingComments = false);
+      }
       if (!mounted || _pendingScrollOffset == null) return;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || !_scrollController.hasClients) return;
@@ -314,16 +379,19 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
     try {
       String? imageId;
       if (hasImage && _commentImageFile != null) {
-        final webp =
-            await MediaConversionService.toWebp(_commentImageFile!, quality: 85);
+        final webp = await MediaConversionService.toWebp(
+          _commentImageFile!,
+          quality: 85,
+        );
         imageId = await ApiClient.uploadCommentImage(webp);
       }
       final target = _replyTarget;
       final badgeName = _mentionBadgeName?.trim();
-      final mentionPrefix =
-          badgeName != null && badgeName.isNotEmpty ? '@$badgeName ' : '';
-      final payloadContent = mentionPrefix.isNotEmpty &&
-              !content.startsWith(mentionPrefix)
+      final mentionPrefix = badgeName != null && badgeName.isNotEmpty
+          ? '@$badgeName '
+          : '';
+      final payloadContent =
+          mentionPrefix.isNotEmpty && !content.startsWith(mentionPrefix)
           ? '$mentionPrefix$content'.trimRight()
           : content;
       await ApiClient.createEntityComment(
@@ -340,7 +408,7 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
         _replyTarget = null;
         _mentionBadgeName = null;
       });
-      _refreshAll();
+      _refreshAll(silent: true);
     } catch (_) {
       // Ignore send errors for now.
     } finally {
@@ -414,10 +482,7 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
         );
     });
     try {
-      await ApiClient.setCommentLike(
-        commentId: comment.id,
-        isLiked: nextLiked,
-      );
+      await ApiClient.setCommentLike(commentId: comment.id, isLiked: nextLiked);
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -487,10 +552,7 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
       _repliesByCommentId[parentId] = nextReplies;
     });
     try {
-      await ApiClient.setCommentLike(
-        commentId: reply.id,
-        isLiked: nextLiked,
-      );
+      await ApiClient.setCommentLike(commentId: reply.id, isLiked: nextLiked);
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -509,10 +571,7 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
     await _handleCheckin();
   }
 
-  void _showPlaceMoreSheet({
-    required bool isMine,
-    required String placeId,
-  }) {
+  void _showPlaceMoreSheet({required bool isMine, required String placeId}) {
     final items = isMine
         ? const [
             CommonTitleActionSheetItem(label: '수정하기', value: 'edit'),
@@ -591,22 +650,13 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
     required Color iconColor,
     required String placeId,
   }) {
-    Widget navIcon({
-      required IconData icon,
-      required VoidCallback onTap,
-    }) {
+    Widget navIcon({required IconData icon, required VoidCallback onTap}) {
       return CommonInkWell(
         onTap: onTap,
         child: SizedBox(
           width: 44,
           height: 44,
-          child: Center(
-            child: Icon(
-              icon,
-              size: 24,
-              color: iconColor,
-            ),
-          ),
+          child: Center(child: Icon(icon, size: 24, color: iconColor)),
         ),
       );
     }
@@ -614,10 +664,7 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
     if (isMine) {
       return navIcon(
         icon: PhosphorIconsBold.dotsThree,
-        onTap: () => _showPlaceMoreSheet(
-          isMine: true,
-          placeId: placeId,
-        ),
+        onTap: () => _showPlaceMoreSheet(isMine: true, placeId: placeId),
       );
     }
     return Row(
@@ -631,10 +678,7 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
         ),
         navIcon(
           icon: PhosphorIconsBold.dotsThree,
-          onTap: () => _showPlaceMoreSheet(
-            isMine: false,
-            placeId: placeId,
-          ),
+          onTap: () => _showPlaceMoreSheet(isMine: false, placeId: placeId),
         ),
       ],
     );
@@ -645,8 +689,9 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
     EdgeInsetsGeometry padding = const EdgeInsets.only(top: 12),
   }) {
     const inputHeight = 50.0;
-    final replyLabel =
-        _mentionBadgeName?.trim().isNotEmpty == true ? _mentionBadgeName : null;
+    final replyLabel = _mentionBadgeName?.trim().isNotEmpty == true
+        ? _mentionBadgeName
+        : null;
     return Padding(
       padding: padding,
       child: Column(
@@ -656,8 +701,10 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
             Row(
               children: [
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
                   decoration: BoxDecoration(
                     color: const Color(0xFFF2F2F2),
                     borderRadius: BorderRadius.circular(999),
@@ -799,8 +846,9 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
                     color: Colors.white,
                     size: 20,
                   ),
-                  onTap:
-                      _isSendingComment ? null : () => _sendPlacebookComment(placeId),
+                  onTap: _isSendingComment
+                      ? null
+                      : () => _sendPlacebookComment(placeId),
                 ),
               ),
             ],
@@ -825,9 +873,7 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
     try {
       final currentUser = AuthStore.instance.currentUser.value;
       final userId = currentUser?.id ?? '';
-      final nextUsers = List<dynamic>.from(
-        _extractFavoriteUsers(_space),
-      );
+      final nextUsers = List<dynamic>.from(_extractFavoriteUsers(_space));
       if (nextUsers.isEmpty && _space['checkinUsers'] is List) {
         nextUsers.addAll(_space['checkinUsers'] as List);
       }
@@ -897,54 +943,60 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
         setState(() => _didInitialReveal = true);
       });
     }
-    final title = (_space['title'] as String?) ??
+    final title =
+        (_space['title'] as String?) ??
         (_space['spaceTitle'] as String?) ??
         (_space['name'] as String?) ??
         '도감';
     final imageUrls = _extractImageUrls(_space);
     final thumbnail = imageUrls.isNotEmpty ? imageUrls.first : '';
-    final user = _space['creator'] is Map<String, dynamic>
+    final user = _space['createdByUser'] is Map<String, dynamic>
+        ? _space['createdByUser'] as Map<String, dynamic>
+        : _space['creator'] is Map<String, dynamic>
         ? _space['creator'] as Map<String, dynamic>
         : _space['createdBy'] is Map<String, dynamic>
-            ? _space['createdBy'] as Map<String, dynamic>
-            : _space['createdByUser'] is Map<String, dynamic>
-                ? _space['createdByUser'] as Map<String, dynamic>
-                : _space['author'] is Map<String, dynamic>
-                    ? _space['author'] as Map<String, dynamic>
-                    : _space['user'] is Map<String, dynamic>
-                        ? _space['user'] as Map<String, dynamic>
-                        : _space['host'] is Map<String, dynamic>
-                            ? _space['host'] as Map<String, dynamic>
-                            : null;
-    final profileImageUrl = _extractProfileImageUrl(user?['profileImage']) ??
+        ? _space['createdBy'] as Map<String, dynamic>
+        : _space['author'] is Map<String, dynamic>
+        ? _space['author'] as Map<String, dynamic>
+        : _space['user'] is Map<String, dynamic>
+        ? _space['user'] as Map<String, dynamic>
+        : _space['host'] is Map<String, dynamic>
+        ? _space['host'] as Map<String, dynamic>
+        : null;
+    final profileImageUrl =
+        _extractProfileImageUrl(user?['profileImage']) ??
         _stringOrEmpty(user?['profileImageUrl']) ??
         _stringOrEmpty(user?['thumbnailUrl']) ??
         _stringOrEmpty(user?['avatarUrl']);
-    final nickname = _stringOrEmpty(user?['nickname']) ??
+    final nickname =
+        _stringOrEmpty(user?['nickname']) ??
         _stringOrEmpty(_space['creatorNickname']) ??
         _stringOrEmpty(_space['authorNickname']) ??
         '-';
     final categoryLabel = _extractCategoryTitle(_space);
     final themeLabel = _extractThemeTitle(_space);
     final themeId = _extractThemeId(_space);
-    final userId = _stringOrEmpty(user?['userId']) ??
-        _stringOrEmpty(user?['id']) ??
-        '';
+    final userId =
+        _stringOrEmpty(user?['userId']) ?? _stringOrEmpty(user?['id']) ?? '';
     final currentUserId = AuthStore.instance.currentUser.value?.id;
-    final isMine = currentUserId != null &&
+    final isMine =
+        currentUserId != null &&
         currentUserId.isNotEmpty &&
         currentUserId == userId;
     final isDeletedUser =
         _stringOrEmpty(user?['deletedAt'])?.trim().isNotEmpty == true;
-    final place = _stringOrEmpty(_space['address']) ??
+    final place =
+        _stringOrEmpty(_space['address']) ??
         _stringOrEmpty(_space['placeName']) ??
         '-';
-    final latitude = _toDouble(_space['latitude']) ??
+    final latitude =
+        _toDouble(_space['latitude']) ??
         _toDouble(_space['lat']) ??
         _toDouble(_space['locationLat']) ??
         _toDouble((_space['location'] as Map?)?['lat']) ??
         _toDouble((_space['location'] as Map?)?['latitude']);
-    final longitude = _toDouble(_space['longitude']) ??
+    final longitude =
+        _toDouble(_space['longitude']) ??
         _toDouble(_space['lng']) ??
         _toDouble(_space['locationLng']) ??
         _toDouble((_space['location'] as Map?)?['lng']) ??
@@ -956,29 +1008,31 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
           _stringOrEmpty(_space['date']) ??
           _stringOrEmpty(_space['createdAt']),
     );
-    final status = _stringOrEmpty(_space['status']) ??
+    final status =
+        _stringOrEmpty(_space['status']) ??
         _stringOrEmpty(_space['liveStatus']) ??
         _stringOrEmpty(_space['state']) ??
         '-';
-    final content = _stringOrEmpty(_space['content']) ?? '';
     if (_commentCount == 0) {
       _commentCount = (_space['commentCount'] as num?)?.toInt() ?? 0;
     }
     final favoriteUsers = _extractFavoriteUsers(_space);
     final displayUsers = favoriteUsers.isNotEmpty
         ? favoriteUsers
-        : (_space['checkinUsers'] is List ? _space['checkinUsers'] as List : const []);
+        : (_space['checkinUsers'] is List
+              ? _space['checkinUsers'] as List
+              : const []);
     final hasCheckedIn = _hasCheckedIn || _isSpaceFavorited(_space);
-    final participantCount =
-        displayUsers.length > 0
-            ? displayUsers.length
-            : (_space['participantCount'] as num?)?.toInt() ??
-                (_space['participantsCount'] as num?)?.toInt() ??
-                (_space['favoriteCount'] as num?)?.toInt() ??
-                (_space['favoritesCount'] as num?)?.toInt() ??
-                (_space['checkinCount'] as num?)?.toInt() ??
-                (_space['checkins'] as num?)?.toInt() ??
-                0;
+    final participantCount = displayUsers.length > 0
+        ? displayUsers.length
+        : (_space['participantCount'] as num?)?.toInt() ??
+              (_space['participantsCount'] as num?)?.toInt() ??
+              (_space['favoriteCount'] as num?)?.toInt() ??
+              (_space['favoritesCount'] as num?)?.toInt() ??
+              (_space['checkinCount'] as num?)?.toInt() ??
+              (_space['checkins'] as num?)?.toInt() ??
+              0;
+    final relatedPlaces = _extractRelatedPlaces(_space);
     final placeId = _extractPlaceId(_space) ?? '';
     const commentInputHeight = 50.0;
     const commentInputPadding = EdgeInsets.fromLTRB(16, 8, 16, 8);
@@ -1010,244 +1064,256 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
                             ? 0
                             : safeBottom),
                   ),
-                  child: _buildCommentInput(
-                    placeId,
-                    padding: EdgeInsets.zero,
-                  ),
+                  child: _buildCommentInput(placeId, padding: EdgeInsets.zero),
                 ),
               )
             : null,
         body: Stack(
           children: [
             CommonRefreshView(
-              onRefresh: () => _refreshAll(fromPull: true),
+              onRefresh: () => _refreshAll(fromPull: true, silent: true),
               topPadding: MediaQuery.of(context).padding.top + 8,
               notificationPredicate: (notification) => notification.depth == 0,
               child: Stack(
                 children: [
-                AnimatedOpacity(
-                  opacity: showContent ? 1 : 0,
-                  duration: _didInitialReveal
-                      ? Duration.zero
-                      : const Duration(milliseconds: 250),
-              curve: Curves.easeOut,
-              child: IgnorePointer(
-                ignoring: !showContent,
-                child: Stack(
-                  children: [
-                    NotificationListener<ScrollNotification>(
-                      onNotification: (notification) {
-                        if (notification.metrics.axis != Axis.vertical) {
-                          return false;
-                        }
-                        if (notification is ScrollUpdateNotification ||
-                            notification is ScrollEndNotification) {
-                          final shouldShow =
-                              notification.metrics.extentBefore > 0;
-                          if (shouldShow != _showFloatingNav) {
-                            setState(() => _showFloatingNav = shouldShow);
-                          }
-                          if (notification.metrics.extentAfter < 300) {
-                            _loadMoreComments();
-                          }
-                        }
-                        return false;
-                      },
-                      child: CustomScrollView(
-                        controller: _scrollController,
-                        physics: const AlwaysScrollableScrollPhysics(
-                          parent: BouncingScrollPhysics(),
-                        ),
-                        slivers: [
-                        SliverAppBar(
-                        automaticallyImplyLeading: false,
-                        backgroundColor: Colors.transparent,
-                        elevation: 0,
-                        systemOverlayStyle: _showFloatingNav
-                            ? SystemUiOverlayStyle.dark
-                            : SystemUiOverlayStyle.light,
-                        pinned: false,
-                        stretch: true,
-                        expandedHeight: 385,
-                        collapsedHeight: 385,
-                        toolbarHeight: 0,
-                        flexibleSpace: FlexibleSpaceBar(
-                          stretchModes: const [
-                            StretchMode.zoomBackground,
-                          ],
-                          background: PlacebookDetailProfileView(
-                            title: title,
-                            locationTitle: place,
-                            imageUrls:
-                                imageUrls.isNotEmpty ? imageUrls : [thumbnail],
-                            profileImageUrl: profileImageUrl,
-                            nickname: nickname,
-                            userId: userId,
-                            categoryLabel: categoryLabel,
-                            themeLabel: themeLabel,
-                            isDeletedUser: isDeletedUser,
-                            participantCount: participantCount,
-                            checkinUsers: displayUsers,
-                            isCheckedIn: hasCheckedIn,
-                            isCheckingIn: _isCheckingIn,
-                            onCheckinTap: _handleCheckin,
+                  AnimatedOpacity(
+                    opacity: showContent ? 1 : 0,
+                    duration: _didInitialReveal
+                        ? Duration.zero
+                        : const Duration(milliseconds: 250),
+                    curve: Curves.easeOut,
+                    child: IgnorePointer(
+                      ignoring: !showContent,
+                      child: Stack(
+                        children: [
+                          NotificationListener<ScrollNotification>(
+                            onNotification: (notification) {
+                              if (notification.metrics.axis != Axis.vertical) {
+                                return false;
+                              }
+                              if (notification is ScrollUpdateNotification ||
+                                  notification is ScrollEndNotification) {
+                                final shouldShow =
+                                    notification.metrics.extentBefore > 0;
+                                if (shouldShow != _showFloatingNav) {
+                                  setState(() => _showFloatingNav = shouldShow);
+                                }
+                                if (notification.metrics.extentAfter < 300) {
+                                  _loadMoreComments();
+                                }
+                              }
+                              return false;
+                            },
+                            child: CustomScrollView(
+                              controller: _scrollController,
+                              physics: const AlwaysScrollableScrollPhysics(
+                                parent: BouncingScrollPhysics(),
+                              ),
+                              slivers: [
+                                SliverAppBar(
+                                  automaticallyImplyLeading: false,
+                                  backgroundColor: Colors.transparent,
+                                  elevation: 0,
+                                  systemOverlayStyle: _showFloatingNav
+                                      ? SystemUiOverlayStyle.dark
+                                      : SystemUiOverlayStyle.light,
+                                  pinned: false,
+                                  stretch: true,
+                                  expandedHeight: 385,
+                                  collapsedHeight: 385,
+                                  toolbarHeight: 0,
+                                  flexibleSpace: FlexibleSpaceBar(
+                                    stretchModes: const [
+                                      StretchMode.zoomBackground,
+                                    ],
+                                    background: PlacebookDetailProfileView(
+                                      title: title,
+                                      locationTitle: place,
+                                      imageUrls: imageUrls.isNotEmpty
+                                          ? imageUrls
+                                          : [thumbnail],
+                                      profileImageUrl: profileImageUrl,
+                                      nickname: nickname,
+                                      userId: userId,
+                                      categoryLabel: categoryLabel,
+                                      themeLabel: themeLabel,
+                                      isDeletedUser: isDeletedUser,
+                                      participantCount: participantCount,
+                                      checkinUsers: displayUsers,
+                                      isCheckedIn: hasCheckedIn,
+                                      isCheckingIn: _isCheckingIn,
+                                      onCheckinTap: _handleCheckin,
+                                    ),
+                                  ),
+                                ),
+                                SliverToBoxAdapter(
+                                  child: PlacebookDetailInfoView(
+                                    title: title,
+                                    place: place,
+                                    latitude: latitude,
+                                    longitude: longitude,
+                                    time: time,
+                                    status: status,
+                                    profileImageUrl: profileImageUrl,
+                                    nickname: nickname,
+                                  ),
+                                ),
+                                SliverToBoxAdapter(
+                                  child: _PlacebookTrustVoteSection(
+                                    isLoading: _isLoadingTrust,
+                                    isSubmitting: _isSubmittingTrustVote,
+                                    helpfulCount: _helpfulCount,
+                                    suspiciousCount: _suspiciousCount,
+                                    totalVotes: _totalVotes,
+                                    helpfulRate: _helpfulRate,
+                                    trustLabel: _trustLabel,
+                                    userVote: _userVote,
+                                    onHelpfulTap: () =>
+                                        _submitTrustVote('HELPFUL'),
+                                    onSuspiciousTap: () =>
+                                        _submitTrustVote('SUSPICIOUS'),
+                                  ),
+                                ),
+                                SliverToBoxAdapter(
+                                  child: _NearbyPlacesSection(
+                                    isLoading: false,
+                                    places: relatedPlaces,
+                                    themeId: themeId,
+                                    themeTitle: themeLabel,
+                                  ),
+                                ),
+                                const SliverToBoxAdapter(
+                                  child: _SectionDivider(),
+                                ),
+                                SliverToBoxAdapter(
+                                  child: _PlacebookDetailCommentsSection(
+                                    commentCount: _commentCount,
+                                    comments: _commentPreview,
+                                    isLoading: _isLoadingComments,
+                                    selectedSort: _selectedCommentSort,
+                                    onLikeTap: _toggleCommentLikeAt,
+                                    onReplyTap: _handleReplyTap,
+                                    onMentionTap: _handleMentionTap,
+                                    onToggleReplies: _toggleReplies,
+                                    onReplyLikeTap: _toggleReplyLike,
+                                    repliesByCommentId: _repliesByCommentId,
+                                    expandedReplies: _expandedReplies,
+                                    isLoadingMore: _isLoadingMoreComments,
+                                    onSortSelected: (next) {
+                                      if (next == _selectedCommentSort) return;
+                                      _pendingScrollOffset =
+                                          _scrollController.hasClients
+                                          ? _scrollController.offset
+                                          : null;
+                                      setState(
+                                        () => _selectedCommentSort = next,
+                                      );
+                                      _loadCommentPreview();
+                                    },
+                                  ),
+                                ),
+                                SliverToBoxAdapter(
+                                  child: SizedBox(
+                                    height:
+                                        commentInputTotalHeight +
+                                        safeBottom +
+                                        (hasCheckedIn ? 16.0 : 24.0),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          SafeArea(
+                            bottom: false,
+                            child: CommonNavigationView(
+                              backgroundColor: Colors.transparent,
+                              left: const Icon(
+                                PhosphorIconsBold.caretLeft,
+                                size: 24,
+                                color: Colors.white,
+                              ),
+                              onLeftTap: () => Navigator.of(context).maybePop(),
+                              right: _buildNavActions(
+                                isMine: isMine,
+                                isFavorited: hasCheckedIn,
+                                iconColor: Colors.white,
+                                placeId: placeId,
+                              ),
+                              onRightTap: null,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  if (!showContent)
+                    const Positioned.fill(
+                      child: ColoredBox(
+                        color: Colors.white,
+                        child: Center(
+                          child: SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(strokeWidth: 2),
                           ),
                         ),
                       ),
-                      SliverToBoxAdapter(
-                        child: PlacebookDetailInfoView(
-                          title: title,
-                          place: place,
-                          latitude: latitude,
-                          longitude: longitude,
-                          time: time,
-                          status: status,
-                          profileImageUrl: profileImageUrl,
-                          nickname: nickname,
+                    ),
+                  if (showContent && _isLoadingComments && !_isPullRefreshing)
+                    const Positioned.fill(
+                      child: ColoredBox(
+                        color: Color(0x80FFFFFF),
+                        child: Center(
+                          child: CommonActivityIndicator(
+                            size: 28,
+                            strokeWidth: 2,
+                          ),
                         ),
-                      ),
-                      SliverToBoxAdapter(
-                        child: _NearbyPlacesSection(
-                          isLoading: _isLoadingNearby,
-                          places: _nearbyPlaces,
-                          themeId: themeId,
-                          themeTitle: themeLabel,
-                        ),
-                      ),
-                      const SliverToBoxAdapter(
-                        child: _SectionDivider(),
-                      ),
-                      SliverToBoxAdapter(
-                        child: PlacebookDetailContentView(
-                          content: content,
-                        ),
-                      ),
-                      const SliverToBoxAdapter(
-                        child: _SectionDivider(),
-                      ),
-                      SliverToBoxAdapter(
-                        child: _PlacebookDetailCommentsSection(
-                          commentCount: _commentCount,
-                          comments: _commentPreview,
-                          isLoading: _isLoadingComments,
-                          selectedSort: _selectedCommentSort,
-                          onLikeTap: _toggleCommentLikeAt,
-                          onReplyTap: _handleReplyTap,
-                          onMentionTap: _handleMentionTap,
-                          onToggleReplies: _toggleReplies,
-                          onReplyLikeTap: _toggleReplyLike,
-                          repliesByCommentId: _repliesByCommentId,
-                          expandedReplies: _expandedReplies,
-                          isLoadingMore: _isLoadingMoreComments,
-                          onSortSelected: (next) {
-                            if (next == _selectedCommentSort) return;
-                            _pendingScrollOffset = _scrollController.hasClients
-                                ? _scrollController.offset
-                                : null;
-                            setState(() => _selectedCommentSort = next);
-                            _loadCommentPreview();
-                          },
-                        ),
-                      ),
-                        SliverToBoxAdapter(
-                        child: SizedBox(
-                          height:
-                              commentInputTotalHeight +
-                              safeBottom +
-                              (hasCheckedIn ? 16.0 : 24.0),
-                        ),
-                      ),
-                      ],
                       ),
                     ),
-                    SafeArea(
-                      bottom: false,
-                      child: CommonNavigationView(
-                        backgroundColor: Colors.transparent,
-                        left: const Icon(
-                          PhosphorIconsBold.caretLeft,
-                          size: 24,
-                          color: Colors.white,
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    top: 0,
+                    child: IgnorePointer(
+                      ignoring: !_showFloatingNav,
+                      child: AnimatedSlide(
+                        duration: const Duration(milliseconds: 260),
+                        curve: Curves.easeOut,
+                        offset: _showFloatingNav
+                            ? Offset.zero
+                            : const Offset(0, -1),
+                        child: AnimatedOpacity(
+                          duration: const Duration(milliseconds: 220),
+                          opacity: _showFloatingNav ? 1 : 0,
+                          child: Container(
+                            color: Colors.white,
+                            child: SafeArea(
+                              bottom: false,
+                              child: CommonNavigationView(
+                                backgroundColor: Colors.white,
+                                title: title,
+                                left: const Icon(
+                                  PhosphorIconsBold.caretLeft,
+                                  size: 24,
+                                  color: Colors.black,
+                                ),
+                                right: _buildNavActions(
+                                  isMine: isMine,
+                                  isFavorited: hasCheckedIn,
+                                  iconColor: Colors.black,
+                                  placeId: placeId,
+                                ),
+                                onLeftTap: () =>
+                                    Navigator.of(context).maybePop(),
+                                onRightTap: null,
+                              ),
+                            ),
+                          ),
                         ),
-                        onLeftTap: () => Navigator.of(context).maybePop(),
-                        right: _buildNavActions(
-                          isMine: isMine,
-                          isFavorited: hasCheckedIn,
-                          iconColor: Colors.white,
-                          placeId: placeId,
-                        ),
-                        onRightTap: null,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            if (!showContent)
-              const Positioned.fill(
-                child: ColoredBox(
-                  color: Colors.white,
-                  child: Center(
-                    child: SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                  ),
-                ),
-              ),
-            if (showContent && _isLoadingComments && !_isPullRefreshing)
-              const Positioned.fill(
-                child: ColoredBox(
-                  color: Color(0x80FFFFFF),
-                  child: Center(
-                    child: CommonActivityIndicator(size: 28, strokeWidth: 2),
-                  ),
-                ),
-              ),
-            Positioned(
-              left: 0,
-              right: 0,
-              top: 0,
-              child: IgnorePointer(
-                ignoring: !_showFloatingNav,
-                child: AnimatedSlide(
-                  duration: const Duration(milliseconds: 260),
-                  curve: Curves.easeOut,
-                  offset: _showFloatingNav
-                      ? Offset.zero
-                      : const Offset(0, -1),
-                  child: AnimatedOpacity(
-                    duration: const Duration(milliseconds: 220),
-                    opacity: _showFloatingNav ? 1 : 0,
-                    child: Container(
-                      color: Colors.white,
-                      child: SafeArea(
-                        bottom: false,
-                    child: CommonNavigationView(
-                      backgroundColor: Colors.white,
-                      title: title,
-                      left: const Icon(
-                        PhosphorIconsBold.caretLeft,
-                        size: 24,
-                        color: Colors.black,
-                      ),
-                      right: _buildNavActions(
-                        isMine: isMine,
-                        isFavorited: hasCheckedIn,
-                        iconColor: Colors.black,
-                        placeId: placeId,
-                      ),
-                      onLeftTap: () =>
-                          Navigator.of(context).maybePop(),
-                      onRightTap: null,
-                    ),
                       ),
                     ),
                   ),
-                ),
-              ),
-            ),
                 ],
               ),
             ),
@@ -1321,27 +1387,18 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
     return null;
   }
 
-  static String? _extractFeedId(Map<String, dynamic> space) {
-    final direct = space['feedId'] ?? space['id'] ?? space['entityId'];
-    if (direct is String && direct.isNotEmpty) return direct;
-    final feed = space['feed'];
-    if (feed is Map<String, dynamic>) {
-      final nested = feed['id'] ?? feed['feedId'];
-      if (nested is String && nested.isNotEmpty) return nested;
-    }
-    return null;
-  }
-
   static String? _extractCategoryTitle(Map<String, dynamic> space) {
     final category = space['category'];
     if (category is Map<String, dynamic>) {
-      return _stringOrEmpty(category['name']) ?? _stringOrEmpty(category['title']);
+      return _stringOrEmpty(category['name']) ??
+          _stringOrEmpty(category['title']);
     }
     final place = space['place'];
     if (place is Map<String, dynamic>) {
       final nested = place['category'];
       if (nested is Map<String, dynamic>) {
-        return _stringOrEmpty(nested['name']) ?? _stringOrEmpty(nested['title']);
+        return _stringOrEmpty(nested['name']) ??
+            _stringOrEmpty(nested['title']);
       }
     }
     return null;
@@ -1356,7 +1413,8 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
     if (themes is List) {
       for (final item in themes) {
         if (item is Map<String, dynamic>) {
-          final name = _stringOrEmpty(item['name']) ?? _stringOrEmpty(item['title']);
+          final name =
+              _stringOrEmpty(item['name']) ?? _stringOrEmpty(item['title']);
           if (name != null) return name;
         }
       }
@@ -1365,7 +1423,8 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
     if (place is Map<String, dynamic>) {
       final nested = place['theme'];
       if (nested is Map<String, dynamic>) {
-        return _stringOrEmpty(nested['name']) ?? _stringOrEmpty(nested['title']);
+        return _stringOrEmpty(nested['name']) ??
+            _stringOrEmpty(nested['title']);
       }
     }
     return null;
@@ -1428,7 +1487,8 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
   }
 
   bool _isSpaceFavorited(Map<String, dynamic> space) {
-    final raw = space['favorited'] ??
+    final raw =
+        space['favorited'] ??
         space['isFavorite'] ??
         space['isFavorited'] ??
         space['isBookmarked'] ??
@@ -1457,7 +1517,8 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
     final urls = <String>[];
     final imageIdRaw = space['imageId'];
     if (imageIdRaw is Map<String, dynamic>) {
-      final url = imageIdRaw['cdnUrl'] as String? ??
+      final url =
+          imageIdRaw['cdnUrl'] as String? ??
           imageIdRaw['fileUrl'] as String? ??
           imageIdRaw['thumbnailUrl'] as String?;
       if (url != null && url.trim().isNotEmpty) {
@@ -1466,7 +1527,8 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
     }
     final imageRaw = space['image'];
     if (imageRaw is Map<String, dynamic>) {
-      final url = imageRaw['cdnUrl'] as String? ??
+      final url =
+          imageRaw['cdnUrl'] as String? ??
           imageRaw['fileUrl'] as String? ??
           imageRaw['thumbnailUrl'] as String?;
       if (url != null && url.trim().isNotEmpty) {
@@ -1479,7 +1541,8 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
         if (item is String) {
           if (item.trim().isNotEmpty) urls.add(item.trim());
         } else if (item is Map<String, dynamic>) {
-          final url = item['cdnUrl'] as String? ??
+          final url =
+              item['cdnUrl'] as String? ??
               item['fileUrl'] as String? ??
               item['thumbnailUrl'] as String?;
           if (url != null && url.trim().isNotEmpty) {
@@ -1492,15 +1555,16 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
     if (thumbRaw is String && thumbRaw.trim().isNotEmpty) {
       urls.add(thumbRaw.trim());
     } else if (thumbRaw is Map<String, dynamic>) {
-      final url = thumbRaw['cdnUrl'] as String? ??
+      final url =
+          thumbRaw['cdnUrl'] as String? ??
           thumbRaw['fileUrl'] as String? ??
           thumbRaw['thumbnailUrl'] as String?;
       if (url != null && url.trim().isNotEmpty) {
         urls.add(url.trim());
       }
     }
-    final fallback = space['thumbnailUrl'] as String? ??
-        space['imageUrl'] as String?;
+    final fallback =
+        space['thumbnailUrl'] as String? ?? space['imageUrl'] as String?;
     if (fallback != null && fallback.trim().isNotEmpty) {
       urls.add(fallback.trim());
     }
@@ -1512,27 +1576,13 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
   }
 }
 
-List<Map<String, dynamic>> _extractPlaceListItems(Map<String, dynamic> json) {
-  final items = json['items'];
-  if (items is List) {
-    return items.whereType<Map<String, dynamic>>().toList();
-  }
-  final data = json['data'];
-  if (data is Map<String, dynamic>) {
-    final nestedItems = data['items'] ?? data['nearbyPlaces'] ?? data['places'];
-    if (nestedItems is List) {
-      return nestedItems.whereType<Map<String, dynamic>>().toList();
-    }
-    final nestedData = data['data'];
-    if (nestedData is Map<String, dynamic>) {
-      final innerItems =
-          nestedData['items'] ?? nestedData['nearbyPlaces'] ?? nestedData['places'];
-      if (innerItems is List) {
-        return innerItems.whereType<Map<String, dynamic>>().toList();
-      }
-    }
-  }
-  return const [];
+List<Map<String, dynamic>> _extractRelatedPlaces(Map<String, dynamic> space) {
+  final raw = space['relatedPlaces'];
+  if (raw is! List) return const [];
+  return raw
+      .whereType<Map<String, dynamic>>()
+      .map(_normalizePlaceListItem)
+      .toList(growable: false);
 }
 
 Map<String, dynamic> _normalizePlaceListItem(Map<String, dynamic> item) {
@@ -1554,14 +1604,15 @@ String _resolvePlaceImageUrl(Map<String, dynamic> place) {
   final idRaw = place['id'];
   final idMap = idRaw is Map<String, dynamic> ? idRaw : null;
   final thumbnailRaw = place['thumbnail'];
-  final thumbnailMap = thumbnailRaw is Map<String, dynamic> ? thumbnailRaw : null;
+  final thumbnailMap = thumbnailRaw is Map<String, dynamic>
+      ? thumbnailRaw
+      : null;
   final imageIdRaw = place['imageId'];
   final imageIdMap = imageIdRaw is Map<String, dynamic> ? imageIdRaw : null;
   final imageRaw = place['image'];
   final imageMap = imageRaw is Map<String, dynamic> ? imageRaw : null;
   final idImageRaw = idMap?['image'];
-  final idImageMap =
-      idImageRaw is Map<String, dynamic> ? idImageRaw : null;
+  final idImageMap = idImageRaw is Map<String, dynamic> ? idImageRaw : null;
   final feed = place['feed'];
   final feedMap = feed is Map<String, dynamic> ? feed : null;
   final images = feedMap?['images'] ?? place['images'];
@@ -1608,15 +1659,192 @@ String _firstValidImageUrl(List<String?> candidates) {
   return '';
 }
 
+class _PlacebookTrustVoteSection extends StatelessWidget {
+  const _PlacebookTrustVoteSection({
+    required this.isLoading,
+    required this.isSubmitting,
+    required this.helpfulCount,
+    required this.suspiciousCount,
+    required this.totalVotes,
+    required this.helpfulRate,
+    required this.trustLabel,
+    required this.userVote,
+    required this.onHelpfulTap,
+    required this.onSuspiciousTap,
+  });
+
+  final bool isLoading;
+  final bool isSubmitting;
+  final int helpfulCount;
+  final int suspiciousCount;
+  final int totalVotes;
+  final int helpfulRate;
+  final String? trustLabel;
+  final String? userVote;
+  final VoidCallback onHelpfulTap;
+  final VoidCallback onSuspiciousTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = trustLabel == 'HELPFUL'
+        ? '도움됨'
+        : trustLabel == 'SUSPICIOUS'
+        ? '의심됨'
+        : '검증 대기';
+    final trustMetaText = '$label · 도움률 $helpfulRate% · 총 $totalVotes표';
+    final helpfulSelected = userVote == 'HELPFUL';
+    final suspiciousSelected = userVote == 'SUSPICIOUS';
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '장소 검증',
+            style: TextStyle(
+              fontFamily: 'Pretendard',
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: Colors.black,
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (helpfulCount > 0)
+            Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(
+                    text: '$helpfulCount',
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  const TextSpan(text: '명의 유저들이 도움을 받았어요!'),
+                ],
+              ),
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w400,
+                color: Colors.black,
+              ),
+            )
+          else
+            const Text(
+              '아직 첫 검증을 기다리고 있어요.',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w400,
+                color: Colors.black,
+              ),
+            ),
+          const SizedBox(height: 2),
+          Text(
+            trustMetaText,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: Color(0xFF9E9E9E),
+            ),
+          ),
+          const SizedBox(height: 16),
+          if (isLoading)
+            const Center(child: CommonActivityIndicator(size: 20))
+          else
+            Row(
+              children: [
+                Expanded(
+                  child: _TrustVoteButton(
+                    emoji: '😊',
+                    label: '도움돼요',
+                    count: helpfulCount,
+                    selected: helpfulSelected,
+                    enabled: !isSubmitting && !helpfulSelected,
+                    onTap: onHelpfulTap,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _TrustVoteButton(
+                    emoji: '😟',
+                    label: '의심돼요',
+                    count: suspiciousCount,
+                    selected: suspiciousSelected,
+                    enabled: !isSubmitting && !suspiciousSelected,
+                    onTap: onSuspiciousTap,
+                  ),
+                ),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TrustVoteButton extends StatelessWidget {
+  const _TrustVoteButton({
+    required this.emoji,
+    required this.label,
+    required this.count,
+    required this.selected,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final String emoji;
+  final String label;
+  final int count;
+  final bool selected;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return CommonInkWell(
+      onTap: enabled ? onTap : null,
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        height: 42,
+        decoration: BoxDecoration(
+          color: selected ? const Color(0xFF222222) : Colors.white,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: selected ? const Color(0xFF222222) : const Color(0xFFE4E4E4),
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(emoji, style: const TextStyle(fontSize: 15)),
+            const SizedBox(width: 5),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: selected ? Colors.white : Colors.black87,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              '$count',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: selected ? Colors.white : Colors.black54,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _SectionDivider extends StatelessWidget {
   const _SectionDivider();
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 8,
-      color: const Color(0xFFF5F5F5),
-    );
+    return Container(height: 8, color: const Color(0xFFF5F5F5));
   }
 }
 
@@ -1638,13 +1866,11 @@ class _NearbyPlacesSection extends StatelessWidget {
     if (isLoading) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 20),
-        child: Center(
-          child: CommonActivityIndicator(size: 22),
-        ),
+        child: Center(child: CommonActivityIndicator(size: 22)),
       );
     }
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1680,34 +1906,62 @@ class _NearbyPlacesSection extends StatelessWidget {
               ),
             )
           else
-            ...places.map((place) {
-              final title = (place['title'] as String?) ?? '장소';
-              final address = (place['address'] as String?) ?? '';
-              final commentCount =
-                  (place['commentCount'] as num?)?.toInt() ?? 0;
-              final likeCount = (place['likeCount'] as num?)?.toInt() ?? 0;
-              final themeText =
-                  _PlacebookDetailViewState._extractThemeTitle(place);
-              final favorited = (place['favorited'] as bool?) ??
-                  (place['isFavorited'] as bool?) ??
-                  false;
-              return CommonPlaceListItemView(
-                thumbnailUrl: _resolvePlaceImageUrl(place),
-                title: title,
-                address: address,
-                commentCount: commentCount,
-                likeCount: likeCount,
-                themeText: themeText,
-                favorited: favorited,
-                onTap: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => PlacebookDetailView(space: place),
+            SizedBox(
+              width: double.infinity,
+              height: 148,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 0,
+                  vertical: 12,
+                ),
+                itemCount: places.length,
+                separatorBuilder: (_, _) => const SizedBox(width: 12),
+                itemBuilder: (_, index) {
+                  final place = places[index];
+                  final title = (place['title'] as String?) ?? '장소';
+                  final address = (place['address'] as String?) ?? '';
+                  final commentCount =
+                      (place['commentCount'] as num?)?.toInt() ??
+                      (place['verificationCount'] as num?)?.toInt() ??
+                      0;
+                  final likeCount =
+                      (place['likeCount'] as num?)?.toInt() ??
+                      (place['favoriteCount'] as num?)?.toInt() ??
+                      0;
+                  final favorited =
+                      (place['favorited'] as bool?) ??
+                      (place['isFavorited'] as bool?) ??
+                      false;
+                  final distanceKm = place['distanceKm'];
+                  final distanceText = distanceKm is num
+                      ? '${distanceKm.toStringAsFixed(distanceKm < 1 ? 2 : 1)}km'
+                      : null;
+                  final themeText =
+                      _PlacebookDetailViewState._extractThemeTitle(place);
+                  return SizedBox(
+                    width: 320,
+                    child: CommonPlaceCarouselListItemView(
+                      thumbnailUrl: _resolvePlaceImageUrl(place),
+                      title: title,
+                      address: address,
+                      commentCount: commentCount,
+                      likeCount: likeCount,
+                      themeText: themeText,
+                      distanceText: distanceText,
+                      favorited: favorited,
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => PlacebookDetailView(space: place),
+                          ),
+                        );
+                      },
                     ),
                   );
                 },
-              );
-            }),
+              ),
+            ),
         ],
       ),
     );
@@ -1823,13 +2077,15 @@ class _PlacebookDetailCommentsSection extends StatelessWidget {
                           onLikeTap: () => onLikeTap(i),
                           onReplyTap: () => onReplyTap(comments[i]),
                           onMentionTap: () => onMentionTap(comments[i]),
-                          onToggleReplies: comments[i].replyCount != null &&
+                          onToggleReplies:
+                              comments[i].replyCount != null &&
                                   comments[i].replyCount! > 0
                               ? () => onToggleReplies(comments[i])
                               : null,
                           hasReplies: (comments[i].replyCount ?? 0) > 0,
-                          repliesExpanded:
-                              expandedReplies.contains(comments[i].id),
+                          repliesExpanded: expandedReplies.contains(
+                            comments[i].id,
+                          ),
                         ),
                       ),
                       if (expandedReplies.contains(comments[i].id))
@@ -1844,7 +2100,10 @@ class _PlacebookDetailCommentsSection extends StatelessWidget {
                     if (isLoadingMore)
                       const Padding(
                         padding: EdgeInsets.only(top: 8, bottom: 8),
-                        child: CommonActivityIndicator(size: 20, strokeWidth: 2),
+                        child: CommonActivityIndicator(
+                          size: 20,
+                          strokeWidth: 2,
+                        ),
                       ),
                   ],
                 );

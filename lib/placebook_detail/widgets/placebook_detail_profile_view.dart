@@ -47,7 +47,8 @@ class PlacebookDetailProfileView extends StatefulWidget {
       _PlacebookDetailProfileViewState();
 }
 
-class _PlacebookDetailProfileViewState extends State<PlacebookDetailProfileView> {
+class _PlacebookDetailProfileViewState
+    extends State<PlacebookDetailProfileView> {
   final ValueNotifier<int> _pageIndex = ValueNotifier<int>(0);
 
   @override
@@ -88,33 +89,34 @@ class _PlacebookDetailProfileViewState extends State<PlacebookDetailProfileView>
         nickname: widget.nickname,
         profileImageUrl: widget.profileImageUrl,
       );
-      showProfileModal(
-        context,
-        user: displayUser,
-        allowCurrentUser: true,
-      );
+      showProfileModal(context, user: displayUser, allowCurrentUser: true);
     }
 
     return LayoutBuilder(
       builder: (context, constraints) {
         final baseHeight =
             _HeaderSection.defaultHeight + _HeaderSection.titleBlockHeight;
-        final totalHeight =
-            constraints.maxHeight.isFinite ? constraints.maxHeight : baseHeight;
+        final totalHeight = constraints.maxHeight.isFinite
+            ? constraints.maxHeight
+            : baseHeight;
         final desiredGap = 24.0;
         final extra = (totalHeight - (baseHeight + desiredGap))
             .clamp(0.0, double.infinity)
             .toDouble();
         final headerHeight = _HeaderSection.defaultHeight + extra;
-        final imageHeight = (headerHeight -
-                _HeaderSection.bottomPadding -
-                _HeaderSection.overlap)
-            .clamp(0.0, headerHeight)
-            .toDouble();
-        final gap = (totalHeight -
-                (headerHeight + _HeaderSection.titleBlockHeight))
-            .clamp(0.0, desiredGap)
-            .toDouble();
+        final imageHeight =
+            (headerHeight -
+                    _HeaderSection.bottomPadding -
+                    _HeaderSection.overlap)
+                .clamp(0.0, headerHeight)
+                .toDouble();
+        final gap =
+            (totalHeight - (headerHeight + _HeaderSection.titleBlockHeight))
+                .clamp(0.0, desiredGap)
+                .toDouble();
+        final displayTitle = widget.title.trim().isNotEmpty
+            ? widget.title
+            : widget.locationTitle;
         return SizedBox(
           height: totalHeight,
           child: Column(
@@ -142,7 +144,7 @@ class _PlacebookDetailProfileViewState extends State<PlacebookDetailProfileView>
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        widget.locationTitle,
+                        displayTitle,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
@@ -294,8 +296,11 @@ class _HeaderSection extends StatelessWidget {
               left: 0,
               right: 0,
               child: Center(
-                child: Container(   
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
                   alignment: Alignment.center,
                   child: ValueListenableBuilder<int>(
                     valueListenable: pageIndex,
@@ -327,4 +332,3 @@ class _HeaderSection extends StatelessWidget {
     );
   }
 }
-
