@@ -15,6 +15,8 @@ class AuthUser {
     this.favoritePlaceCount,
     this.followerCount,
     this.followingCount,
+    this.recentAchievement,
+    this.recentTitle,
   });
 
   final String id;
@@ -32,6 +34,8 @@ class AuthUser {
   final int? favoritePlaceCount;
   final int? followerCount;
   final int? followingCount;
+  final Map<String, dynamic>? recentAchievement;
+  final Map<String, dynamic>? recentTitle;
 
   factory AuthUser.fromJson(Map<String, dynamic> json) {
     final profileImage = json['profileImage'];
@@ -49,7 +53,8 @@ class AuthUser {
       profileImageUrl: profileImageUrl,
       gender: (json['gender'] as String?)?.toLowerCase(),
       dateOfBirth: json['dateOfBirth'] as String?,
-      activityLevel: (json['activityLevel'] as num?)?.toInt(),
+      activityLevel: (json['activityLevel'] as num?)?.toInt() ??
+          (json['rewardLevel'] as num?)?.toInt(),
       feedCount: (json['feedCount'] as num?)?.toInt() ??
           (json['postCount'] as num?)?.toInt(),
       placebookTotalCount: (json['placebookTotalCount'] as num?)?.toInt(),
@@ -59,6 +64,8 @@ class AuthUser {
       favoritePlaceCount: (json['favoritePlaceCount'] as num?)?.toInt(),
       followerCount: (json['followerCount'] as num?)?.toInt(),
       followingCount: (json['followingCount'] as num?)?.toInt(),
+      recentAchievement: json['recentAchievement'] as Map<String, dynamic>?,
+      recentTitle: json['recentTitle'] as Map<String, dynamic>?,
     );
   }
 
@@ -79,6 +86,8 @@ class AuthUser {
       'favoritePlaceCount': favoritePlaceCount,
       'followerCount': followerCount,
       'followingCount': followingCount,
+      'recentAchievement': recentAchievement,
+      'recentTitle': recentTitle,
     };
   }
 
@@ -92,7 +101,8 @@ class AuthUser {
       profileImageUrl: json['profileImageUrl'] as String?,
       gender: (json['gender'] as String?)?.toLowerCase(),
       dateOfBirth: json['dateOfBirth'] as String?,
-      activityLevel: (json['activityLevel'] as num?)?.toInt(),
+      activityLevel: (json['activityLevel'] as num?)?.toInt() ??
+          (json['rewardLevel'] as num?)?.toInt(),
       feedCount: (json['feedCount'] as num?)?.toInt() ??
           (json['postCount'] as num?)?.toInt(),
       placebookTotalCount: (json['placebookTotalCount'] as num?)?.toInt(),
@@ -102,6 +112,8 @@ class AuthUser {
       favoritePlaceCount: (json['favoritePlaceCount'] as num?)?.toInt(),
       followerCount: (json['followerCount'] as num?)?.toInt(),
       followingCount: (json['followingCount'] as num?)?.toInt(),
+      recentAchievement: json['recentAchievement'] as Map<String, dynamic>?,
+      recentTitle: json['recentTitle'] as Map<String, dynamic>?,
     );
   }
 }

@@ -381,7 +381,7 @@ class _FeaturedRankingSection extends StatelessWidget {
             '장소 전문가 Top5',
             style: TextStyle(
               fontFamily: 'Pretendard',
-              fontSize: 18,
+              fontSize: 20,
               fontWeight: FontWeight.w700,
               color: Colors.black,
             ),
@@ -563,7 +563,7 @@ class _FeaturedNearestPlacesSection extends StatelessWidget {
                     '내 근처에는 이런 장소가 있어요',
                     style: TextStyle(
                       fontFamily: 'Pretendard',
-                      fontSize: 18,
+                      fontSize: 20,
                       fontWeight: FontWeight.w700,
                       color: Colors.black,
                     ),
@@ -1056,7 +1056,7 @@ class _FeaturedThemeSection extends StatelessWidget {
                         title,
                         style: const TextStyle(
                           fontFamily: 'Pretendard',
-                          fontSize: 18,
+                          fontSize: 20,
                           fontWeight: FontWeight.w700,
                           color: Colors.black,
                         ),

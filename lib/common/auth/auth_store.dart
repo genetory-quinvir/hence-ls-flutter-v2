@@ -116,8 +116,13 @@ class AuthStore {
       dateOfBirth: user.dateOfBirth,
       activityLevel: user.activityLevel,
       feedCount: user.feedCount,
+      placebookTotalCount: user.placebookTotalCount,
+      createdPlaceCount: user.createdPlaceCount,
+      favoritePlaceCount: user.favoritePlaceCount,
       followerCount: user.followerCount,
       followingCount: user.followingCount,
+      recentAchievement: user.recentAchievement,
+      recentTitle: user.recentTitle,
     );
   }
 

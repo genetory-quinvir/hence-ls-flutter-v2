@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
-import 'package:phosphor_flutter/phosphor_flutter.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../common/auth/auth_store.dart';
+import '../../common/auth/auth_models.dart';
 import '../../common/widgets/common_inkwell.dart';
-import 'profile_activity_info_view.dart';
 import 'profile_feed_list_item_view.dart';
 import 'profile_user_section.dart';
 import '../../common/network/api_client.dart';
@@ -16,7 +14,6 @@ import '../../common/widgets/common_image_view.dart';
 import '../../common/widgets/common_livespace_list_item_view.dart';
 import '../../common/widgets/common_empty_view.dart';
 import '../../common/widgets/common_refresh_view.dart';
-import '../../common/state/placebook_cache.dart';
 import '../../placebook_detail/placebook_detail_view.dart';
 import '../../placebook_list/placebook_list_view.dart';
 import '../profile_feed_detail_view.dart';
@@ -135,8 +132,9 @@ class _ProfileSignedViewState extends State<ProfileSignedView> {
           ),
           const SliverToBoxAdapter(child: SizedBox(height: 16)),
           const SliverToBoxAdapter(
-            child: _ProfilePlacebookCategoryTabs(),
+            child: _ProfileActivitySummarySection(),
           ),
+          const SliverToBoxAdapter(child: SizedBox(height: 24)),
           const SliverToBoxAdapter(child: SizedBox(height: 24)),
         ],
       ),
@@ -144,82 +142,207 @@ class _ProfileSignedViewState extends State<ProfileSignedView> {
   }
 }
 
-class _ProfilePlacebookCategoryTabs extends StatefulWidget {
-  const _ProfilePlacebookCategoryTabs();
-
-  @override
-  State<_ProfilePlacebookCategoryTabs> createState() =>
-      _ProfilePlacebookCategoryTabsState();
-}
-
-class _ProfilePlacebookCategoryTabsState
-    extends State<_ProfilePlacebookCategoryTabs> {
-  List<Map<String, dynamic>> _categories = const [];
-  String? _selectedId;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadCategories();
-  }
-
-  Future<void> _loadCategories() async {
-    final categories = await PlacebookCache.loadCategories();
-    if (!mounted) return;
-    setState(() {
-      _categories = categories;
-      if (_selectedId == null && categories.isNotEmpty) {
-        _selectedId = categories.first['id']?.toString();
-      }
-    });
-  }
+class _ProfileActivitySummarySection extends StatelessWidget {
+  const _ProfileActivitySummarySection();
 
   @override
   Widget build(BuildContext context) {
-    final items = _categories;
-    if (items.isEmpty) {
-      return const SizedBox.shrink();
-    }
-    return SizedBox(
-      height: 44,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        itemCount: items.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
-        itemBuilder: (context, index) {
-          final item = items[index];
-          final id = item['id']?.toString() ?? '';
-          final title = (item['title'] ?? '').toString();
-          final selected = id.isNotEmpty && id == _selectedId;
-          return GestureDetector(
-            onTap: () {
-              if (id.isEmpty) return;
-              setState(() => _selectedId = id);
-            },
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              decoration: ShapeDecoration(
-                color: selected ? Colors.black : Colors.white,
-                shape: const ContinuousRectangleBorder(
-                  borderRadius: BorderRadius.all(Radius.circular(28)),
-                  side: BorderSide(color: Color(0x22000000)),
-                ),
-              ),
-              child: Text(
-                title.isEmpty ? '카테고리' : title,
+    return FutureBuilder<AuthUser>(
+      future: ApiClient.fetchMe(),
+      builder: (context, snapshot) {
+        final user = snapshot.data;
+        final isLoading = snapshot.connectionState == ConnectionState.waiting;
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                '내 활동',
                 style: TextStyle(
                   fontFamily: 'Pretendard',
-                  fontSize: 13,
-                  fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
-                  color: selected ? Colors.white : const Color(0xFF9E9E9E),
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.black,
                 ),
               ),
-            ),
-          );
-        },
-      ),
+              const SizedBox(height: 2),
+              const Text(
+                '프로필 정보를 바탕으로 요약했어요',
+                style: TextStyle(
+                  fontFamily: 'Pretendard',
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: Color(0xFF9E9E9E),
+                ),
+              ),
+              const SizedBox(height: 12),
+              RichText(
+                text: _buildActivitySummarySpans(
+                  user,
+                  isLoading: isLoading,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
+  }
+
+  static TextSpan _buildActivitySummarySpans(
+    AuthUser? user, {
+    required bool isLoading,
+  }) {
+    const baseStyle = TextStyle(
+      fontFamily: 'Pretendard',
+      fontSize: 17,
+      height: 1.8,
+      fontWeight: FontWeight.w500,
+      color: Color(0xFF4A4A4A),
+    );
+    const achievementStyle = TextStyle(
+      fontFamily: 'Pretendard',
+      fontSize: 18,
+      height: 1.8,
+      fontWeight: FontWeight.w700,
+      color: Color(0xFF1A1A1A),
+      backgroundColor: Color(0xFFFFF4CC),
+    );
+    const titleStyle = TextStyle(
+      fontFamily: 'Pretendard',
+      fontSize: 18,
+      height: 1.8,
+      fontWeight: FontWeight.w700,
+      color: Color(0xFF1A1A1A),
+      backgroundColor: Color(0xFFE9F2FF),
+    );
+    const levelStyle = TextStyle(
+      fontFamily: 'Pretendard',
+      fontSize: 18,
+      height: 1.8,
+      fontWeight: FontWeight.w700,
+      color: Color(0xFF1A1A1A),
+      backgroundColor: Color(0xFFE9F8EF),
+    );
+    const countStyle = TextStyle(
+      fontFamily: 'Pretendard',
+      fontSize: 18,
+      height: 1.8,
+      fontWeight: FontWeight.w700,
+      color: Color(0xFF1A1A1A),
+      backgroundColor: Color(0xFFFFE9F2),
+    );
+    const followStyle = TextStyle(
+      fontFamily: 'Pretendard',
+      fontSize: 18,
+      height: 1.8,
+      fontWeight: FontWeight.w700,
+      color: Color(0xFF1A1A1A),
+      backgroundColor: Color(0xFFF0ECFF),
+    );
+
+    if (isLoading) {
+      return const TextSpan(
+        text: '최근 활동 정보를 불러오는 중이에요.',
+        style: baseStyle,
+      );
+    }
+    if (user == null) {
+      return const TextSpan(
+        text: '최근 활동 정보를 불러오지 못했어요.',
+        style: baseStyle,
+      );
+    }
+
+    final recentAchievement =
+        user.recentAchievement is Map<String, dynamic>
+            ? user.recentAchievement as Map<String, dynamic>
+            : null;
+    final recentTitle = user.recentTitle is Map<String, dynamic>
+        ? user.recentTitle as Map<String, dynamic>
+        : null;
+
+    final achievementName =
+        (recentAchievement?['title'] ?? '').toString().trim();
+    final titleName = (recentTitle?['name'] ?? '').toString().trim();
+
+    final spans = <TextSpan>[];
+    void addLine(List<TextSpan> lineSpans) {
+      if (spans.isNotEmpty) {
+        spans.add(const TextSpan(text: '\n', style: baseStyle));
+      }
+      spans.addAll(lineSpans);
+    }
+
+    if (achievementName.isNotEmpty || titleName.isNotEmpty) {
+      if (achievementName.isNotEmpty && titleName.isNotEmpty) {
+        addLine([
+          const TextSpan(text: '최근 받은 업적은 ', style: baseStyle),
+          TextSpan(text: achievementName, style: achievementStyle),
+          const TextSpan(text: ', 호칭은 ', style: baseStyle),
+          TextSpan(text: titleName, style: titleStyle),
+          const TextSpan(text: '이에요.', style: baseStyle),
+        ]);
+      } else if (achievementName.isNotEmpty) {
+        addLine([
+          const TextSpan(text: '최근 받은 업적은 ', style: baseStyle),
+          TextSpan(text: achievementName, style: achievementStyle),
+          const TextSpan(text: '이에요.', style: baseStyle),
+        ]);
+      } else {
+        addLine([
+          const TextSpan(text: '최근 받은 호칭은 ', style: baseStyle),
+          TextSpan(text: titleName, style: titleStyle),
+          const TextSpan(text: '이에요.', style: baseStyle),
+        ]);
+      }
+    }
+
+    if (user.activityLevel != null) {
+      addLine([
+        const TextSpan(text: '활동 지수는 ', style: baseStyle),
+        TextSpan(text: 'LV. ${user.activityLevel}', style: levelStyle),
+        const TextSpan(text: '이에요.', style: baseStyle),
+      ]);
+    }
+
+    if (user.createdPlaceCount != null || user.favoritePlaceCount != null) {
+      final createdText =
+          user.createdPlaceCount != null ? '저장 ${user.createdPlaceCount}개' : null;
+      final favoriteText =
+          user.favoritePlaceCount != null ? '찜 ${user.favoritePlaceCount}개' : null;
+      final parts = [createdText, favoriteText].whereType<String>().toList();
+      if (parts.isNotEmpty) {
+        addLine([
+          const TextSpan(text: '현재 ', style: baseStyle),
+          TextSpan(text: parts.join(' · '), style: countStyle),
+          const TextSpan(text: ' 기록 중이에요.', style: baseStyle),
+        ]);
+      }
+    }
+
+    if (user.followingCount != null || user.followerCount != null) {
+      final followingText =
+          user.followingCount != null ? '팔로잉 ${user.followingCount}명' : null;
+      final followerText =
+          user.followerCount != null ? '팔로우 ${user.followerCount}명' : null;
+      final parts = [followingText, followerText].whereType<String>().toList();
+      if (parts.isNotEmpty) {
+        addLine([
+          TextSpan(text: parts.join(' · '), style: followStyle),
+          const TextSpan(text: '과 함께하고 있어요.', style: baseStyle),
+        ]);
+      }
+    }
+
+    if (spans.isEmpty) {
+      return const TextSpan(
+        text: '최근 활동을 시작해볼까요?',
+        style: baseStyle,
+      );
+    }
+    return TextSpan(children: spans, style: baseStyle);
   }
 }
 
@@ -352,153 +475,6 @@ class _ProfileHeaderUserSectionState extends State<_ProfileHeaderUserSection> {
           },
         );
       },
-    );
-  }
-}
-
-class _ProfileActivitySection extends StatelessWidget {
-  const _ProfileActivitySection();
-
-  @override
-  Widget build(BuildContext context) {
-    return ValueListenableBuilder(
-      valueListenable: AuthStore.instance.currentUser,
-      builder: (context, user, _) {
-        final level = user?.activityLevel ?? 0;
-        final clampedLevel = level.clamp(0, 5);
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Container(
-            height: 64,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF2F2F2),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(
-              children: [
-                SvgPicture.asset(
-                  'assets/images/levels/icon_level_$clampedLevel.svg',
-                  width: 32,
-                  height: 32,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    '활동 지수',
-                    style: TextStyle(
-                      fontFamily: 'Pretendard',
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.grey[600],
-                    ),
-                  ),
-                ),
-                Text(
-                  'LV. $clampedLevel',
-                  style: const TextStyle(
-                    fontFamily: 'Pretendard',
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.black,
-                  ),
-                ),
-                const SizedBox(width: 6),
-                CommonInkWell(
-                  onTap: () => ProfileActivityInfoView.show(context),
-                  child: const SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: Icon(
-                      PhosphorIconsRegular.info,
-                      size: 20,
-                      color: Colors.black,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _TabBarHeaderDelegate extends SliverPersistentHeaderDelegate {
-  _TabBarHeaderDelegate(this.tabBar);
-
-  final TabBar tabBar;
-
-  @override
-  double get minExtent => tabBar.preferredSize.height;
-
-  @override
-  double get maxExtent => tabBar.preferredSize.height;
-
-  @override
-  Widget build(
-    BuildContext context,
-    double shrinkOffset,
-    bool overlapsContent,
-  ) {
-    return Container(
-      color: Colors.white,
-      child: tabBar,
-    );
-  }
-
-  @override
-  bool shouldRebuild(covariant _TabBarHeaderDelegate oldDelegate) {
-    return oldDelegate.tabBar != tabBar;
-  }
-}
-
-class _ActivityListPlaceholder extends StatelessWidget {
-  const _ActivityListPlaceholder({required this.title});
-
-  final String title;
-
-  @override
-  Widget build(BuildContext context) {
-    return CustomScrollView(
-      slivers: [
-        SliverOverlapInjector(
-          handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context),
-        ),
-        SliverList(
-          delegate: SliverChildBuilderDelegate(
-            (context, index) {
-              final isLast = index == 4;
-              return Column(
-                children: [
-                  Container(
-                    height: 56,
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      '$title 리스트 아이템 ${index + 1}',
-                      style: const TextStyle(
-                        fontFamily: 'Pretendard',
-                        fontSize: 14,
-                        fontWeight: FontWeight.w400,
-                        color: Colors.black,
-                      ),
-                    ),
-                  ),
-                  if (!isLast)
-                    const Divider(
-                      height: 1,
-                      thickness: 1,
-                      color: Color(0xFFE0E0E0),
-                    ),
-                ],
-              );
-            },
-            childCount: 5,
-          ),
-        ),
-      ],
     );
   }
 }
@@ -735,7 +711,6 @@ class _ProfileParticipantListState extends State<_ProfileParticipantList> {
 }
 class _ProfileFeedGrid extends StatefulWidget {
   const _ProfileFeedGrid({
-    super.key,
     required this.emptyMessage,
     required this.emptyButtonText,
     required this.onRefreshTab,

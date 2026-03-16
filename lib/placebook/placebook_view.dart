@@ -4,7 +4,6 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:figma_squircle/figma_squircle.dart';
 
 import '../common/network/api_client.dart';
-import '../common/styles/app_shadows.dart';
 import '../common/widgets/common_activity.dart';
 import '../common/widgets/common_image_view.dart';
 import '../common/widgets/common_inkwell.dart';
@@ -218,7 +217,7 @@ class _PlacebookViewState extends State<PlacebookView>
           '현재 저장 현황',
           style: TextStyle(
             fontFamily: 'Pretendard',
-            fontSize: 18,
+            fontSize: 20,
             fontWeight: FontWeight.w700,
             color: Colors.black,
           ),
@@ -267,12 +266,12 @@ class _PlacebookViewState extends State<PlacebookView>
           '최근 나의 장소',
           style: TextStyle(
             fontFamily: 'Pretendard',
-            fontSize: 13,
+            fontSize: 14,
             fontWeight: FontWeight.w400,
-            color: const Color(0xFF757575),
+            color: Color(0xFF757575),
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 16),
         SizedBox(
           width: double.infinity,
           height: 124,
@@ -679,7 +678,13 @@ class _RoundedCard extends StatelessWidget {
         shape: ContinuousRectangleBorder(
           borderRadius: BorderRadius.all(Radius.circular(28)),
         ),
-        shadows: AppShadows.card,
+        shadows: [
+          BoxShadow(
+            color: Color(0x14000000),
+            blurRadius: 18,
+            offset: Offset(0, 0),
+          ),
+        ],
       ),
       child: child,
     );
@@ -711,12 +716,12 @@ class _SummaryStat extends StatelessWidget {
               textAlign: TextAlign.center,
               style: const TextStyle(
                 fontFamily: 'Pretendard',
-                fontSize: 13,
+                fontSize: 14,
                 fontWeight: FontWeight.w400,
                 color: Color(0xFF757575),
               ),
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 12),
             Text(
               value,
               textAlign: TextAlign.center,
@@ -760,7 +765,7 @@ class _SectionHeader extends StatelessWidget {
                 title,
                 style: const TextStyle(
                   fontFamily: 'Pretendard',
-                  fontSize: 16,
+                  fontSize: 20,
                   fontWeight: FontWeight.w700,
                   color: Colors.black,
                 ),
@@ -801,8 +806,7 @@ class _SectionHeader extends StatelessWidget {
               ],
             ),
           )
-        else if (trailing != null)
-          trailing!,
+        else ?trailing,
       ],
     );
   }
@@ -1268,7 +1272,13 @@ class _PlaceListThumbnail extends StatelessWidget {
               ),
               side: const BorderSide(color: Colors.white, width: 4),
             ),
-            shadows: AppShadows.card,
+            shadows: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.08),
+                blurRadius: 20,
+                offset: const Offset(0, 0),
+              ),
+            ],
           ),
           child: ClipSmoothRect(
             radius: SmoothBorderRadius(

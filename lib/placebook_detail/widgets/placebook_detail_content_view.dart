@@ -22,8 +22,8 @@ class PlacebookDetailContentView extends StatelessWidget {
             '어떤 장소인가요?',
             style: TextStyle(
               fontFamily: 'Pretendard',
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
               color: Colors.black,
             ),
           ),

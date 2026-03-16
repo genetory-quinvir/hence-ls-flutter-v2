@@ -14,16 +14,15 @@ import '../common/widgets/common_rounded_button.dart';
 import '../common/widgets/common_title_actionsheet.dart';
 import '../common/widgets/common_refresh_view.dart';
 import '../common/permissions/media_permission_service.dart';
-import '../common/styles/app_shadows.dart';
 import '../common/media/media_picker_service.dart';
 import '../common/media/media_conversion_service.dart';
-import 'models/feed_comment_model.dart';
+import 'models/common_comment_model.dart';
 import 'models/mention_user.dart';
-import 'widgets/feed_comment_list_item_view.dart';
+import 'widgets/common_comment_list_item_view.dart';
 import '../common/widgets/common_login_guard.dart';
 
-class FeedCommentView extends StatefulWidget {
-  const FeedCommentView({
+class CommonCommentView extends StatefulWidget {
+  const CommonCommentView({
     super.key,
     this.feedId,
     this.spaceId,
@@ -41,16 +40,16 @@ class FeedCommentView extends StatefulWidget {
   final String? entityType;
   final String? entityId;
   final bool readOnly;
-  final List<FeedCommentItem> comments;
+  final List<CommonCommentItem> comments;
   final VoidCallback? onCommentAdded;
   final int? initialTotalCount;
   final String? initialCommentId;
 
   @override
-  State<FeedCommentView> createState() => _FeedCommentViewState();
+  State<CommonCommentView> createState() => _CommonCommentViewState();
 }
 
-class _FeedCommentViewState extends State<FeedCommentView> {
+class _CommonCommentViewState extends State<CommonCommentView> {
   static const double _sheetMinRatio = 0.6;
   final TextEditingController _controller = TextEditingController();
   final FocusNode _inputFocusNode = FocusNode();
@@ -62,7 +61,7 @@ class _FeedCommentViewState extends State<FeedCommentView> {
   bool _hasNext = false;
   String? _nextCursor;
   int _totalCount = 0;
-  List<FeedCommentItem> _comments = const [];
+  List<CommonCommentItem> _comments = const [];
   File? _commentImageFile;
   String _selectedSort = '최신순';
   static const List<String> _commentSorts = <String>['최신순', '인기순'];
@@ -72,9 +71,9 @@ class _FeedCommentViewState extends State<FeedCommentView> {
   List<MentionUser> _mentionCandidates = const [];
   List<MentionUser> _filteredMentions = const [];
   bool _showMentions = false;
-  FeedCommentItem? _replyTarget;
+  CommonCommentItem? _replyTarget;
   String? _mentionBadgeName;
-  final Map<String, List<FeedCommentItem>> _repliesByCommentId = {};
+  final Map<String, List<CommonCommentItem>> _repliesByCommentId = {};
   final Set<String> _expandedReplies = {};
   final Set<String> _loadingReplies = {};
   final Set<String> _togglingReplyIds = {};
@@ -92,7 +91,7 @@ class _FeedCommentViewState extends State<FeedCommentView> {
     }
   }
 
-  Future<FeedCommentPage> _fetchComments({
+  Future<CommonCommentPage> _fetchComments({
     String? cursor,
   }) async {
     final entityType = widget.entityType;
@@ -107,7 +106,7 @@ class _FeedCommentViewState extends State<FeedCommentView> {
     }
     final feedId = widget.feedId;
     if (feedId == null || feedId.isEmpty) {
-      return const FeedCommentPage(comments: [], hasNext: false);
+      return const CommonCommentPage(comments: [], hasNext: false);
     }
     return ApiClient.fetchFeedComments(
       feedId: feedId,
@@ -211,9 +210,9 @@ class _FeedCommentViewState extends State<FeedCommentView> {
   String get _orderBy {
     switch (_selectedSort) {
       case '인기순':
-        return 'popular';
+        return 'POPULAR';
       default:
-        return 'latest';
+        return 'LATEST';
     }
   }
 
@@ -343,7 +342,7 @@ class _FeedCommentViewState extends State<FeedCommentView> {
         ? user!.nickname
         : '';
     final profileUrl = user?.profileImageUrl;
-    final optimistic = FeedCommentItem(
+    final optimistic = CommonCommentItem(
       id: 'local_${DateTime.now().microsecondsSinceEpoch}',
       content: content,
       createdAt: DateTime.now().toIso8601String(),
@@ -363,7 +362,7 @@ class _FeedCommentViewState extends State<FeedCommentView> {
   }
 
   void _prependOptimisticReply(
-    FeedCommentItem parent,
+    CommonCommentItem parent,
     String content, {
     String? imageId,
   }) {
@@ -373,7 +372,7 @@ class _FeedCommentViewState extends State<FeedCommentView> {
         ? user!.nickname
         : '';
     final profileUrl = user?.profileImageUrl;
-    final optimistic = FeedCommentItem(
+    final optimistic = CommonCommentItem(
       id: 'local_${DateTime.now().microsecondsSinceEpoch}',
       content: content,
       createdAt: DateTime.now().toIso8601String(),
@@ -386,7 +385,7 @@ class _FeedCommentViewState extends State<FeedCommentView> {
       likeCount: 0,
       replyCount: 0,
     );
-    final existing = _repliesByCommentId[parent.id] ?? const <FeedCommentItem>[];
+    final existing = _repliesByCommentId[parent.id] ?? const <CommonCommentItem>[];
     setState(() {
       _repliesByCommentId[parent.id] = [optimistic, ...existing];
     });
@@ -518,7 +517,7 @@ class _FeedCommentViewState extends State<FeedCommentView> {
     setState(() {
       _isTogglingLike = true;
       _comments = List.of(_comments)
-        ..[index] = FeedCommentItem(
+        ..[index] = CommonCommentItem(
           id: comment.id,
           content: comment.content,
           createdAt: comment.createdAt,
@@ -563,8 +562,8 @@ class _FeedCommentViewState extends State<FeedCommentView> {
     final nextCount = reply.likeCount + (nextLiked ? 1 : -1);
     setState(() {
       _togglingReplyIds.add(reply.id);
-      final updated = List<FeedCommentItem>.from(replies);
-      updated[index] = FeedCommentItem(
+      final updated = List<CommonCommentItem>.from(replies);
+      updated[index] = CommonCommentItem(
         id: reply.id,
         content: reply.content,
         createdAt: reply.createdAt,
@@ -587,7 +586,7 @@ class _FeedCommentViewState extends State<FeedCommentView> {
     } catch (_) {
       if (!mounted) return;
       setState(() {
-        final restored = List<FeedCommentItem>.from(replies);
+        final restored = List<CommonCommentItem>.from(replies);
         restored[index] = reply;
         _repliesByCommentId[parentId] = restored;
       });
@@ -598,7 +597,7 @@ class _FeedCommentViewState extends State<FeedCommentView> {
     }
   }
 
-  Future<void> _toggleReplies(FeedCommentItem comment) async {
+  Future<void> _toggleReplies(CommonCommentItem comment) async {
     final commentId = comment.id;
     final isExpanded = _expandedReplies.contains(commentId);
     if (isExpanded) {
@@ -644,7 +643,7 @@ class _FeedCommentViewState extends State<FeedCommentView> {
   }
 
   Future<void> _handleReplyTap(
-    FeedCommentItem target, {
+    CommonCommentItem target, {
     String? mention,
   }) async {
     if (!await CommonLoginGuard.ensureSignedIn(
@@ -798,7 +797,7 @@ class _FeedCommentViewState extends State<FeedCommentView> {
                                   parent: BouncingScrollPhysics(),
                                 ),
                                 itemCount: _comments.length + (_hasNext ? 1 : 0),
-                                separatorBuilder: (_, __) =>
+                                separatorBuilder: (_, _) =>
                                     const SizedBox(height: itemGap),
                                 itemBuilder: (context, index) {
                                   if (index >= _comments.length) {
@@ -827,7 +826,7 @@ class _FeedCommentViewState extends State<FeedCommentView> {
                                     child: Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        FeedCommentListItemView(
+                                        CommonCommentListItemView(
                                           comment: comment,
                                           onLikeTap: () => _toggleLikeAt(index),
                                           onReplyTap: () {
@@ -859,7 +858,7 @@ class _FeedCommentViewState extends State<FeedCommentView> {
                                                         bottom: 12,
                                                       ),
                                                       child:
-                                                          FeedCommentListItemView(
+                                                          CommonCommentListItemView(
                                                         comment: reply,
                                                         onLikeTap: () {
                                                           _toggleReplyLike(
@@ -906,7 +905,13 @@ class _FeedCommentViewState extends State<FeedCommentView> {
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(color: const Color(0xFFE0E0E0)),
-                        boxShadow: AppShadows.card,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.06),
+                            blurRadius: 12,
+                            offset: const Offset(0, 6),
+                          ),
+                        ],
                       ),
                       child: ListView.builder(
                         shrinkWrap: true,

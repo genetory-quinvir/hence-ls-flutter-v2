@@ -221,8 +221,8 @@ class _MapFilterViewState extends State<MapFilterView> {
                         '필터',
                         style: TextStyle(
                           fontFamily: 'Pretendard',
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
                           color: Colors.black,
                         ),
                       ),
@@ -410,4 +410,3 @@ class _BulkActionButton extends StatelessWidget {
     );
   }
 }
-

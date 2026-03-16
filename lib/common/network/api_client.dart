@@ -8,8 +8,8 @@ import 'package:http_parser/http_parser.dart';
 import 'api_config.dart';
 import '../auth/auth_models.dart';
 import '../auth/auth_store.dart';
-import '../../feed_comment/models/feed_comment_model.dart';
-import '../../feed_comment/models/mention_user.dart';
+import '../../common_comment/models/common_comment_model.dart';
+import '../../common_comment/models/mention_user.dart';
 import '../../profile/models/profile_display_user.dart';
 
 class ApiClient {
@@ -64,7 +64,16 @@ class ApiClient {
     final data = json is Map<String, dynamic> ? json['data'] : null;
     if (data is Map<String, dynamic>) {
       final user = data['user'];
-      if (user is Map<String, dynamic>) return AuthUser.fromJson(user);
+      if (user is Map<String, dynamic>) {
+        final merged = Map<String, dynamic>.from(user);
+        if (data['recentAchievement'] is Map<String, dynamic>) {
+          merged['recentAchievement'] = data['recentAchievement'];
+        }
+        if (data['recentTitle'] is Map<String, dynamic>) {
+          merged['recentTitle'] = data['recentTitle'];
+        }
+        return AuthUser.fromJson(merged);
+      }
       return AuthUser.fromJson(data);
     }
     return const AuthUser(id: '', nickname: '');
@@ -936,7 +945,7 @@ class ApiClient {
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
-  static Future<FeedCommentPage> fetchFeedComments({
+  static Future<CommonCommentPage> fetchFeedComments({
     required String feedId,
     int limit = 20,
     String? cursor,
@@ -983,9 +992,9 @@ class ApiClient {
       if (comments is List) {
         final items = comments
             .whereType<Map<String, dynamic>>()
-            .map(FeedCommentItem.fromJson)
+            .map(CommonCommentItem.fromJson)
             .toList();
-        return FeedCommentPage(
+        return CommonCommentPage(
           comments: items,
           hasNext: hasNext,
           nextCursor: nextCursor,
@@ -993,7 +1002,7 @@ class ApiClient {
         );
       }
     }
-    return FeedCommentPage(
+    return CommonCommentPage(
       comments: const [],
       hasNext: false,
       nextCursor: null,
@@ -1001,7 +1010,7 @@ class ApiClient {
     );
   }
 
-  static Future<FeedCommentPage> fetchEntityComments({
+  static Future<CommonCommentPage> fetchEntityComments({
     required String entityType,
     required String entityId,
     String? cursor,
@@ -1036,9 +1045,9 @@ class ApiClient {
       final comments = items is List
           ? items
                 .whereType<Map<String, dynamic>>()
-                .map(FeedCommentItem.fromJson)
+                .map(CommonCommentItem.fromJson)
                 .toList()
-          : const <FeedCommentItem>[];
+          : const <CommonCommentItem>[];
       final hasNext = meta is Map<String, dynamic>
           ? (meta['hasNext'] as bool?) ?? false
           : false;
@@ -1048,17 +1057,17 @@ class ApiClient {
       final totalCount = meta is Map<String, dynamic>
           ? (meta['totalCount'] as num?)?.toInt()
           : null;
-      return FeedCommentPage(
+      return CommonCommentPage(
         comments: comments,
         hasNext: hasNext,
         nextCursor: nextCursor,
         totalCount: totalCount,
       );
     }
-    return const FeedCommentPage(comments: [], hasNext: false);
+    return const CommonCommentPage(comments: [], hasNext: false);
   }
 
-  static Future<FeedCommentPage> fetchPlaceComments({
+  static Future<CommonCommentPage> fetchPlaceComments({
     required String placeId,
     String? cursor,
     int limit = 20,
@@ -1083,7 +1092,7 @@ class ApiClient {
     }
     final json = jsonDecode(response.body);
     if (json is! Map<String, dynamic>) {
-      return const FeedCommentPage(comments: [], hasNext: false);
+      return const CommonCommentPage(comments: [], hasNext: false);
     }
     final data = json['data'];
     final root = data is Map<String, dynamic> ? data : json;
@@ -1091,12 +1100,12 @@ class ApiClient {
     final comments = items is List
         ? items
               .whereType<Map<String, dynamic>>()
-              .map(FeedCommentItem.fromJson)
+              .map(CommonCommentItem.fromJson)
               .toList()
-        : const <FeedCommentItem>[];
+        : const <CommonCommentItem>[];
     final hasMore = (root['hasMore'] as bool?) ?? false;
     final nextCursor = root['nextCursor']?.toString();
-    return FeedCommentPage(
+    return CommonCommentPage(
       comments: comments,
       hasNext: hasMore,
       nextCursor: nextCursor,
@@ -1328,7 +1337,7 @@ class ApiClient {
     }
   }
 
-  static Future<List<FeedCommentItem>> fetchCommentReplies({
+  static Future<List<CommonCommentItem>> fetchCommentReplies({
     required String commentId,
     String? cursor,
     int limit = 20,
@@ -1357,7 +1366,7 @@ class ApiClient {
       if (replies is List) {
         return replies
             .whereType<Map<String, dynamic>>()
-            .map(FeedCommentItem.fromJson)
+            .map(CommonCommentItem.fromJson)
             .toList();
       }
     }
@@ -2046,6 +2055,66 @@ class ApiClient {
     }
     final json = jsonDecode(response.body);
     return json is Map<String, dynamic> ? json : <String, dynamic>{};
+  }
+
+  static Future<List<Map<String, dynamic>>> fetchMyAchievements() async {
+    final uri = Uri.parse('$baseUrl/api/v1/rewards/achievements/me');
+    _logRequest('GET', uri);
+    final response = await _sendWithAuthRetry(
+      () => http.get(uri, headers: _headers()),
+      retryRequest: () => http.get(uri, headers: _headers()),
+    );
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('My achievements request failed: ${response.statusCode}');
+    }
+    final json = jsonDecode(response.body);
+    if (json is List) {
+      return json.whereType<Map<String, dynamic>>().toList();
+    }
+    if (json is Map<String, dynamic>) {
+      final data = json['data'];
+      if (data is List) {
+        return data.whereType<Map<String, dynamic>>().toList();
+      }
+      if (data is Map<String, dynamic>) {
+        final items = data['items'];
+        if (items is List) {
+          return items.whereType<Map<String, dynamic>>().toList();
+        }
+      }
+    }
+    return const [];
+  }
+
+  static Future<List<Map<String, dynamic>>> fetchMyTitles() async {
+    final uri = Uri.parse('$baseUrl/api/v1/rewards/titles/me');
+    _logRequest('GET', uri);
+    final response = await _sendWithAuthRetry(
+      () => http.get(uri, headers: _headers()),
+      retryRequest: () => http.get(uri, headers: _headers()),
+    );
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('My titles request failed: ${response.statusCode}');
+    }
+    final json = jsonDecode(response.body);
+    if (json is List) {
+      return json.whereType<Map<String, dynamic>>().toList();
+    }
+    if (json is Map<String, dynamic>) {
+      final data = json['data'];
+      if (data is List) {
+        return data.whereType<Map<String, dynamic>>().toList();
+      }
+      if (data is Map<String, dynamic>) {
+        final items = data['items'];
+        if (items is List) {
+          return items.whereType<Map<String, dynamic>>().toList();
+        }
+      }
+    }
+    return const [];
   }
 
   static Future<Map<String, dynamic>> fetchPlacebookCreatedPlacesList({

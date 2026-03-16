@@ -7,10 +7,10 @@ import '../../common/widgets/common_profile_modal.dart';
 import '../../common/widgets/common_alert_view.dart';
 import '../../profile/models/profile_display_user.dart';
 import '../../common/widgets/common_inkwell.dart';
-import '../models/feed_comment_model.dart';
+import '../models/common_comment_model.dart';
 
-class FeedCommentListItemView extends StatelessWidget {
-  const FeedCommentListItemView({
+class CommonCommentListItemView extends StatelessWidget {
+  const CommonCommentListItemView({
     super.key,
     required this.comment,
     this.onLikeTap,
@@ -22,7 +22,7 @@ class FeedCommentListItemView extends StatelessWidget {
     this.repliesExpanded = false,
   });
 
-  final FeedCommentItem comment;
+  final CommonCommentItem comment;
   final VoidCallback? onLikeTap;
   final VoidCallback? onReplyTap;
   final VoidCallback? onMentionTap;
@@ -93,12 +93,13 @@ class FeedCommentListItemView extends StatelessWidget {
         );
       }
       final token = match.group(0) ?? '';
+      final displayToken = token.startsWith('@') ? token.substring(1) : token;
       contentSpans.add(
         TextSpan(
-          text: token,
+          text: displayToken,
           style: const TextStyle(
             backgroundColor: Color(0xFFE9F2FF),
-            color: Colors.black,
+            color: Color(0xFF1D4ED8),
             fontWeight: FontWeight.w500,
           ),
         ),

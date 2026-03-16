@@ -158,7 +158,7 @@ class _PlacebookDetailInfoViewState extends State<PlacebookDetailInfoView> {
             style: TextStyle(
               fontFamily: 'Pretendard',
               fontSize: 20,
-              fontWeight: FontWeight.w800,
+              fontWeight: FontWeight.w700,
               color: Colors.black,
             ),
           ),

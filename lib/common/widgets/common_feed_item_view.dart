@@ -15,7 +15,7 @@ import 'common_inkwell.dart';
 import 'common_image_view.dart';
 import 'common_profile_view.dart';
 import '../../profile/models/profile_display_user.dart';
-import '../../feed_comment/feed_comment_view.dart';
+import '../../common_comment/common_comment_view.dart';
 import '../../feed_tag/feed_tag_view.dart';
 import 'common_profile_modal.dart';
 import 'common_login_guard.dart';
@@ -144,7 +144,7 @@ class _CommonFeedItemViewState extends State<CommonFeedItemView> {
         shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
         ),
-        builder: (_) => FeedCommentView(
+        builder: (_) => CommonCommentView(
           feedId: widget.feed.id,
           spaceId: widget.feed.space?.spaceId,
           comments: const [],

@@ -216,7 +216,7 @@ class _MapClusterViewState extends State<MapClusterView> {
                   title,
                   style: const TextStyle(
                     fontFamily: 'Pretendard',
-                    fontSize: 16,
+                    fontSize: 20,
                     fontWeight: FontWeight.w700,
                     color: Colors.black,
                   ),

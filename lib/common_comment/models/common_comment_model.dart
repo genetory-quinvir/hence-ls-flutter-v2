@@ -1,5 +1,5 @@
-class FeedCommentItem {
-  const FeedCommentItem({
+class CommonCommentItem {
+  const CommonCommentItem({
     required this.id,
     required this.content,
     required this.createdAt,
@@ -31,7 +31,7 @@ class FeedCommentItem {
   final int? replyCount;
   final List<String> mentionNames;
 
-  factory FeedCommentItem.fromJson(Map<String, dynamic> json) {
+  factory CommonCommentItem.fromJson(Map<String, dynamic> json) {
     final author = json['author'] is Map<String, dynamic>
         ? json['author']
         : json['user'];
@@ -76,7 +76,7 @@ class FeedCommentItem {
     final repliesRaw = json['replies'];
     final repliesCount = repliesRaw is List ? repliesRaw.length : null;
 
-    return FeedCommentItem(
+    return CommonCommentItem(
       id: json['id'] as String? ?? '',
       content: json['content'] as String? ?? '',
       createdAt: json['createdAt'] as String? ?? '',
@@ -119,15 +119,15 @@ class FeedCommentItem {
   }
 }
 
-class FeedCommentPage {
-  const FeedCommentPage({
+class CommonCommentPage {
+  const CommonCommentPage({
     required this.comments,
     required this.hasNext,
     this.nextCursor,
     this.totalCount,
   });
 
-  final List<FeedCommentItem> comments;
+  final List<CommonCommentItem> comments;
   final bool hasNext;
   final String? nextCursor;
   final int? totalCount;

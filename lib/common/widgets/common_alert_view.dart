@@ -26,7 +26,7 @@ class CommonAlertView extends StatelessWidget {
 
     return Center(
       child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 24),
+        margin: const EdgeInsets.symmetric(horizontal: 48),
         padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
         decoration: BoxDecoration(
           color: Colors.white,
@@ -40,7 +40,7 @@ class CommonAlertView extends StatelessWidget {
               textAlign: TextAlign.center,
               style: const TextStyle(
                 fontFamily: 'Pretendard',
-                fontSize: 16,
+                fontSize: 20,
                 fontWeight: FontWeight.w700,
                 color: Colors.black,
               ),
@@ -58,7 +58,7 @@ class CommonAlertView extends StatelessWidget {
                 ),
               ),
             ],
-            const SizedBox(height: 20),
+            const SizedBox(height: 24),
             if (hasSecondary)
               Row(
                 children: [
@@ -66,7 +66,7 @@ class CommonAlertView extends StatelessWidget {
                     child: CommonRoundedButton(
                       title: secondaryButtonTitle!,
                       onTap: onSecondaryTap,
-                      height: 40,
+                      height: 44,
                       backgroundColor: const Color(0xFFF2F2F2),
                       textColor: Colors.black,
                     ),
@@ -76,7 +76,7 @@ class CommonAlertView extends StatelessWidget {
                     child: CommonRoundedButton(
                       title: primaryButtonTitle,
                       onTap: onPrimaryTap,
-                      height: 40,
+                      height: 44,
                     ),
                   ),
                 ],
@@ -85,7 +85,7 @@ class CommonAlertView extends StatelessWidget {
               CommonRoundedButton(
                 title: primaryButtonTitle,
                 onTap: onPrimaryTap,
-                height: 40,
+                height: 44,
               ),
           ],
         ),
