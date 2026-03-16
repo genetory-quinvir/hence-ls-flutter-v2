@@ -15,6 +15,7 @@ import '../common/widgets/common_activity.dart';
 import '../common/widgets/common_empty_view.dart';
 import '../common/widgets/common_image_view.dart';
 import '../common/widgets/common_inkwell.dart';
+import '../common/widgets/common_alert_view.dart';
 import '../common/widgets/common_place_list_item_view.dart';
 import '../common/widgets/common_place_carousel_list_item_view.dart';
 import '../common/widgets/common_profile_view.dart';
@@ -26,8 +27,8 @@ import '../placebook_list/placebook_list_view.dart';
 import '../placebook_detail/placebook_detail_view.dart';
 import '../profile_info/profile_info_view.dart';
 import '../profile/models/profile_display_user.dart';
+import '../search/search_view.dart';
 import '../sign/sign_view.dart';
-import '../web/web_view.dart';
 
 class FeaturedView extends StatefulWidget {
   const FeaturedView({super.key});
@@ -37,61 +38,123 @@ class FeaturedView extends StatefulWidget {
 }
 
 class _FeaturedViewState extends State<FeaturedView> {
+  static const double _fallbackLatitude = 37.4979;
+  static const double _fallbackLongitude = 127.0276;
   late Future<Map<String, dynamic>> _featuredFuture;
   Map<String, dynamic>? _featuredData;
   bool _isRefreshing = false;
   static const double _kTabBarHeight = 50;
   double? _lastLatitude;
   double? _lastLongitude;
+  int _featuredRequestCount = 0;
+  bool _didLogInitialRenderPerf = false;
+  DateTime? _lastFeaturedSuccessAt;
+  bool _didBackgroundPreciseRefresh = false;
 
   @override
   void initState() {
     super.initState();
     _featuredFuture = _requestFeatured();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _refreshWithPreciseLocationInBackground();
+    });
   }
 
-  Future<Map<String, dynamic>> _requestFeatured() async {
+  Future<Map<String, dynamic>> _requestFeatured({
+    bool forceRefresh = false,
+    bool preferPreciseLocation = false,
+  }) async {
+    _featuredRequestCount += 1;
+    debugPrint('[PERF][FEATURED] request_count=$_featuredRequestCount');
     double? latitude;
     double? longitude;
     try {
-      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      final granted = await LocationPermissionService.isGranted();
-      if (serviceEnabled && granted) {
-        final position = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.medium,
-          timeLimit: const Duration(seconds: 5),
-        );
-        latitude = position.latitude;
-        longitude = position.longitude;
-        _lastLatitude = latitude;
-        _lastLongitude = longitude;
+      if (_lastLatitude != null && _lastLongitude != null) {
+        latitude = _lastLatitude;
+        longitude = _lastLongitude;
+      } else {
+        final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+        final granted = await LocationPermissionService.isGranted();
+        if (serviceEnabled && granted) {
+          final lastKnown = await Geolocator.getLastKnownPosition();
+          if (lastKnown != null) {
+            latitude = lastKnown.latitude;
+            longitude = lastKnown.longitude;
+          } else if (preferPreciseLocation) {
+            final position = await Geolocator.getCurrentPosition(
+              locationSettings: const LocationSettings(
+                accuracy: LocationAccuracy.medium,
+                timeLimit: Duration(seconds: 2),
+              ),
+            );
+            latitude = position.latitude;
+            longitude = position.longitude;
+          }
+          _lastLatitude = latitude;
+          _lastLongitude = longitude;
+        }
       }
     } on Exception {
       // Ignore location failures and fall back to non-location request.
     }
+    latitude ??= _fallbackLatitude;
+    longitude ??= _fallbackLongitude;
+    _lastLatitude ??= latitude;
+    _lastLongitude ??= longitude;
     try {
-      return await ApiClient.fetchFeatured(
-        latitude: latitude,
-        longitude: longitude,
-      ).timeout(
-        const Duration(seconds: 10),
-        onTimeout: () => <String, dynamic>{},
-      );
+      final data =
+          await ApiClient.fetchFeatured(
+            latitude: latitude,
+            longitude: longitude,
+            forceRefresh: forceRefresh,
+          ).timeout(
+            const Duration(seconds: 10),
+            onTimeout: () => <String, dynamic>{},
+          );
+      if (data.isNotEmpty) {
+        _lastFeaturedSuccessAt = DateTime.now();
+      }
+      return data;
     } catch (_) {
       return <String, dynamic>{};
     }
   }
 
+  Future<void> _refreshWithPreciseLocationInBackground() async {
+    if (!mounted || _didBackgroundPreciseRefresh) return;
+    _didBackgroundPreciseRefresh = true;
+    final data = await _requestFeatured(
+      forceRefresh: true,
+      preferPreciseLocation: true,
+    );
+    if (!mounted || data.isEmpty) return;
+    setState(() {
+      _featuredData = data;
+      _featuredFuture = Future.value(data);
+    });
+  }
+
   Future<void> _reloadFeatured() async {
     setState(() => _isRefreshing = true);
     try {
-      final data = await _requestFeatured();
+      final data = await _requestFeatured(
+        forceRefresh: true,
+        preferPreciseLocation: true,
+      );
       if (!mounted) return;
       setState(() {
         if (data.isNotEmpty) {
           _featuredData = data;
+          _lastFeaturedSuccessAt = DateTime.now();
         }
         _featuredFuture = Future.value(_featuredData ?? data);
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _lastFeaturedSuccessAt == null) return;
+        final frameMs = DateTime.now()
+            .difference(_lastFeaturedSuccessAt!)
+            .inMilliseconds;
+        debugPrint('[PERF][FEATURED] api_to_frame_ms=$frameMs source=refresh');
       });
     } catch (_) {
       // Keep current data when refresh fails.
@@ -122,10 +185,7 @@ class _FeaturedViewState extends State<FeaturedView> {
       }).toList();
       if (filtered.length != places.length) {
         changed = true;
-        return {
-          ...entry,
-          'places': filtered,
-        };
+        return {...entry, 'places': filtered};
       }
       return entry;
     }).toList();
@@ -134,16 +194,10 @@ class _FeaturedViewState extends State<FeaturedView> {
       if (root['data'] is Map<String, dynamic>) {
         _featuredData = {
           ...root,
-          'data': {
-            ...data,
-            'themes': nextThemes,
-          },
+          'data': {...data, 'themes': nextThemes},
         };
       } else {
-        _featuredData = {
-          ...data,
-          'themes': nextThemes,
-        };
+        _featuredData = {...data, 'themes': nextThemes};
       }
     });
   }
@@ -160,11 +214,10 @@ class _FeaturedViewState extends State<FeaturedView> {
             if (!_isRefreshing) {
               if (snapshot.hasData) {
                 _featuredData = snapshot.data;
+                _lastFeaturedSuccessAt ??= DateTime.now();
               } else if (snapshot.connectionState != ConnectionState.done &&
                   _featuredData == null) {
-                return const Center(
-                  child: CommonActivityIndicator(size: 28),
-                );
+                return const Center(child: CommonActivityIndicator(size: 28));
               }
             }
             Map<String, dynamic>? data;
@@ -184,8 +237,8 @@ class _FeaturedViewState extends State<FeaturedView> {
                 ? (data['themes'] as List<dynamic>?) ?? const []
                 : const [];
             final nearbyPlaces = data is Map<String, dynamic>
-                ? (data['nearbyPlaces'] as List<dynamic>?) ?? const []
-                : const [];
+                ? _extractFeaturedNearbyPlaces(data)
+                : const <Map<String, dynamic>>[];
             final topEngagedPlaces = data is Map<String, dynamic>
                 ? (data['topEngagedPlaces'] as List<dynamic>?) ?? const []
                 : const [];
@@ -194,9 +247,9 @@ class _FeaturedViewState extends State<FeaturedView> {
                 : const [];
             final categories = data is Map<String, dynamic>
                 ? ((data['categories'] as List<dynamic>?) ?? const [])
-                    .whereType<Map<String, dynamic>>()
-                    .where((item) => item['isActive'] != false)
-                    .toList(growable: false)
+                      .whereType<Map<String, dynamic>>()
+                      .where((item) => item['isActive'] != false)
+                      .toList(growable: false)
                 : const <Map<String, dynamic>>[];
             categories.sort((a, b) {
               final aOrder = (a['sortOrder'] as num?)?.toInt() ?? 0;
@@ -207,36 +260,51 @@ class _FeaturedViewState extends State<FeaturedView> {
               return aTitle.compareTo(bTitle);
             });
             final bottomInset = MediaQuery.of(context).padding.bottom;
+            if (!_didLogInitialRenderPerf && snapshot.hasData) {
+              _didLogInitialRenderPerf = true;
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (!mounted || _lastFeaturedSuccessAt == null) return;
+                final frameMs = DateTime.now()
+                    .difference(_lastFeaturedSuccessAt!)
+                    .inMilliseconds;
+                debugPrint(
+                  '[PERF][FEATURED] api_to_frame_ms=$frameMs source=initial',
+                );
+              });
+            }
             return CommonRefreshView(
               onRefresh: _reloadFeatured,
               topPadding: 16,
               notificationPredicate: (notification) =>
                   notification.metrics.axis == Axis.vertical,
               child: ListView(
-                padding:
-                    EdgeInsets.fromLTRB(0, 16, 0, _kTabBarHeight + bottomInset),
+                padding: EdgeInsets.fromLTRB(
+                  0,
+                  16,
+                  0,
+                  _kTabBarHeight + bottomInset,
+                ),
                 children: [
-                  const _FeaturedHeader(),
+                  _FeaturedHeader(
+                    onSearchTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const SearchView(),
+                        ),
+                      );
+                    },
+                  ),
                   const SizedBox(height: 16),
                   _FeaturedBannerSection(items: banners),
                   if (categories.isNotEmpty) ...[
                     const SizedBox(height: 24),
-                    _FeaturedCategorySection(
-                      items: categories,
-                    ),
+                    _FeaturedCategorySection(items: categories),
                   ],
                   const SizedBox(height: 32),
                   _FeaturedNearestPlacesSection(
-                    places: nearbyPlaces
-                        .whereType<Map<String, dynamic>>()
-                        .toList(),
+                    places: nearbyPlaces,
                     latitude: _lastLatitude,
                     longitude: _lastLongitude,
-                  ),
-                  _FeaturedTopEngagedPlacesSection(
-                    places: topEngagedPlaces
-                        .whereType<Map<String, dynamic>>()
-                        .toList(),
                   ),
                   if (rankingUsers.isNotEmpty)
                     Padding(
@@ -247,6 +315,11 @@ class _FeaturedViewState extends State<FeaturedView> {
                             .toList(),
                       ),
                     ),
+                  _FeaturedTopEngagedPlacesSection(
+                    places: topEngagedPlaces
+                        .whereType<Map<String, dynamic>>()
+                        .toList(),
+                  ),
                   const _FeaturedSingleCardBannerSection(
                     title: '장소를 등록하고 친구들과 공유해보세요',
                     subtitle: '장소를 등록하고 친구들과 공유해보세요',
@@ -269,9 +342,7 @@ class _FeaturedViewState extends State<FeaturedView> {
                   if (themes.isEmpty)
                     const Padding(
                       padding: EdgeInsets.symmetric(horizontal: 16),
-                      child: _FeaturedEmptySection(
-                        title: '표시할 테마가 없습니다.',
-                      ),
+                      child: _FeaturedEmptySection(title: '표시할 테마가 없습니다.'),
                     ),
                 ],
               ),
@@ -284,9 +355,7 @@ class _FeaturedViewState extends State<FeaturedView> {
 }
 
 class _FeaturedBannerSection extends StatelessWidget {
-  const _FeaturedBannerSection({
-    required this.items,
-  });
+  const _FeaturedBannerSection({required this.items});
 
   final List<dynamic> items;
 
@@ -318,9 +387,7 @@ class _FeaturedBannerSection extends StatelessWidget {
 }
 
 class _FeaturedRankingSection extends StatelessWidget {
-  const _FeaturedRankingSection({
-    required this.items,
-  });
+  const _FeaturedRankingSection({required this.items});
 
   final List<Map<String, dynamic>> items;
 
@@ -333,7 +400,8 @@ class _FeaturedRankingSection extends StatelessWidget {
   }
 
   String? _resolveSubtitle(Map<String, dynamic> user) {
-    final rawCount = user['createdPlaceCount'] ??
+    final rawCount =
+        user['createdPlaceCount'] ??
         user['placeCreatedCount'] ??
         user['createdPlacesCount'];
     final count = rawCount is num
@@ -361,10 +429,8 @@ class _FeaturedRankingSection extends StatelessWidget {
   }
 
   String? _resolvePointsText(Map<String, dynamic> user) {
-    final raw = user['rewardScore'] ??
-        user['point'] ??
-        user['points'] ??
-        user['score'];
+    final raw =
+        user['rewardScore'] ?? user['point'] ?? user['points'] ?? user['score'];
     if (raw is num) {
       return '${raw.toInt()}P';
     }
@@ -399,8 +465,7 @@ class _FeaturedRankingSection extends StatelessWidget {
         ...top5.asMap().entries.map((entry) {
           final index = entry.key;
           final user = entry.value;
-          final userId =
-              (user['id'] ?? user['userId'] ?? '').toString().trim();
+          final userId = (user['id'] ?? user['userId'] ?? '').toString().trim();
           return CommonUserListItem(
             rank: index + 1,
             title: _resolveName(user),
@@ -533,7 +598,10 @@ class _FeaturedSingleCardBannerSection extends StatelessWidget {
                           fontWeight: FontWeight.w700,
                         ),
                       ),
-                      child: const Text('지금 장소 등록하기', style: TextStyle(color: Colors.black),),
+                      child: const Text(
+                        '지금 장소 등록하기',
+                        style: TextStyle(color: Colors.black),
+                      ),
                     ),
                   ),
                 ],
@@ -560,144 +628,140 @@ class _FeaturedNearestPlacesSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              children: [
-                const Expanded(
-                  child: Text(
-                    '내 근처에는 이런 장소가 있어요',
-                    style: TextStyle(
-                      fontFamily: 'Pretendard',
-                      fontSize: 20,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.black,
-                    ),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 16, right: 8),
+          child: Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  '내 근처에는 이런 장소가 있어요',
+                  style: TextStyle(
+                    fontFamily: 'Pretendard',
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.black,
                   ),
                 ),
-                CommonInkWell(
-                  onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => PlacebookListView(
-                          latitude: latitude,
-                          longitude: longitude,
-                          orderBy: 'distance',
-                          themeTitle: '내 근처에는 이런 장소가 있어요',
-                        ),
-                      ),
-                    );
-                  },
-                  borderRadius: BorderRadius.circular(10),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 6,
-                    vertical: 4,
-                  ),
-                  child: Row(
-                    children: const [
-                      Text(
-                        '더보기',
-                        style: TextStyle(
-                          fontFamily: 'Pretendard',
-                          fontSize: 12,
-                          fontWeight: FontWeight.w400,
-                          color: Color(0xFF9E9E9E),
-                        ),
-                      ),
-                      SizedBox(width: 2),
-                      Icon(
-                        PhosphorIconsRegular.caretRight,
-                        size: 14,
-                        color: Color(0xFF9E9E9E),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 4),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16),
-            child: Text(
-              '지금 가장 핫한 장소는 어딜까요?',
-              style: TextStyle(
-                fontFamily: 'Pretendard',
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-                color: Color(0xFF9E9E9E),
               ),
-            ),
-          ),
-          const SizedBox(height: 4),
-          if (places.isEmpty)
-            Padding(
-              padding: EdgeInsets.symmetric(vertical: 12),
-              child: CommonEmptyView(
-                message: '근처에 등록된 장소가 없습니다.',
-                showButton: false,
-              ),
-            )
-          else
-            SizedBox(
-              width: double.infinity,
-              height: 148,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                itemCount: places.length,
-                separatorBuilder: (_, _) => const SizedBox(width: 12),
-                itemBuilder: (context, index) {
-                  final place = places[index];
-                  final title = (place['title'] as String?) ?? '장소';
-                  final address = (place['address'] as String?) ?? '';
-                  final commentCount =
-                      (place['commentCount'] as num?)?.toInt() ?? 0;
-                  final likeCount = (place['likeCount'] as num?)?.toInt() ?? 0;
-                  final favorited = (place['favorited'] as bool?) ??
-                      (place['isFavorited'] as bool?) ??
-                      false;
-                  final distanceKm = place['distanceKm'];
-                  final distanceText = distanceKm is num
-                      ? '${distanceKm.toStringAsFixed(distanceKm < 1 ? 2 : 1)}km'
-                      : null;
-                  final themeText = _placeThemeTitle(place);
-                  return SizedBox(
-                    width: 320,
-                    child: CommonPlaceCarouselListItemView(
-                      thumbnailUrl: _placeImageUrl(place),
-                      title: title,
-                      address: address,
-                      commentCount: commentCount,
-                      likeCount: likeCount,
-                      themeText: themeText,
-                      distanceText: distanceText,
-                      favorited: favorited,
-                      onTap: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => PlacebookDetailView(space: place),
-                          ),
-                        );
-                      },
+              CommonInkWell(
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => PlacebookListView(
+                        latitude: latitude,
+                        longitude: longitude,
+                        orderBy: 'distance',
+                        themeTitle: '내 근처에는 이런 장소가 있어요',
+                      ),
                     ),
                   );
                 },
+                borderRadius: BorderRadius.circular(10),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                child: Row(
+                  children: const [
+                    Text(
+                      '더보기',
+                      style: TextStyle(
+                        fontFamily: 'Pretendard',
+                        fontSize: 12,
+                        fontWeight: FontWeight.w400,
+                        color: Color(0xFF9E9E9E),
+                      ),
+                    ),
+                    SizedBox(width: 2),
+                    Icon(
+                      PhosphorIconsRegular.caretRight,
+                      size: 14,
+                      color: Color(0xFF9E9E9E),
+                    ),
+                  ],
+                ),
               ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 4),
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 16),
+          child: Text(
+            '지금 가장 핫한 장소는 어딜까요?',
+            style: TextStyle(
+              fontFamily: 'Pretendard',
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: Color(0xFF9E9E9E),
             ),
-            const SizedBox(height: 24),
-        ],
-      );
+          ),
+        ),
+        const SizedBox(height: 4),
+        if (places.isEmpty)
+          Padding(
+            padding: EdgeInsets.symmetric(vertical: 12),
+            child: CommonEmptyView(
+              message: '근처에 등록된 장소가 없습니다.',
+              showButton: false,
+              height: 140,
+            ),
+          )
+        else
+          SizedBox(
+            width: double.infinity,
+            height: 148,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              itemCount: places.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 12),
+              itemBuilder: (context, index) {
+                final place = places[index];
+                final title = (place['title'] as String?) ?? '장소';
+                final address = _placeAddress(place);
+                final commentCount =
+                    (place['commentCount'] as num?)?.toInt() ?? 0;
+                final likeCount = (place['likeCount'] as num?)?.toInt() ?? 0;
+                final favorited =
+                    (place['favorited'] as bool?) ??
+                    (place['isFavorited'] as bool?) ??
+                    false;
+                final distanceKm = place['distanceKm'];
+                final distanceText = distanceKm is num
+                    ? '${distanceKm.toStringAsFixed(distanceKm < 1 ? 2 : 1)}km'
+                    : null;
+                final themeText = _placeThemeTitle(place);
+                return SizedBox(
+                  width: 320,
+                  child: CommonPlaceCarouselListItemView(
+                    thumbnailUrl: _placeImageUrl(place),
+                    title: title,
+                    address: address,
+                    commentCount: commentCount,
+                    likeCount: likeCount,
+                    themeText: themeText,
+                    distanceText: distanceText,
+                    favorited: favorited,
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => PlacebookDetailView(space: place),
+                        ),
+                      );
+                    },
+                  ),
+                );
+              },
+            ),
+          ),
+        const SizedBox(height: 24),
+      ],
+    );
   }
 }
 
 class _FeaturedTopEngagedPlacesSection extends StatelessWidget {
-  const _FeaturedTopEngagedPlacesSection({
-    required this.places,
-  });
+  const _FeaturedTopEngagedPlacesSection({required this.places});
 
   final List<Map<String, dynamic>> places;
 
@@ -723,10 +787,7 @@ class _FeaturedTopEngagedPlacesSection extends StatelessWidget {
         if (places.isEmpty)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 12),
-            child: CommonEmptyView(
-              message: '표시할 장소가 없습니다.',
-              showButton: false,
-            ),
+            child: CommonEmptyView(message: '표시할 장소가 없습니다.', showButton: false),
           )
         else
           SizedBox(
@@ -740,12 +801,13 @@ class _FeaturedTopEngagedPlacesSection extends StatelessWidget {
               itemBuilder: (context, index) {
                 final place = places[index];
                 final title = (place['title'] as String?) ?? '장소';
-                final address = (place['address'] as String?) ?? '';
+                final address = _placeAddress(place);
                 final commentCount =
                     (place['commentCount'] as num?)?.toInt() ?? 0;
                 final likeCount =
                     (place['verificationCount'] as num?)?.toInt() ?? 0;
-                final favorited = (place['favorited'] as bool?) ??
+                final favorited =
+                    (place['favorited'] as bool?) ??
                     (place['isFavorited'] as bool?) ??
                     false;
                 final distanceKm = place['distanceKm'];
@@ -783,9 +845,7 @@ class _FeaturedTopEngagedPlacesSection extends StatelessWidget {
 }
 
 class _FeaturedCategorySection extends StatelessWidget {
-  const _FeaturedCategorySection({
-    required this.items,
-  });
+  const _FeaturedCategorySection({required this.items});
 
   final List<Map<String, dynamic>> items;
 
@@ -876,7 +936,11 @@ class _FeaturedCategorySection extends StatelessWidget {
 }
 
 class _FeaturedHeader extends StatelessWidget {
-  const _FeaturedHeader();
+  const _FeaturedHeader({
+    required this.onSearchTap,
+  });
+
+  final VoidCallback onSearchTap;
 
   @override
   Widget build(BuildContext context) {
@@ -887,25 +951,61 @@ class _FeaturedHeader extends StatelessWidget {
         builder: (context, user, _) {
           final isSignedIn = user != null && user.id.isNotEmpty;
           final nickname = user?.nickname.trim() ?? '';
-          return Row(
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: isSignedIn
-                    ? (nickname.isNotEmpty
-                        ? Text.rich(
+              Row(
+                children: [
+                  Expanded(
+                    child: isSignedIn
+                        ? (nickname.isNotEmpty
+                              ? Text.rich(
+                                  TextSpan(
+                                    children: [
+                                      TextSpan(
+                                        text: '$nickname님,\n',
+                                        style: const TextStyle(
+                                          fontFamily: 'Pretendard',
+                                          fontSize: 20,
+                                          fontWeight: FontWeight.w700,
+                                          color: Colors.black,
+                                        ),
+                                      ),
+                                      const TextSpan(
+                                        text: '오늘은 어디를 가볼까요?',
+                                        style: TextStyle(
+                                          fontFamily: 'Pretendard',
+                                          fontSize: 20,
+                                          fontWeight: FontWeight.w400,
+                                          color: Colors.black,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                )
+                              : const Text(
+                                  '안녕하세요',
+                                  style: TextStyle(
+                                    fontFamily: 'Pretendard',
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.w400,
+                                    color: Colors.black,
+                                  ),
+                                ))
+                        : Text.rich(
                             TextSpan(
-                              children: [
+                              children: const [
                                 TextSpan(
-                                  text: '$nickname님,\n',
-                                  style: const TextStyle(
+                                  text: '지금 로그인하고',
+                                  style: TextStyle(
                                     fontFamily: 'Pretendard',
                                     fontSize: 20,
                                     fontWeight: FontWeight.w700,
                                     color: Colors.black,
                                   ),
                                 ),
-                                const TextSpan(
-                                  text: '오늘은 어디를 가볼까요?',
+                                TextSpan(
+                                  text: '\n더 많은 정보를 얻어보세요!',
                                   style: TextStyle(
                                     fontFamily: 'Pretendard',
                                     fontSize: 20,
@@ -915,85 +1015,84 @@ class _FeaturedHeader extends StatelessWidget {
                                 ),
                               ],
                             ),
-                          )
-                        : const Text(
-                            '안녕하세요',
-                            style: TextStyle(
-                              fontFamily: 'Pretendard',
-                              fontSize: 20,
-                              fontWeight: FontWeight.w400,
-                              color: Colors.black,
-                            ),
-                          ))
-                    : Text.rich(
-                        TextSpan(
-                          children: const [
-                            TextSpan(
-                              text: '지금 로그인하고',
-                              style: TextStyle(
-                                fontFamily: 'Pretendard',
-                                fontSize: 20,
-                                fontWeight: FontWeight.w700,
-                                color: Colors.black,
-                              ),
-                            ),
-                            TextSpan(
-                              text: '\n더 많은 정보를 얻어보세요!',
-                              style: TextStyle(
-                                fontFamily: 'Pretendard',
-                                fontSize: 20,
-                                fontWeight: FontWeight.w400,
-                                color: Colors.black,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-              ),
-              if (isSignedIn)
-                CommonInkWell(
-                  onTap: () => HomeTabController.switchTo(4),
-                  borderRadius: BorderRadius.circular(999),
-                  child: CommonProfileView(
-                    size: 48,
-                    networkUrl: user.profileImageUrl,
-                    placeholder: Container(
-                      color: const Color(0xFFF2F2F2),
-                      alignment: Alignment.center,
-                      child: const Icon(
-                        PhosphorIconsRegular.user,
-                        size: 24,
-                        color: Color(0xFF9E9E9E),
-                      ),
-                    ),
+                          ),
                   ),
-                )
-              else
-                SizedBox(
-                  height: 40,
-                  child: CommonRoundedButton(
-                    title: '로그인하기',
-                    height: 40,
-                    radius: 8,
-                    backgroundColor: const Color(0xFFF2F2F2),
-                    contentPadding:
-                        const EdgeInsets.symmetric(horizontal: 16),
-                    textStyle: const TextStyle(
-                      fontFamily: 'Pretendard',
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF424242),
-                    ),
-                    onTap: () {
-                      showCupertinoModalPopup(
-                        context: context,
-                        builder: (_) => const SizedBox.expand(
-                          child: SignView(),
+                  if (isSignedIn)
+                    CommonInkWell(
+                      onTap: () => HomeTabController.switchTo(4),
+                      borderRadius: BorderRadius.circular(999),
+                      child: CommonProfileView(
+                        size: 48,
+                        networkUrl: user.profileImageUrl,
+                        placeholder: Container(
+                          color: const Color(0xFFF2F2F2),
+                          alignment: Alignment.center,
+                          child: const Icon(
+                            PhosphorIconsRegular.user,
+                            size: 24,
+                            color: Color(0xFF9E9E9E),
+                          ),
                         ),
-                      );
-                    },
+                      ),
+                    )
+                  else
+                    SizedBox(
+                      height: 40,
+                      child: CommonRoundedButton(
+                        title: '로그인하기',
+                        height: 40,
+                        radius: 8,
+                        backgroundColor: const Color(0xFFF2F2F2),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                        textStyle: const TextStyle(
+                          fontFamily: 'Pretendard',
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF424242),
+                        ),
+                        onTap: () {
+                          showCupertinoModalPopup(
+                            context: context,
+                            builder: (_) =>
+                                const SizedBox.expand(child: SignView()),
+                          );
+                        },
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              CommonInkWell(
+                onTap: onSearchTap,
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  height: 48,
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF5F5F5),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: const [
+                      Icon(
+                        PhosphorIconsRegular.magnifyingGlass,
+                        size: 20,
+                        color: Color(0xFF8E8E93),
+                      ),
+                      SizedBox(width: 10),
+                      Text(
+                        '장소를 검색해보세요',
+                        style: TextStyle(
+                          fontFamily: 'Pretendard',
+                          fontSize: 15,
+                          fontWeight: FontWeight.w400,
+                          color: Color(0xFF9E9E9E),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
+              ),
             ],
           );
         },
@@ -1003,29 +1102,36 @@ class _FeaturedHeader extends StatelessWidget {
 }
 
 class _FeaturedBannerCard extends StatelessWidget {
-  const _FeaturedBannerCard({
-    required this.item,
-  });
+  const _FeaturedBannerCard({required this.item});
 
   final Map<String, dynamic> item;
+
+  void _showPreparingAlert(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      barrierColor: const Color(0x99000000),
+      builder: (_) {
+        return Material(
+          type: MaterialType.transparency,
+          child: CommonAlertView(
+            title: '준비중입니다.',
+            subTitle: '곧 만나보실 수 있어요.',
+            primaryButtonTitle: '확인',
+            onPrimaryTap: () => Navigator.of(context).pop(),
+          ),
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final title = (item['title'] as String?) ?? '';
     final subtitle = (item['subtitle'] as String?) ?? '';
     final imageUrl = _bannerImageUrl(item);
-    final linkUrl = (item['linkUrl'] as String?) ?? '';
-    final hasLink = linkUrl.trim().isNotEmpty;
     return CommonInkWell(
-      onTap: hasLink
-          ? () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => WebViewPage(title: title, url: linkUrl),
-                ),
-              );
-            }
-          : null,
+      onTap: () => _showPreparingAlert(context),
       borderRadius: BorderRadius.circular(18),
       child: Container(
         width: 280,
@@ -1041,6 +1147,7 @@ class _FeaturedBannerCard extends StatelessWidget {
               CommonImageView(
                 networkUrl: imageUrl,
                 fit: BoxFit.cover,
+                replayNetworkFade: true,
                 backgroundColor: const Color(0xFF1E1E1E),
               ),
               Container(
@@ -1049,9 +1156,11 @@ class _FeaturedBannerCard extends StatelessWidget {
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [
-                      Colors.black.withValues(alpha: 0.25),
-                      Colors.black.withValues(alpha: 0.55),
+                      Colors.black.withValues(alpha: 0.58),
+                      Colors.black.withValues(alpha: 0.10),
+                      Colors.black.withValues(alpha: 0.62),
                     ],
+                    stops: const [0.0, 0.46, 1.0],
                   ),
                 ),
               ),
@@ -1071,7 +1180,7 @@ class _FeaturedBannerCard extends StatelessWidget {
                         color: Colors.white,
                       ),
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 2),
                     Text(
                       subtitle,
                       maxLines: 2,
@@ -1085,7 +1194,10 @@ class _FeaturedBannerCard extends StatelessWidget {
                     ),
                     const Spacer(),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.white.withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(999),
@@ -1094,8 +1206,8 @@ class _FeaturedBannerCard extends StatelessWidget {
                         '지금 보기',
                         style: TextStyle(
                           fontFamily: 'Pretendard',
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
                           color: Colors.white,
                         ),
                       ),
@@ -1131,7 +1243,8 @@ class _FeaturedThemeSection extends StatelessWidget {
         : <String, dynamic>{};
     final places = item['places'] as List<dynamic>? ?? const [];
     final title = (theme['title'] as String?) ?? '테마';
-    final description = (theme['description'] as String?) ??
+    final description =
+        (theme['description'] as String?) ??
         (theme['subtitle'] as String?) ??
         '';
     final themeId = (theme['id'] as String?) ?? '';
@@ -1140,7 +1253,7 @@ class _FeaturedThemeSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+          padding: const EdgeInsets.only(left: 16, right: 8),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1233,9 +1346,7 @@ class _FeaturedThemeSection extends StatelessWidget {
         if (places.isEmpty)
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 16),
-            child: _FeaturedEmptySection(
-              title: '표시할 장소가 없습니다.',
-            ),
+            child: _FeaturedEmptySection(title: '표시할 장소가 없습니다.'),
           )
         else
           Padding(
@@ -1246,11 +1357,12 @@ class _FeaturedThemeSection extends StatelessWidget {
                     ? raw
                     : <String, dynamic>{};
                 final placeTitle = (place['title'] as String?) ?? '장소';
-                final placeAddress = (place['address'] as String?) ?? '';
+                final placeAddress = _placeAddress(place);
                 final commentCount =
                     (place['commentCount'] as num?)?.toInt() ?? 0;
                 final likeCount = (place['likeCount'] as num?)?.toInt() ?? 0;
-                final favorited = (place['favorited'] as bool?) ??
+                final favorited =
+                    (place['favorited'] as bool?) ??
                     (place['isFavorited'] as bool?) ??
                     false;
                 final distanceKm = place['distanceKm'];
@@ -1289,9 +1401,7 @@ class _FeaturedThemeSection extends StatelessWidget {
 }
 
 class _FeaturedEmptySection extends StatelessWidget {
-  const _FeaturedEmptySection({
-    required this.title,
-  });
+  const _FeaturedEmptySection({required this.title});
 
   final String title;
 
@@ -1364,14 +1474,30 @@ class _FeaturedEmptySection extends StatelessWidget {
 String _bannerImageUrl(Map<String, dynamic> banner) {
   final onImage = banner['onImage'];
   final offImage = banner['offImage'];
+  final thumbnail = banner['thumbnail'];
+  final image = banner['image'];
   final onMap = onImage is Map<String, dynamic> ? onImage : null;
   final offMap = offImage is Map<String, dynamic> ? offImage : null;
-  return (onMap?['thumbnailUrl'] as String?) ??
-      (onMap?['cdnUrl'] as String?) ??
+  final thumbnailMap = thumbnail is Map<String, dynamic> ? thumbnail : null;
+  final imageMap = image is Map<String, dynamic> ? image : null;
+  final thumbnailString = thumbnail is String ? thumbnail.trim() : null;
+  final imageString = image is String ? image.trim() : null;
+  return (onMap?['cdnUrl'] as String?) ??
       (onMap?['fileUrl'] as String?) ??
-      (offMap?['thumbnailUrl'] as String?) ??
+      (onMap?['thumbnailUrl'] as String?) ??
       (offMap?['cdnUrl'] as String?) ??
       (offMap?['fileUrl'] as String?) ??
+      (offMap?['thumbnailUrl'] as String?) ??
+      (imageMap?['cdnUrl'] as String?) ??
+      (imageMap?['fileUrl'] as String?) ??
+      (imageMap?['thumbnailUrl'] as String?) ??
+      (thumbnailMap?['cdnUrl'] as String?) ??
+      (thumbnailMap?['fileUrl'] as String?) ??
+      (thumbnailMap?['thumbnailUrl'] as String?) ??
+      (banner['imageUrl'] as String?) ??
+      (banner['thumbnailUrl'] as String?) ??
+      ((thumbnailString?.isNotEmpty ?? false) ? thumbnailString : null) ??
+      ((imageString?.isNotEmpty ?? false) ? imageString : null) ??
       '';
 }
 
@@ -1396,6 +1522,35 @@ String _placeThemeTitle(Map<String, dynamic> place) {
   return '';
 }
 
+String _placeAddress(Map<String, dynamic> place) {
+  String? pick(dynamic raw) {
+    if (raw is String) {
+      final trimmed = raw.trim();
+      if (trimmed.isNotEmpty &&
+          trimmed != '{}' &&
+          trimmed.toLowerCase() != 'null') {
+        return trimmed;
+      }
+    }
+    if (raw is Map<String, dynamic>) {
+      return pick(raw['address']) ??
+          pick(raw['roadAddress']) ??
+          pick(raw['roadAddressName']) ??
+          pick(raw['fullAddress']) ??
+          pick(raw['name']) ??
+          pick(raw['title']) ??
+          pick(raw['text']);
+    }
+    return null;
+  }
+
+  return pick(place['address']) ??
+      pick(place['roadAddress']) ??
+      pick(place['placeAddress']) ??
+      pick(place['location']) ??
+      '';
+}
+
 String _placeImageUrl(Map<String, dynamic> place) {
   final image = place['image'];
   final imageMap = image is Map<String, dynamic> ? image : null;
@@ -1405,4 +1560,51 @@ String _placeImageUrl(Map<String, dynamic> place) {
       (imageMap?['cdnUrl'] as String?) ??
       (imageMap?['fileUrl'] as String?) ??
       '';
+}
+
+List<Map<String, dynamic>> _extractFeaturedNearbyPlaces(
+  Map<String, dynamic> data,
+) {
+  List<Map<String, dynamic>> asPlaceList(dynamic raw) {
+    if (raw is! List) return const <Map<String, dynamic>>[];
+    return raw.whereType<Map<String, dynamic>>().toList(growable: false);
+  }
+
+  final directCandidates = <dynamic>[
+    data['nearbyPlaces'],
+    data['nearby'],
+    data['nearestPlaces'],
+    data['nearPlaces'],
+    data['places'],
+    data['items'],
+  ];
+  for (final candidate in directCandidates) {
+    final parsed = asPlaceList(candidate);
+    if (parsed.isNotEmpty) return parsed;
+  }
+
+  final nearbyNode = data['nearby'];
+  if (nearbyNode is Map<String, dynamic>) {
+    final nestedCandidates = <dynamic>[
+      nearbyNode['items'],
+      nearbyNode['places'],
+      nearbyNode['nearbyPlaces'],
+      nearbyNode['data'],
+    ];
+    for (final candidate in nestedCandidates) {
+      final parsed = asPlaceList(candidate);
+      if (parsed.isNotEmpty) return parsed;
+    }
+    final nestedData = nearbyNode['data'];
+    if (nestedData is Map<String, dynamic>) {
+      final parsed = asPlaceList(
+        nestedData['items'] ??
+            nestedData['places'] ??
+            nestedData['nearbyPlaces'],
+      );
+      if (parsed.isNotEmpty) return parsed;
+    }
+  }
+
+  return const <Map<String, dynamic>>[];
 }

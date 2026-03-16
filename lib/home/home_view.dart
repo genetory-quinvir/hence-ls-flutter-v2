@@ -11,6 +11,7 @@ import '../sign/sign_view.dart';
 import '../notification/notification_view.dart';
 import '../featured/featured_view.dart';
 import '../placebook/placebook_view.dart';
+import '../common/network/api_client.dart';
 
 class HomeView extends StatefulWidget {
   const HomeView({super.key});
@@ -33,6 +34,13 @@ class _HomeViewState extends State<HomeView> {
       setState(() => _currentIndex = next);
     };
     HomeTabController.currentIndex.addListener(_tabListener);
+    Future<void>.microtask(() async {
+      try {
+        await ApiClient.fetchFeatured();
+      } catch (_) {
+        // ignore prefetch failures
+      }
+    });
   }
 
   @override
@@ -43,8 +51,9 @@ class _HomeViewState extends State<HomeView> {
 
   @override
   Widget build(BuildContext context) {
-    final statusBarStyle =
-        _currentIndex == 0 ? SystemUiOverlayStyle.dark : SystemUiOverlayStyle.dark;
+    final statusBarStyle = _currentIndex == 0
+        ? SystemUiOverlayStyle.dark
+        : SystemUiOverlayStyle.dark;
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: statusBarStyle,
       child: Scaffold(
@@ -76,9 +85,7 @@ class _HomeViewState extends State<HomeView> {
                     showCupertinoModalPopup(
                       context: context,
                       builder: (context) {
-                        return const SizedBox.expand(
-                          child: SignView(),
-                        );
+                        return const SizedBox.expand(child: SignView());
                       },
                     );
                     return;

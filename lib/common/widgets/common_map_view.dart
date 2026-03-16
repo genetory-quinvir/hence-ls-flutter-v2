@@ -419,9 +419,11 @@ class _CommonMapViewState extends State<CommonMapView> {
 
     _isFetchingMyLocation = true;
     try {
-      controller.setLocationTrackingMode(NLocationTrackingMode.noFollow);
       final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.medium,
+          timeLimit: Duration(seconds: 3),
+        ),
       );
       debugPrint(
         '[CommonMapView] position lat=${position.latitude}, lng=${position.longitude}',

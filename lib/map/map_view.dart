@@ -27,7 +27,6 @@ import '../common/widgets/common_textfield_view.dart';
 import '../common/widgets/common_toast_view.dart';
 import '../common/widgets/common_handle_list_sheet.dart';
 import '../common/widgets/common_place_list_item_view.dart';
-import '../map_cluster/map_cluster_view.dart';
 import '../placebook_detail/placebook_detail_view.dart';
 import 'widgets/map_navigation_view.dart';
 import 'map_filter/map_filter_view.dart';
@@ -57,7 +56,7 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
   static const double _focusMarkerRadiusMeters = 1200;
   static const double _liveClusterDistancePx = 84;
   static const double _clusterMaxZoom = 18.0;
-  static const double _clusterSelectionZoomThreshold = 17.8;
+  static const double _clusterTapAutoZoomTarget = 16.4;
   static const double _placeListPeekHeight = 160.0;
   int _selectedIndex = 1;
   String? _selectedCategoryId;
@@ -84,6 +83,7 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
   bool _isCameraMoving = false;
   bool _skipNextCameraIdleFetch = false;
   bool _isProgrammaticMove = false;
+  bool _isClusterAutoZooming = false;
   bool _didFitToAllPlaces = false;
   String? _selectedLiveMarkerId;
   NLatLng? _lastCenter;
@@ -258,23 +258,40 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
         );
         isClusterMode = false;
       } else if (shouldUseClusters) {
-        response = await ApiClient.fetchMapPlaceClusters(
-          latitude: center.latitude,
-          longitude: center.longitude,
-          radiusMeters: radiusMeters,
-          gridSizeMeters: _gridSizeMetersForZoom(zoom),
-          categoryId: categoryId,
-          themeId: themeId,
-          isActive: true,
-          filter: filter,
-          orderBy: orderBy,
-          order: order,
-          page: 1,
-          limit: limit,
-        );
-        isClusterMode = true;
+        try {
+          response = await ApiClient.fetchMapPlaceClusters(
+            latitude: center.latitude,
+            longitude: center.longitude,
+            radiusMeters: radiusMeters,
+            gridSizeMeters: _gridSizeMetersForZoom(zoom),
+            categoryId: categoryId,
+            themeId: themeId,
+            isActive: true,
+            filter: filter,
+            orderBy: orderBy,
+            order: order,
+            page: 1,
+            limit: limit,
+          );
+          isClusterMode = true;
+        } catch (_) {
+          response = await ApiClient.fetchMapPlaces(
+            latitude: center.latitude,
+            longitude: center.longitude,
+            radiusMeters: radiusMeters,
+            categoryId: categoryId,
+            themeId: themeId,
+            isActive: true,
+            filter: filter,
+            orderBy: orderBy,
+            order: order,
+            page: 1,
+            limit: limit,
+          );
+          isClusterMode = false;
+        }
         final clusterCount = _countFromMapResponse(response);
-        if (clusterCount < widget.config.clusterMinCount) {
+        if (isClusterMode && clusterCount < widget.config.clusterMinCount) {
           response = await ApiClient.fetchMapPlaces(
             latitude: center.latitude,
             longitude: center.longitude,
@@ -306,22 +323,28 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
         );
         isClusterMode = false;
         final placeCount = _countFromMapResponse(response);
-        if (placeCount >= widget.config.placeCountForCluster) {
-          response = await ApiClient.fetchMapPlaceClusters(
-            latitude: center.latitude,
-            longitude: center.longitude,
-            radiusMeters: radiusMeters,
-            gridSizeMeters: _gridSizeMetersForZoom(zoom),
-            categoryId: categoryId,
-            themeId: themeId,
-            isActive: true,
-            filter: filter,
-            orderBy: orderBy,
-            order: order,
-            page: 1,
-            limit: limit,
-          );
-          isClusterMode = true;
+        if (widget.config.enableClusters &&
+            placeCount >= widget.config.placeCountForCluster) {
+          try {
+            response = await ApiClient.fetchMapPlaceClusters(
+              latitude: center.latitude,
+              longitude: center.longitude,
+              radiusMeters: radiusMeters,
+              gridSizeMeters: _gridSizeMetersForZoom(zoom),
+              categoryId: categoryId,
+              themeId: themeId,
+              isActive: true,
+              filter: filter,
+              orderBy: orderBy,
+              order: order,
+              page: 1,
+              limit: limit,
+            );
+            isClusterMode = true;
+          } catch (_) {
+            // Keep map places response as fallback.
+            isClusterMode = false;
+          }
         }
       }
 
@@ -1066,7 +1089,8 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
   }
 
   bool _shouldUseClusterApi(double zoom) {
-    return zoom < widget.config.mapPlacesZoomThreshold;
+    return widget.config.enableClusters &&
+        zoom < widget.config.mapPlacesZoomThreshold;
   }
 
   int _gridSizeMetersForZoom(double zoom) {
@@ -1311,15 +1335,15 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
     return _firstValidImageUrl([
       thumbnailRaw is String ? thumbnailRaw : null,
       thumbnailImageRaw is String ? thumbnailImageRaw : null,
+      thumbnailMap?['thumbnailUrl'] as String?,
       thumbnailMap?['cdnUrl'] as String?,
       thumbnailMap?['fileUrl'] as String?,
-      thumbnailMap?['thumbnailUrl'] as String?,
+      thumbnailUrlMap?['thumbnailUrl'] as String?,
       thumbnailUrlMap?['cdnUrl'] as String?,
       thumbnailUrlMap?['fileUrl'] as String?,
-      thumbnailUrlMap?['thumbnailUrl'] as String?,
+      thumbnailImageMap?['thumbnailUrl'] as String?,
       thumbnailImageMap?['cdnUrl'] as String?,
       thumbnailImageMap?['fileUrl'] as String?,
-      thumbnailImageMap?['thumbnailUrl'] as String?,
       space['thumbnailUrl'] as String?,
       space['thumbnailImageUrl'] as String?,
       space['imageUrl'] as String?,
@@ -1375,6 +1399,42 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
     return '';
   }
 
+  String _addressForSpace(Map<String, dynamic> space) {
+    String? pick(dynamic raw) {
+      if (raw is String) {
+        final trimmed = raw.trim();
+        if (trimmed.isNotEmpty &&
+            trimmed != '{}' &&
+            trimmed.toLowerCase() != 'null') {
+          return trimmed;
+        }
+      }
+      if (raw is Map<String, dynamic>) {
+        return pick(raw['address']) ??
+            pick(raw['roadAddress']) ??
+            pick(raw['roadAddressName']) ??
+            pick(raw['fullAddress']) ??
+            pick(raw['name']) ??
+            pick(raw['title']) ??
+            pick(raw['text']);
+      }
+      if (raw != null) {
+        final fallback = raw.toString().trim();
+        if (fallback.isNotEmpty &&
+            fallback != '{}' &&
+            fallback.toLowerCase() != 'null') {
+          return fallback;
+        }
+      }
+      return null;
+    }
+
+    return pick(space['address']) ??
+        pick(space['placeName']) ??
+        pick(space['location']) ??
+        '';
+  }
+
   String _markerIdForSpace(Map<String, dynamic> space, int index) {
     final type = _spaceType(space);
     final rawId = _isClusterSpace(space)
@@ -1394,7 +1454,7 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
       return const SizedBox.shrink();
     }
     const markerSize = 44.0;
-    const labelHeight = 24.0;
+    const labelHeight = 38.0;
     const labelWidth = 96.0;
     var markerEntries = <({
       String markerId,
@@ -1432,7 +1492,7 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
     final zoom = _lastZoom ?? widget.config.mapPlacesZoomThreshold;
     final maxMarkers = _maxMarkersForZoom(zoom, isCluster: _isClusterMode);
     final center = _lastCenter;
-    if (center != null && markerEntries.length > maxMarkers) {
+    if (_isClusterMode && center != null && markerEntries.length > maxMarkers) {
       markerEntries = _limitEntriesByDistance(
         markerEntries,
         maxMarkers,
@@ -1455,10 +1515,14 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
             left: entry.point.x - clusterSize / 2,
             top: entry.point.y - clusterSize / 2,
             child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
               onTap: () async {
                 if (!mounted) return;
                 setState(() => _selectedLiveMarkerId = entry.markerId);
-                await _zoomToLatLng(NLatLng(entry.lat, entry.lng));
+                await _zoomToLatLngUntil(
+                  target: NLatLng(entry.lat, entry.lng),
+                  targetZoom: _clusterTapAutoZoomTarget,
+                );
               },
               child: AnimatedOpacity(
                 opacity: _showLiveMarkers ? 1 : 0,
@@ -1489,7 +1553,19 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
         children: items,
       );
     }
-    final clusters = _buildLiveMarkerClusters(markerEntries);
+    var clusters = _buildLiveMarkerClusters(markerEntries);
+    if (center != null && clusters.length > maxMarkers) {
+      clusters = _limitEntriesByDistance(
+        clusters,
+        maxMarkers,
+        distanceOf: (cluster) => _distanceMeters(
+          lat1: center.latitude,
+          lng1: center.longitude,
+          lat2: cluster.centerLatLng.latitude,
+          lng2: cluster.centerLatLng.longitude,
+        ),
+      );
+    }
     final displayCenters = _clusterCenterPoints.isNotEmpty
         ? _clusterCenterPoints
         : {for (final cluster in clusters) cluster.clusterId: cluster.center};
@@ -1536,22 +1612,22 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
             width: itemWidth,
             height: itemHeight,
             child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
               onTap: () async {
                 if (!mounted) return;
                 setState(() => _selectedLiveMarkerId = cluster.clusterId);
                 if (showClusterMarker && single != null) {
-                  await _zoomToLatLng(cluster.centerLatLng);
+                  await _zoomToLatLngUntil(
+                    target: cluster.centerLatLng,
+                    targetZoom: _clusterTapAutoZoomTarget,
+                  );
                   return;
                 }
                 if (cluster.members.length >= 2) {
-                  if (await _shouldOpenClusterSelection(cluster)) {
-                    _openClusterSelection(cluster);
-                    return;
-                  }
-                  final didZoom = await _zoomToCluster(cluster);
-                  if (!didZoom) {
-                    _openClusterSelection(cluster);
-                  }
+                  await _zoomToLatLngUntil(
+                    target: cluster.centerLatLng,
+                    targetZoom: _clusterTapAutoZoomTarget,
+                  );
                   return;
                 }
                 if (single == null) return;
@@ -1678,21 +1754,16 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
 
   int _maxMarkersForZoom(double zoom, {required bool isCluster}) {
     final override = widget.config.maxMarkersForZoom;
-    if (override != null) return override(zoom, isCluster: isCluster);
-    return _defaultMaxMarkersForZoom(zoom, isCluster: isCluster);
+    final resolved = override != null
+        ? override(zoom, isCluster: isCluster)
+        : _defaultMaxMarkersForZoom(zoom, isCluster: isCluster);
+    if (resolved < 1) return 1;
+    if (resolved > 20) return 20;
+    return resolved;
   }
 
   int _defaultMaxMarkersForZoom(double zoom, {required bool isCluster}) {
-    if (isCluster) {
-      if (zoom >= 15) return 200;
-      if (zoom >= 14) return 180;
-      if (zoom >= 13) return 160;
-      return 140;
-    }
-    if (zoom >= 16) return 200;
-    if (zoom >= 15) return 180;
-    if (zoom >= 14) return 160;
-    return 140;
+    return 20;
   }
 
   List<T> _limitEntriesByDistance<T>(
@@ -1832,65 +1903,39 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
     return true;
   }
 
-  Future<bool> _shouldOpenClusterSelection(_LiveMarkerCluster cluster) async {
-    if (_isOverlappedCluster(cluster)) return true;
+  Future<void> _zoomToLatLngUntil({
+    required NLatLng target,
+    required double targetZoom,
+  }) async {
+    if (_isClusterAutoZooming) return;
     final controller = _mapController;
-    if (controller == null) return false;
+    if (controller == null) return;
+    _isClusterAutoZooming = true;
     try {
+      if (!mounted) return;
       final camera = await controller.getCameraPosition();
-      return camera.zoom >= _clusterSelectionZoomThreshold;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  void _openClusterSelection(_LiveMarkerCluster cluster) {
-    MapClusterView.show(
-      context: context,
-      type: cluster.members.first.type,
-      items: cluster.members.map((member) => member.space).toList(),
-      currentCenter: _lastCenter == null
-          ? null
-          : (lat: _lastCenter!.latitude, lng: _lastCenter!.longitude),
-    );
-  }
-
-  Future<bool> _zoomToCluster(_LiveMarkerCluster cluster) async {
-    final controller = _mapController;
-    if (controller == null) return false;
-    try {
-      final camera = await controller.getCameraPosition();
-      final nextZoom = math.min(_clusterMaxZoom, camera.zoom + 1.2);
-      if ((nextZoom - camera.zoom).abs() < 0.01) return false;
-      await controller.updateCamera(
-        NCameraUpdate.withParams(
-          target: cluster.centerLatLng,
-          zoom: nextZoom,
-        ),
-      );
-      return true;
-    } catch (_) {
-      // Ignore transient map camera errors.
-      return false;
-    }
-  }
-
-  Future<bool> _zoomToLatLng(NLatLng target) async {
-    final controller = _mapController;
-    if (controller == null) return false;
-    try {
-      final camera = await controller.getCameraPosition();
-      final nextZoom = math.min(_clusterMaxZoom, camera.zoom + 1.4);
-      if ((nextZoom - camera.zoom).abs() < 0.01) return false;
+      final clampedTarget = targetZoom.clamp(1.0, _clusterMaxZoom);
+      final diff = clampedTarget - camera.zoom;
+      if (diff <= 0.05) {
+        await controller.updateCamera(
+          NCameraUpdate.withParams(
+            target: target,
+            zoom: camera.zoom,
+          ),
+        );
+        return;
+      }
+      final nextZoom = math.min(clampedTarget, camera.zoom + 1.1);
       await controller.updateCamera(
         NCameraUpdate.withParams(
           target: target,
           zoom: nextZoom,
         ),
       );
-      return true;
     } catch (_) {
-      return false;
+      // Ignore transient map camera errors.
+    } finally {
+      _isClusterAutoZooming = false;
     }
   }
 
@@ -2528,10 +2573,7 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
                     final lat = (space['latitude'] as num?)?.toDouble();
                     final lng = (space['longitude'] as num?)?.toDouble();
                     final title = _titleForSpace(space);
-                    final placeName = (space['address'] ??
-                            space['placeName'] ??
-                            space['location'] ??
-                            '') as String;
+                    final placeName = _addressForSpace(space);
                     String? pickTitle(dynamic raw) {
                       if (raw is Map<String, dynamic>) {
                         final title = raw['title'];
@@ -2938,6 +2980,7 @@ class _MapZoomButton extends StatelessWidget {
 
 class MapViewConfig {
   const MapViewConfig({
+    this.enableClusters = false,
     this.mapPlacesZoomThreshold = 14.0,
     this.clusterMinCount = 30,
     this.placeCountForCluster = 120,
@@ -2945,6 +2988,7 @@ class MapViewConfig {
     this.maxMarkersForZoom,
   });
 
+  final bool enableClusters;
   final double mapPlacesZoomThreshold;
   final int clusterMinCount;
   final int placeCountForCluster;

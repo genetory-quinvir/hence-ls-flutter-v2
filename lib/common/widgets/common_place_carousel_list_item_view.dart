@@ -129,7 +129,7 @@ class CommonPlaceCarouselListItemView extends StatelessWidget {
               ),
               Expanded(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(14, 16, 14, 12),
+                  padding: const EdgeInsets.fromLTRB(14, 16, 14, 16),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [

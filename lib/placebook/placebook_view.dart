@@ -7,6 +7,7 @@ import '../common/network/api_client.dart';
 import '../common/widgets/common_activity.dart';
 import '../common/widgets/common_image_view.dart';
 import '../common/widgets/common_inkwell.dart';
+import '../common/widgets/common_login_guard.dart';
 import '../common/widgets/common_navigation_view.dart';
 import '../common/widgets/common_place_carousel_list_item_view.dart';
 import '../common/widgets/common_refresh_view.dart';
@@ -94,7 +95,15 @@ class _PlacebookViewState extends State<PlacebookView>
     await _loadHome(showLoading: false);
   }
 
-  void _openCreatedPlaces() {
+  Future<void> _openCreatedPlaces() async {
+    if (!await CommonLoginGuard.ensureSignedIn(
+      context,
+      title: '로그인이 필요합니다.',
+      subTitle: '나의 장소를 보려면 로그인해주세요.',
+    )) {
+      return;
+    }
+    if (!mounted) return;
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => const PlacebookListView(
@@ -104,7 +113,15 @@ class _PlacebookViewState extends State<PlacebookView>
     );
   }
 
-  void _openFavoritePlaces() {
+  Future<void> _openFavoritePlaces() async {
+    if (!await CommonLoginGuard.ensureSignedIn(
+      context,
+      title: '로그인이 필요합니다.',
+      subTitle: '찜한 장소를 보려면 로그인해주세요.',
+    )) {
+      return;
+    }
+    if (!mounted) return;
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => const PlacebookListView(
@@ -228,12 +245,12 @@ class _PlacebookViewState extends State<PlacebookView>
             _SummaryStat(
               label: '나의 장소',
               value: '$createdPlaces',
-              onTap: _openCreatedPlaces,
+              onTap: () => _openCreatedPlaces(),
             ),
             _SummaryStat(
               label: '찜한 장소',
               value: '$favoritePlaces',
-              onTap: _openFavoritePlaces,
+              onTap: () => _openFavoritePlaces(),
             ),
             _SummaryStat(label: '카테고리', value: '$categoryCount'),
             _SummaryStat(label: '테마', value: '$themeCount'),

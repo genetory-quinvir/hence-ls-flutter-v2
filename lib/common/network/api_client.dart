@@ -20,6 +20,13 @@ class ApiClient {
 
   static const String authRefreshPath = '/api/v1/auth/refresh';
   static const String _cdnBase = 'https://d8fw6zmrtkhsn.cloudfront.net/';
+  static const double _featuredFallbackLatitude = 37.4979;
+  static const double _featuredFallbackLongitude = 127.0276;
+  static Map<String, dynamic>? _featuredCache;
+  static DateTime? _featuredCacheAt;
+  static String? _featuredCacheKey;
+  static Future<Map<String, dynamic>>? _featuredInflight;
+  static String? _featuredInflightKey;
 
   static Map<String, String> _headers({bool json = false}) {
     final headers = <String, String>{};
@@ -529,7 +536,8 @@ class ApiClient {
           'files',
           file.path,
           contentType: MediaType('image', 'webp'),
-          filename: 'placebook_thumbnail_${DateTime.now().microsecondsSinceEpoch}.webp',
+          filename:
+              'placebook_thumbnail_${DateTime.now().microsecondsSinceEpoch}.webp',
         ),
       );
       final streamed = await request.send();
@@ -567,7 +575,8 @@ class ApiClient {
           'files',
           file.path,
           contentType: MediaType('image', 'webp'),
-          filename: 'place_thumbnail_${DateTime.now().microsecondsSinceEpoch}.webp',
+          filename:
+              'place_thumbnail_${DateTime.now().microsecondsSinceEpoch}.webp',
         ),
       );
       final streamed = await request.send();
@@ -1628,7 +1637,7 @@ class ApiClient {
       if (order != null && order.isNotEmpty) params['order'] = order;
     }
     if (query != null && query.trim().isNotEmpty) {
-      params['q'] = query.trim();
+      params['keyword'] = query.trim();
     }
     if (themeIds != null && themeIds.isNotEmpty) {
       params['themeIds'] = themeIds.join(',');
@@ -2106,21 +2115,69 @@ class ApiClient {
   static Future<Map<String, dynamic>> fetchFeatured({
     double? latitude,
     double? longitude,
+    bool forceRefresh = false,
+    Duration cacheTtl = const Duration(seconds: 45),
   }) async {
-    var uri = Uri.parse('$baseUrl/api/v1/featured');
-    if (latitude != null && longitude != null) {
+    final resolvedLatitude = latitude ?? _featuredFallbackLatitude;
+    final resolvedLongitude = longitude ?? _featuredFallbackLongitude;
+    final key =
+        '${resolvedLatitude.toStringAsFixed(3)},${resolvedLongitude.toStringAsFixed(3)}';
+    final now = DateTime.now();
+    if (!forceRefresh &&
+        _featuredCache != null &&
+        _featuredCacheAt != null &&
+        _featuredCacheKey == key &&
+        now.difference(_featuredCacheAt!) < cacheTtl) {
+      return _featuredCache!;
+    }
+    if (!forceRefresh &&
+        _featuredInflight != null &&
+        _featuredInflightKey == key) {
+      return _featuredInflight!;
+    }
+
+    Future<Map<String, dynamic>> request() async {
+      var uri = Uri.parse('$baseUrl/api/v1/featured');
       uri = uri.replace(
-        queryParameters: {'latitude': '$latitude', 'longitude': '$longitude'},
+        queryParameters: {
+          'latitude': '$resolvedLatitude',
+          'longitude': '$resolvedLongitude',
+        },
       );
+      _logRequest('GET', uri);
+      final networkSw = Stopwatch()..start();
+      final response = await http.get(uri, headers: _headers());
+      networkSw.stop();
+      _logResponse(response);
+      debugPrint(
+        '[PERF][FEATURED] network_ms=${networkSw.elapsedMilliseconds}',
+      );
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception('Featured request failed: ${response.statusCode}');
+      }
+      final parseSw = Stopwatch()..start();
+      final parsed = await _decodeJsonMap(response.body);
+      parseSw.stop();
+      debugPrint(
+        '[PERF][FEATURED] parse_ms=${parseSw.elapsedMilliseconds} bytes=${response.body.length}',
+      );
+      _featuredCache = parsed;
+      _featuredCacheAt = now;
+      _featuredCacheKey = key;
+      return parsed;
     }
-    _logRequest('GET', uri);
-    final response = await http.get(uri, headers: _headers());
-    _logResponse(response);
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception('Featured request failed: ${response.statusCode}');
+
+    final future = request();
+    _featuredInflight = future;
+    _featuredInflightKey = key;
+    try {
+      return await future;
+    } finally {
+      if (identical(_featuredInflight, future)) {
+        _featuredInflight = null;
+        _featuredInflightKey = null;
+      }
     }
-    final json = jsonDecode(response.body);
-    return json is Map<String, dynamic> ? json : <String, dynamic>{};
   }
 
   static Future<Map<String, dynamic>> fetchAchievements() async {
@@ -2582,8 +2639,13 @@ class ApiClient {
           ? '<redacted>'
           : entry.value;
     }
+    final encoded = jsonEncode(redacted);
     debugPrint('[API][REQ] $method $uri');
-    debugPrint('[API][REQ] ${jsonEncode(redacted)}');
+    if (encoded.length > 1200) {
+      debugPrint('[API][REQ] body_length=${encoded.length}');
+    } else {
+      debugPrint('[API][REQ] $encoded');
+    }
   }
 
   static void _logRequest(String method, Uri uri) {
@@ -2592,11 +2654,15 @@ class ApiClient {
 
   static void _logResponse(http.Response response) {
     final body = response.body;
-    final preview = body.length > 800 ? '${body.substring(0, 800)}…' : body;
+    final preview = body.length > 600 ? '${body.substring(0, 600)}…' : body;
     final rawUrl = response.request?.url;
     final safeUrl = rawUrl == null ? null : _redactSensitiveQuery(rawUrl);
     debugPrint('[API][RES] ${response.statusCode} $safeUrl');
-    debugPrint('[API][RES] $preview');
+    if (body.length > 1200) {
+      debugPrint('[API][RES] body_length=${body.length}');
+    } else {
+      debugPrint('[API][RES] $preview');
+    }
   }
 
   static Uri _redactSensitiveQuery(Uri uri) {
@@ -2610,4 +2676,19 @@ class ApiClient {
     }
     return uri.replace(queryParameters: redacted);
   }
+}
+
+Future<Map<String, dynamic>> _decodeJsonMap(String body) async {
+  if (body.length > 120000) {
+    final dynamic parsed = await compute(_decodeJsonDynamic, body);
+    if (parsed is Map<String, dynamic>) return parsed;
+    return <String, dynamic>{};
+  }
+  final parsed = jsonDecode(body);
+  if (parsed is Map<String, dynamic>) return parsed;
+  return <String, dynamic>{};
+}
+
+dynamic _decodeJsonDynamic(String body) {
+  return jsonDecode(body);
 }

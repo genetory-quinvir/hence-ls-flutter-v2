@@ -11,11 +11,7 @@ import '../common/widgets/common_place_list_item_view.dart';
 import '../common/widgets/common_refresh_view.dart';
 import '../placebook_detail/placebook_detail_view.dart';
 
-enum PlacebookListSource {
-  all,
-  created,
-  favorites,
-}
+enum PlacebookListSource { all, created, favorites }
 
 class PlacebookListView extends StatefulWidget {
   const PlacebookListView({
@@ -46,6 +42,8 @@ class PlacebookListView extends StatefulWidget {
 }
 
 class _PlacebookListViewState extends State<PlacebookListView> {
+  static const double _fallbackLatitude = 37.4979;
+  static const double _fallbackLongitude = 127.0276;
   final List<Map<String, dynamic>> _places = [];
   bool _isLoading = true;
   bool _isRefreshing = false;
@@ -68,6 +66,10 @@ class _PlacebookListViewState extends State<PlacebookListView> {
     } else if (widget.orderBy == 'popular') {
       _selectedSort = 'popular';
     }
+    if (widget.source != PlacebookListSource.all) {
+      _loadPlaces();
+      return;
+    }
     if (_latitude == null || _longitude == null) {
       _loadWithLocation();
     } else {
@@ -82,6 +84,8 @@ class _PlacebookListViewState extends State<PlacebookListView> {
       if (serviceEnabled && granted) {
         final position = await Geolocator.getCurrentPosition(
           desiredAccuracy: LocationAccuracy.medium,
+        ).timeout(
+          const Duration(seconds: 2),
         );
         _latitude = position.latitude;
         _longitude = position.longitude;
@@ -89,6 +93,8 @@ class _PlacebookListViewState extends State<PlacebookListView> {
     } on Exception {
       // ignore
     }
+    _latitude ??= _fallbackLatitude;
+    _longitude ??= _fallbackLongitude;
     if (mounted) {
       _loadPlaces(forceRefresh: true);
     }
@@ -130,22 +136,35 @@ class _PlacebookListViewState extends State<PlacebookListView> {
     _requestedCursor = requestCursor;
     final orderBy = _orderByForSort(_selectedSort);
     final order = orderBy == 'distance' ? 'ASC' : 'DESC';
-    final response = await _fetchPlaces(
-      orderBy: orderBy,
-      order: order,
-      cursor: requestCursor,
-      loadMore: loadMore,
-    );
-    final items = _extractPlaceListItems(response)
-        .map(_normalizePlaceListItem)
-        .toList(growable: false);
-    final dataNode = response['data'];
-    final meta =
-        dataNode is Map<String, dynamic> ? dataNode['meta'] : response['meta'];
-    final hasNext =
-        meta is Map<String, dynamic> ? (meta['hasNext'] as bool?) ?? false : false;
+    Map<String, dynamic> response;
+    try {
+      response = await _fetchPlaces(
+        orderBy: orderBy,
+        order: order,
+        cursor: requestCursor,
+        loadMore: loadMore,
+      );
+    } catch (e) {
+      debugPrint('[PLACEBOOK_LIST] load failed: $e');
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _isRefreshing = false;
+        _isLoadingMore = false;
+        _requestedCursor = null;
+      });
+      return;
+    }
+    final items = _extractPlaceListItems(
+      response,
+    ).map(_normalizePlaceListItem).toList(growable: false);
+    final meta = _extractPagingMeta(response);
+    final nextCursorRaw = meta?['nextCursor']?.toString();
     final nextCursor =
-        meta is Map<String, dynamic> ? meta['nextCursor']?.toString() : null;
+        (nextCursorRaw == null || nextCursorRaw.isEmpty) ? null : nextCursorRaw;
+    final hasNext = (meta?['hasNext'] as bool?) ??
+        (meta?['hasMore'] as bool?) ??
+        (nextCursor != null);
     if (!mounted) return;
     setState(() {
       if (loadMore) {
@@ -170,10 +189,9 @@ class _PlacebookListViewState extends State<PlacebookListView> {
 
   String get _themeId => (widget.themeId ?? '').trim();
 
-  String get _title =>
-      (widget.themeTitle ?? '').trim().isNotEmpty
-          ? widget.themeTitle!.trim()
-          : _titleForSource();
+  String get _title => (widget.themeTitle ?? '').trim().isNotEmpty
+      ? widget.themeTitle!.trim()
+      : _titleForSource();
 
   bool get _showSort => true;
   bool get _showScopeToggle => widget.source == PlacebookListSource.all;
@@ -185,12 +203,14 @@ class _PlacebookListViewState extends State<PlacebookListView> {
       case PlacebookListSource.favorites:
         return '찜한 장소';
       case PlacebookListSource.all:
-      default:
         return '장소 목록';
     }
   }
 
   String _orderByForSort(String sort) {
+    if (widget.source != PlacebookListSource.all) {
+      return 'createdAt';
+    }
     switch (sort) {
       case 'popular':
         return 'favoriteCount';
@@ -228,8 +248,8 @@ class _PlacebookListViewState extends State<PlacebookListView> {
       case PlacebookListSource.created:
         return ApiClient.fetchPlacebookCreatedPlacesList(
           limit: 20,
-          orderBy: orderBy,
-          order: order,
+          orderBy: loadMore ? null : orderBy,
+          order: loadMore ? null : order,
           cursor: cursor,
           latitude: _latitude,
           longitude: _longitude,
@@ -237,14 +257,13 @@ class _PlacebookListViewState extends State<PlacebookListView> {
       case PlacebookListSource.favorites:
         return ApiClient.fetchPlacebookFavoritePlacesList(
           limit: 20,
-          orderBy: orderBy,
-          order: order,
+          orderBy: loadMore ? null : orderBy,
+          order: loadMore ? null : order,
           cursor: cursor,
           latitude: _latitude,
           longitude: _longitude,
         );
       case PlacebookListSource.all:
-      default:
         return ApiClient.fetchPlacebookPlacesList(
           filter: _selectedScope == 'my' ? 'mine' : 'all',
           limit: 20,
@@ -262,18 +281,30 @@ class _PlacebookListViewState extends State<PlacebookListView> {
   List<Map<String, dynamic>> _extractPlaceListItems(
     Map<String, dynamic> response,
   ) {
+    final rootItems = response['items'];
+    if (rootItems is List) {
+      return rootItems.whereType<Map<String, dynamic>>().toList();
+    }
     final data = response['data'];
     if (data is Map<String, dynamic>) {
-      final items = data['items'];
-      if (items is List) {
-        return items.whereType<Map<String, dynamic>>().toList();
+      final nestedItems = data['items'] ?? data['places'];
+      if (nestedItems is List) {
+        return nestedItems.whereType<Map<String, dynamic>>().toList();
       }
     }
-    final items = response['items'];
-    if (items is List) {
-      return items.whereType<Map<String, dynamic>>().toList();
-    }
     return const [];
+  }
+
+  Map<String, dynamic>? _extractPagingMeta(Map<String, dynamic> response) {
+    final data = response['data'];
+    if (data is Map<String, dynamic>) {
+      final meta = data['meta'];
+      if (meta is Map<String, dynamic>) return meta;
+      return data;
+    }
+    final meta = response['meta'];
+    if (meta is Map<String, dynamic>) return meta;
+    return response;
   }
 
   Map<String, dynamic> _normalizePlaceListItem(Map<String, dynamic> place) {
@@ -332,7 +363,8 @@ class _PlacebookListViewState extends State<PlacebookListView> {
       final url = _firstValidImageUrl(directUrlRaw);
       if (url.isNotEmpty) return url;
     }
-    final directUrl = directUrlRaw ??
+    final directUrl =
+        directUrlRaw ??
         place['thumbnailImageUrl'] ??
         place['imageUrl'] ??
         place['representativeImageUrl'] ??
@@ -365,7 +397,8 @@ class _PlacebookListViewState extends State<PlacebookListView> {
 
   @override
   Widget build(BuildContext context) {
-    final showHeaderInList = widget.headerScrollable && widget.scrollHeader != null;
+    final showHeaderInList =
+        widget.headerScrollable && widget.scrollHeader != null;
     final body = Column(
       children: [
         if (widget.showNavigation)
@@ -414,20 +447,26 @@ class _PlacebookListViewState extends State<PlacebookListView> {
                               if (showHeaderInList) widget.scrollHeader!,
                               if (showHeaderInList)
                                 Padding(
-                                  padding:
-                                      const EdgeInsets.fromLTRB(0, 16, 0, 12),
+                                  padding: const EdgeInsets.fromLTRB(
+                                    0,
+                                    16,
+                                    0,
+                                    12,
+                                  ),
                                   child: _buildSortRow(),
                                 ),
                               const CommonEmptyView(
                                 message: '등록된 장소가 없습니다.',
                                 showButton: false,
+                                height: 140,
                               ),
                             ],
                           )
                         : ListView.builder(
                             physics: const AlwaysScrollableScrollPhysics(),
                             padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                            itemCount: _places.length +
+                            itemCount:
+                                _places.length +
                                 (_isLoadingMore ? 1 : 0) +
                                 (showHeaderInList ? 2 : 0),
                             itemBuilder: (context, index) {
@@ -436,8 +475,12 @@ class _PlacebookListViewState extends State<PlacebookListView> {
                               }
                               if (showHeaderInList && index == 1) {
                                 return Padding(
-                                  padding:
-                                      const EdgeInsets.fromLTRB(0, 16, 0, 12),
+                                  padding: const EdgeInsets.fromLTRB(
+                                    0,
+                                    16,
+                                    0,
+                                    12,
+                                  ),
                                   child: _buildSortRow(),
                                 );
                               }
@@ -459,7 +502,7 @@ class _PlacebookListViewState extends State<PlacebookListView> {
                               }
                               final place = _places[dataIndex];
                               final title = (place['title'] ?? '').toString();
-                              final address = (place['address'] ?? '').toString();
+                              final address = _addressText(place);
                               final commentCount =
                                   (place['commentCount'] as num?)?.toInt() ?? 0;
                               final likeCount =
@@ -479,13 +522,16 @@ class _PlacebookListViewState extends State<PlacebookListView> {
                                   : null;
                               final favorited =
                                   (place['favorited'] as bool?) ??
-                                      (place['isFavorited'] as bool?) ??
-                                      false;
+                                  (place['isFavorited'] as bool?) ??
+                                  false;
                               final placeId =
-                                  (place['id'] ?? place['placeId'])?.toString() ??
-                                      '';
+                                  (place['id'] ?? place['placeId'])
+                                      ?.toString() ??
+                                  '';
                               return Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 6),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 6,
+                                ),
                                 child: CommonPlaceListItemView(
                                   thumbnailUrl: _resolvePlaceImageUrl(place),
                                   title: title,
@@ -499,9 +545,8 @@ class _PlacebookListViewState extends State<PlacebookListView> {
                                     if (placeId.isEmpty) return;
                                     Navigator.of(context).push(
                                       CupertinoPageRoute(
-                                        builder: (_) => PlacebookDetailView(
-                                          space: place,
-                                        ),
+                                        builder: (_) =>
+                                            PlacebookDetailView(space: place),
                                       ),
                                     );
                                   },
@@ -518,10 +563,7 @@ class _PlacebookListViewState extends State<PlacebookListView> {
     if (!widget.showNavigation) return body;
     return Scaffold(
       backgroundColor: Colors.white,
-      body: SafeArea(
-        bottom: false,
-        child: body,
-      ),
+      body: SafeArea(bottom: false, child: body),
     );
   }
 
@@ -568,6 +610,36 @@ class _PlacebookListViewState extends State<PlacebookListView> {
         ),
       ],
     );
+  }
+
+  String _addressText(Map<String, dynamic> place) {
+    String? pick(dynamic raw) {
+      if (raw is String) {
+        final trimmed = raw.trim();
+        if (trimmed.isNotEmpty &&
+            trimmed != '{}' &&
+            trimmed.toLowerCase() != 'null') {
+          return trimmed;
+        }
+      }
+      if (raw is Map<String, dynamic>) {
+        return pick(raw['address']) ??
+            pick(raw['roadAddress']) ??
+            pick(raw['roadAddressName']) ??
+            pick(raw['fullAddress']) ??
+            pick(raw['name']) ??
+            pick(raw['title']) ??
+            pick(raw['text']);
+      }
+      return null;
+    }
+
+    return pick(place['address']) ??
+        pick(place['roadAddress']) ??
+        pick(place['placeAddress']) ??
+        pick(place['location']) ??
+        pick(place['placeName']) ??
+        '';
   }
 }
 
@@ -638,10 +710,6 @@ class _SortDivider extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 1,
-      height: 12,
-      color: const Color(0xFFE0E0E0),
-    );
+    return Container(width: 1, height: 12, color: const Color(0xFFE0E0E0));
   }
 }

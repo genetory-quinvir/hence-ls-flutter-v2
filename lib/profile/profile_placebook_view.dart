@@ -155,7 +155,7 @@ class _ProfilePlacebookViewState extends State<ProfilePlacebookView> {
         }
         final place = _places[index];
         final title = (place['title'] as String?) ?? '장소';
-        final address = (place['address'] as String?) ?? '';
+        final address = _extractAddressTitle(place);
         final commentCount =
             (place['commentCount'] as num?)?.toInt() ?? 0;
         final likeCount = (place['likeCount'] as num?)?.toInt() ?? 0;
@@ -361,4 +361,33 @@ String _extractThemeTitle(Map<String, dynamic> place) {
     return themeTitle.trim();
   }
   return '';
+}
+
+String _extractAddressTitle(Map<String, dynamic> place) {
+  String? pick(dynamic raw) {
+    if (raw is String) {
+      final trimmed = raw.trim();
+      if (trimmed.isNotEmpty &&
+          trimmed != '{}' &&
+          trimmed.toLowerCase() != 'null') {
+        return trimmed;
+      }
+    }
+    if (raw is Map<String, dynamic>) {
+      return pick(raw['address']) ??
+          pick(raw['roadAddress']) ??
+          pick(raw['roadAddressName']) ??
+          pick(raw['fullAddress']) ??
+          pick(raw['name']) ??
+          pick(raw['title']) ??
+          pick(raw['text']);
+    }
+    return null;
+  }
+
+  return pick(place['address']) ??
+      pick(place['roadAddress']) ??
+      pick(place['placeAddress']) ??
+      pick(place['location']) ??
+      '';
 }

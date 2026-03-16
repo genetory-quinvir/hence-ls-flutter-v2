@@ -91,12 +91,13 @@ class CommonPlaceMarker extends StatelessWidget {
           children: [
             Text(
               label,
-              maxLines: 1,
+              maxLines: 2,
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontFamily: 'Pretendard',
                 fontSize: 12,
+                height: 1.2,
                 fontWeight: FontWeight.w700,
                 foreground: Paint()
                   ..style = PaintingStyle.stroke
@@ -106,12 +107,13 @@ class CommonPlaceMarker extends StatelessWidget {
             ),
             Text(
               label,
-              maxLines: 1,
+              maxLines: 2,
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.center,
               style: const TextStyle(
                 fontFamily: 'Pretendard',
                 fontSize: 12,
+                height: 1.2,
                 fontWeight: FontWeight.w600,
                 color: Colors.black,
               ),

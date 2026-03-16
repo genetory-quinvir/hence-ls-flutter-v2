@@ -179,15 +179,12 @@ class _ProfileActivitySummarySection extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 12),
-              RichText(
+              _buildActivitySummaryCard(
                 text: _buildActivitySummarySpans(
                   user,
                   isLoading: isLoading,
+                  topThemes: data?.topThemes ?? const [],
                 ),
-              ),
-              const SizedBox(height: 16),
-              _buildTopThemeSection(
-                themes: data?.topThemes ?? const [],
                 isLoading: isLoading,
               ),
               const SizedBox(height: 32),
@@ -239,6 +236,23 @@ class _ProfileActivitySummarySection extends StatelessWidget {
       recentSaved: created,
       recentFavorites: favorites,
       topThemes: topThemes,
+    );
+  }
+
+  static Widget _buildActivitySummaryCard({
+    required TextSpan text,
+    required bool isLoading,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF7F7F7),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: isLoading
+          ? const CommonActivityIndicator(size: 20)
+          : RichText(text: text),
     );
   }
 
@@ -297,68 +311,6 @@ class _ProfileActivitySummarySection extends StatelessWidget {
     return '';
   }
 
-  static Widget _buildTopThemeSection({
-    required List<String> themes,
-    required bool isLoading,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          '자주 저장한 테마 TOP3',
-          style: TextStyle(
-            fontFamily: 'Pretendard',
-            fontSize: 16,
-            fontWeight: FontWeight.w700,
-            color: Colors.black,
-          ),
-        ),
-        const SizedBox(height: 10),
-        if (isLoading)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 8),
-            child: Center(
-              child: CommonActivityIndicator(size: 22),
-            ),
-          )
-        else if (themes.isEmpty)
-          const Text(
-            '아직 자주 저장한 테마가 없어요.',
-            style: TextStyle(
-              fontFamily: 'Pretendard',
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-              color: Color(0xFF9E9E9E),
-            ),
-          )
-        else
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: themes.map((theme) {
-              return Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF4F4F4),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  theme,
-                  style: const TextStyle(
-                    fontFamily: 'Pretendard',
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF4A4A4A),
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
-      ],
-    );
-  }
-
   static Widget _buildRecentPlaceSection({
     required BuildContext context,
     required String title,
@@ -410,11 +362,7 @@ class _ProfileActivitySummarySection extends StatelessWidget {
         (place['name'] as String?) ??
         (place['placeName'] as String?) ??
         '장소';
-    final address = (place['address'] as String?) ??
-        (place['roadAddress'] as String?) ??
-        (place['placeAddress'] as String?) ??
-        (place['location'] as String?) ??
-        '';
+    final address = _addressForPlace(place);
     final themeText = (place['themeTitle'] as String?) ??
         (place['themeName'] as String?) ??
         (place['categoryTitle'] as String?) ??
@@ -500,20 +448,50 @@ class _ProfileActivitySummarySection extends StatelessWidget {
     return '';
   }
 
+  static String _addressForPlace(Map<String, dynamic> place) {
+    String? pick(dynamic raw) {
+      if (raw is String) {
+        final trimmed = raw.trim();
+        if (trimmed.isNotEmpty &&
+            trimmed != '{}' &&
+            trimmed.toLowerCase() != 'null') {
+          return trimmed;
+        }
+      }
+      if (raw is Map<String, dynamic>) {
+        return pick(raw['address']) ??
+            pick(raw['roadAddress']) ??
+            pick(raw['roadAddressName']) ??
+            pick(raw['fullAddress']) ??
+            pick(raw['name']) ??
+            pick(raw['title']) ??
+            pick(raw['text']);
+      }
+      return null;
+    }
+
+    return pick(place['address']) ??
+        pick(place['roadAddress']) ??
+        pick(place['placeAddress']) ??
+        pick(place['location']) ??
+        '';
+  }
+
   static TextSpan _buildActivitySummarySpans(
     AuthUser? user, {
     required bool isLoading,
+    required List<String> topThemes,
   }) {
     const baseStyle = TextStyle(
       fontFamily: 'Pretendard',
-      fontSize: 17,
+      fontSize: 16,
       height: 1.8,
       fontWeight: FontWeight.w500,
       color: Color(0xFF4A4A4A),
     );
     const achievementStyle = TextStyle(
       fontFamily: 'Pretendard',
-      fontSize: 18,
+      fontSize: 17,
       height: 1.8,
       fontWeight: FontWeight.w700,
       color: Color(0xFF1A1A1A),
@@ -521,7 +499,7 @@ class _ProfileActivitySummarySection extends StatelessWidget {
     );
     const titleStyle = TextStyle(
       fontFamily: 'Pretendard',
-      fontSize: 18,
+      fontSize: 17,
       height: 1.8,
       fontWeight: FontWeight.w700,
       color: Color(0xFF1A1A1A),
@@ -529,7 +507,7 @@ class _ProfileActivitySummarySection extends StatelessWidget {
     );
     const levelStyle = TextStyle(
       fontFamily: 'Pretendard',
-      fontSize: 18,
+      fontSize: 17,
       height: 1.8,
       fontWeight: FontWeight.w700,
       color: Color(0xFF1A1A1A),
@@ -537,7 +515,7 @@ class _ProfileActivitySummarySection extends StatelessWidget {
     );
     const countStyle = TextStyle(
       fontFamily: 'Pretendard',
-      fontSize: 18,
+      fontSize: 17,
       height: 1.8,
       fontWeight: FontWeight.w700,
       color: Color(0xFF1A1A1A),
@@ -545,11 +523,19 @@ class _ProfileActivitySummarySection extends StatelessWidget {
     );
     const followStyle = TextStyle(
       fontFamily: 'Pretendard',
-      fontSize: 18,
+      fontSize: 17,
       height: 1.8,
       fontWeight: FontWeight.w700,
       color: Color(0xFF1A1A1A),
       backgroundColor: Color(0xFFF0ECFF),
+    );
+    const themeStyle = TextStyle(
+      fontFamily: 'Pretendard',
+      fontSize: 17,
+      height: 1.8,
+      fontWeight: FontWeight.w700,
+      color: Color(0xFF1A1A1A),
+      backgroundColor: Color(0xFFE9F2FF),
     );
 
     if (isLoading) {
@@ -590,7 +576,7 @@ class _ProfileActivitySummarySection extends StatelessWidget {
         addLine([
           const TextSpan(text: '최근 받은 업적은 ', style: baseStyle),
           TextSpan(text: achievementName, style: achievementStyle),
-          const TextSpan(text: ', 호칭은 ', style: baseStyle),
+          const TextSpan(text: ',\n호칭은 ', style: baseStyle),
           TextSpan(text: titleName, style: titleStyle),
           const TextSpan(text: '이에요.', style: baseStyle),
         ]);
@@ -644,6 +630,15 @@ class _ProfileActivitySummarySection extends StatelessWidget {
           const TextSpan(text: '과 함께하고 있어요.', style: baseStyle),
         ]);
       }
+    }
+
+    if (topThemes.isNotEmpty) {
+      final joined = topThemes.take(3).join(' · ');
+      addLine([
+        const TextSpan(text: '자주 저장한 테마는 ', style: baseStyle),
+        TextSpan(text: joined, style: themeStyle),
+        const TextSpan(text: '이에요.', style: baseStyle),
+      ]);
     }
 
     if (spans.isEmpty) {

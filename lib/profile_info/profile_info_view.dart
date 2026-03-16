@@ -154,8 +154,135 @@ class _ProfileInfoBodyState extends State<_ProfileInfoBody> {
             onFollowToggle: _isTogglingFollow ? null : _toggleFollow,
           ),
         ),
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: _buildActivitySummarySection(user),
+          ),
+        ),
         const SliverToBoxAdapter(child: SizedBox(height: 20)),
       ],
     );
+  }
+
+  Widget _buildActivitySummarySection(ProfileDisplayUser user) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          '활동 요약',
+          style: TextStyle(
+            fontFamily: 'Pretendard',
+            fontSize: 20,
+            fontWeight: FontWeight.w700,
+            color: Colors.black,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF2F2F2),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: RichText(
+            text: _buildActivitySummarySpans(user),
+          ),
+        ),
+      ],
+    );
+  }
+
+  TextSpan _buildActivitySummarySpans(ProfileDisplayUser user) {
+    const baseStyle = TextStyle(
+      fontFamily: 'Pretendard',
+      fontSize: 16,
+      height: 1.8,
+      fontWeight: FontWeight.w500,
+      color: Color(0xFF4A4A4A),
+    );
+    const highlightStyle = TextStyle(
+      fontFamily: 'Pretendard',
+      fontSize: 17,
+      height: 1.8,
+      fontWeight: FontWeight.w700,
+      color: Color(0xFF1A1A1A),
+      backgroundColor: Color(0xFFE9F2FF),
+    );
+    const countStyle = TextStyle(
+      fontFamily: 'Pretendard',
+      fontSize: 17,
+      height: 1.8,
+      fontWeight: FontWeight.w700,
+      color: Color(0xFF1A1A1A),
+      backgroundColor: Color(0xFFFFE9F2),
+    );
+    const followStyle = TextStyle(
+      fontFamily: 'Pretendard',
+      fontSize: 17,
+      height: 1.8,
+      fontWeight: FontWeight.w700,
+      color: Color(0xFF1A1A1A),
+      backgroundColor: Color(0xFFF0ECFF),
+    );
+
+    final spans = <TextSpan>[];
+    void addLine(List<TextSpan> lineSpans) {
+      if (spans.isNotEmpty) {
+        spans.add(const TextSpan(text: '\n', style: baseStyle));
+      }
+      spans.addAll(lineSpans);
+    }
+
+    if (user.activityLevel != null) {
+      addLine([
+        const TextSpan(text: '활동 지수는 ', style: baseStyle),
+        TextSpan(text: 'LV. ${user.activityLevel}', style: highlightStyle),
+        const TextSpan(text: '예요.', style: baseStyle),
+      ]);
+    }
+
+    if (user.createdPlaceCount != null || user.favoritePlaceCount != null) {
+      final createdText = user.createdPlaceCount != null
+          ? '저장 ${user.createdPlaceCount}개'
+          : null;
+      final favoriteText = user.favoritePlaceCount != null
+          ? '찜 ${user.favoritePlaceCount}개'
+          : null;
+      final parts = [createdText, favoriteText].whereType<String>().toList();
+      if (parts.isNotEmpty) {
+        addLine([
+          const TextSpan(text: '현재 ', style: baseStyle),
+          TextSpan(text: parts.join(' · '), style: countStyle),
+          const TextSpan(text: ' 기록이 있어요.', style: baseStyle),
+        ]);
+      }
+    }
+
+    if (user.followingCount != null || user.followerCount != null) {
+      final followingText =
+          user.followingCount != null ? '팔로잉 ${user.followingCount}명' : null;
+      final followerText =
+          user.followerCount != null ? '팔로우 ${user.followerCount}명' : null;
+      final parts = [followingText, followerText].whereType<String>().toList();
+      if (parts.isNotEmpty) {
+        addLine([
+          TextSpan(text: parts.join(' · '), style: followStyle),
+          const TextSpan(text: '과 함께하고 있어요.', style: baseStyle),
+        ]);
+      }
+    }
+
+    final repTitle = (user.representativeTitleInfoName ?? '').trim();
+    if (repTitle.isNotEmpty) {
+      addLine([
+        const TextSpan(text: '대표 호칭은 ', style: baseStyle),
+        TextSpan(text: repTitle, style: highlightStyle),
+        const TextSpan(text: '이에요.', style: baseStyle),
+      ]);
+    }
+
+    return TextSpan(children: spans, style: baseStyle);
   }
 }

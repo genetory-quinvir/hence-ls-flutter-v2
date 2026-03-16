@@ -36,8 +36,12 @@ class CommonPlaceListItemView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final safeTitle = title.trim().isEmpty ? '장소' : title.trim();
-    final safeAddress =
-        address.trim().isEmpty ? '장소 등록 안됨' : address.trim();
+    final rawAddress = address.trim();
+    final safeAddress = (rawAddress.isEmpty ||
+            rawAddress == '{}' ||
+            rawAddress.toLowerCase() == 'null')
+        ? '장소 등록 안됨'
+        : rawAddress;
     final safeTheme = themeText?.trim() ?? '';
     final hasMetaLine = safeTheme.isNotEmpty;
     final rotationDegrees = _thumbnailRotationDegrees(safeTitle, safeAddress);

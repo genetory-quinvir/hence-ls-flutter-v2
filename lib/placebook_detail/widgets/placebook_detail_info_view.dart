@@ -14,6 +14,7 @@ class PlacebookDetailInfoView extends StatefulWidget {
   const PlacebookDetailInfoView({
     super.key,
     required this.title,
+    required this.description,
     required this.place,
     required this.latitude,
     required this.longitude,
@@ -24,6 +25,7 @@ class PlacebookDetailInfoView extends StatefulWidget {
   });
 
   final String title;
+  final String description;
   final String place;
   final double? latitude;
   final double? longitude;
@@ -153,6 +155,18 @@ class _PlacebookDetailInfoViewState extends State<PlacebookDetailInfoView> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (widget.description.trim().isNotEmpty) ...[
+            Text(
+              widget.description.trim(),
+              style: const TextStyle(
+                fontFamily: 'Pretendard',
+                fontSize: 16,
+                fontWeight: FontWeight.w400,
+                color: Color(0xFF424242),
+              ),
+            ),
+            const SizedBox(height: 20),
+          ],
           const Text(
             '장소',
             style: TextStyle(
