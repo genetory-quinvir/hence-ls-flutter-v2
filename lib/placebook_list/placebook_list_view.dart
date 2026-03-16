@@ -296,9 +296,59 @@ class _PlacebookListViewState extends State<PlacebookListView> {
     if (image is Map<String, dynamic>) {
       return _firstValidImageUrl(image);
     }
+    if (image is String && image.trim().isNotEmpty) {
+      return image.trim();
+    }
     final thumbnail = place['thumbnail'];
     if (thumbnail is Map<String, dynamic>) {
       return _firstValidImageUrl(thumbnail);
+    }
+    if (thumbnail is String && thumbnail.trim().isNotEmpty) {
+      return thumbnail.trim();
+    }
+    final thumbnailImage = place['thumbnailImage'];
+    if (thumbnailImage is Map<String, dynamic>) {
+      return _firstValidImageUrl(thumbnailImage);
+    }
+    if (thumbnailImage is String && thumbnailImage.trim().isNotEmpty) {
+      return thumbnailImage.trim();
+    }
+    final representative = place['representativeImage'];
+    if (representative is Map<String, dynamic>) {
+      return _firstValidImageUrl(representative);
+    }
+    if (representative is String && representative.trim().isNotEmpty) {
+      return representative.trim();
+    }
+    final photo = place['photo'];
+    if (photo is Map<String, dynamic>) {
+      return _firstValidImageUrl(photo);
+    }
+    if (photo is String && photo.trim().isNotEmpty) {
+      return photo.trim();
+    }
+    final directUrlRaw = place['thumbnailUrl'];
+    if (directUrlRaw is Map<String, dynamic>) {
+      final url = _firstValidImageUrl(directUrlRaw);
+      if (url.isNotEmpty) return url;
+    }
+    final directUrl = directUrlRaw ??
+        place['thumbnailImageUrl'] ??
+        place['imageUrl'] ??
+        place['representativeImageUrl'] ??
+        place['mainImageUrl'] ??
+        place['coverImageUrl'];
+    if (directUrl is String && directUrl.trim().isNotEmpty) {
+      return directUrl.trim();
+    }
+    final images = place['images'];
+    if (images is List && images.isNotEmpty) {
+      final first = images.first;
+      if (first is String && first.trim().isNotEmpty) return first.trim();
+      if (first is Map<String, dynamic>) {
+        final url = _firstValidImageUrl(first);
+        if (url.isNotEmpty) return url;
+      }
     }
     return '';
   }

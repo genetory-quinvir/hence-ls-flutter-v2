@@ -105,7 +105,7 @@ class _PlacebookCreateBodyState extends State<_PlacebookCreateBody> {
   File? _photoPreview;
   Uint8List? _photoPreviewBytes;
   bool _isUploadingPhoto = false;
-  String? _photoId;
+  String? _photoFileId;
   bool _showMapStep = false;
   bool _showInfoStep = false;
   bool _isMapInteracting = false;
@@ -386,7 +386,6 @@ class _PlacebookCreateBodyState extends State<_PlacebookCreateBody> {
     final description = _contentController.text.trim();
     final subtitle = _subtitleController.text.trim();
     final address = _addressController.text.trim();
-    final thumbnailFileId = _photoId;
     final tagIds = _parseHashtags(_hashtagsController.text);
     final commonTagIds = const <String>[];
     final lat = _selectedLatitude;
@@ -424,23 +423,26 @@ class _PlacebookCreateBodyState extends State<_PlacebookCreateBody> {
         address: address,
         latitude: lat,
         longitude: lng,
-        thumbnailFileId: thumbnailFileId,
+        thumbnailFileId: _photoFileId,
         tagIds: tagIds,
         commonTagIds: commonTagIds,
       );
-      if (thumbnailFileId != null && thumbnailFileId.isNotEmpty) {
-        final id = created['id']?.toString() ?? '';
-        if (id.isNotEmpty && !_hasImageUrl(created)) {
-          created = await ApiClient.updatePlacebookPlace(
-            placeId: id,
-            title: title,
-            description: description,
-            subtitle: subtitle,
-            address: address,
-            latitude: lat,
-            longitude: lng,
-            thumbnailFileId: thumbnailFileId,
+      final placeId = created['id']?.toString() ?? '';
+      if (placeId.isNotEmpty &&
+          _photoPreview != null &&
+          !_hasImageUrl(created)) {
+        try {
+          setState(() => _isUploadingPhoto = true);
+          final webp = await MediaConversionService.toWebp(_photoPreview!);
+          final updated = await ApiClient.uploadPlacebookPlaceThumbnail(
+            placeId: placeId,
+            file: webp,
           );
+          if (updated.isNotEmpty) {
+            created = updated;
+          }
+        } finally {
+          if (mounted) setState(() => _isUploadingPhoto = false);
         }
       }
       if (!mounted) return;
@@ -572,8 +574,8 @@ class _PlacebookCreateBodyState extends State<_PlacebookCreateBody> {
         setState(() => _isUploadingPhoto = true);
         try {
           final webp = await MediaConversionService.toWebp(pickedFile);
-          final id = await ApiClient.uploadPlacebookPlaceImage(webp);
-          _photoId = id;
+          final id = await ApiClient.uploadPlaceThumbnailFile(webp);
+          _photoFileId = id;
         } catch (e) {
           _showSnack('사진 업로드에 실패했어요.');
         } finally {

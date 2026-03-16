@@ -185,7 +185,7 @@ class CommonPlaceCarouselListItemView extends StatelessWidget {
                           ),
                           const SizedBox(width: 12),
                           const Icon(
-                            PhosphorIconsBold.heart,
+                            PhosphorIconsBold.sealCheck,
                             size: 15,
                             color: Color(0xFF757575),
                           ),

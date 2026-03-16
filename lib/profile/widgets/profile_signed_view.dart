@@ -13,6 +13,7 @@ import '../../common/widgets/common_activity.dart';
 import '../../common/widgets/common_image_view.dart';
 import '../../common/widgets/common_livespace_list_item_view.dart';
 import '../../common/widgets/common_empty_view.dart';
+import '../../common/widgets/common_place_list_item_view.dart';
 import '../../common/widgets/common_refresh_view.dart';
 import '../../placebook_detail/placebook_detail_view.dart';
 import '../../placebook_list/placebook_list_view.dart';
@@ -147,18 +148,19 @@ class _ProfileActivitySummarySection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<AuthUser>(
-      future: ApiClient.fetchMe(),
+    return FutureBuilder<_ProfileActivityData>(
+      future: _loadActivityData(),
       builder: (context, snapshot) {
-        final user = snapshot.data;
+        final data = snapshot.data;
         final isLoading = snapshot.connectionState == ConnectionState.waiting;
+        final user = data?.user;
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                '내 활동',
+                '내 활동 요약',
                 style: TextStyle(
                   fontFamily: 'Pretendard',
                   fontSize: 20,
@@ -183,11 +185,319 @@ class _ProfileActivitySummarySection extends StatelessWidget {
                   isLoading: isLoading,
                 ),
               ),
+              const SizedBox(height: 16),
+              _buildTopThemeSection(
+                themes: data?.topThemes ?? const [],
+                isLoading: isLoading,
+              ),
+              const SizedBox(height: 32),
+              _buildRecentPlaceSection(
+                context: context,
+                title: '가장 최근 저장한 장소',
+                items: data?.recentSaved ?? const [],
+                isLoading: isLoading,
+                favorited: false,
+              ),
+              const SizedBox(height: 32),
+              _buildRecentPlaceSection(
+                context: context,
+                title: '가장 최근 찜한 장소',
+                items: data?.recentFavorites ?? const [],
+                isLoading: isLoading,
+                favorited: true,
+              ),
             ],
           ),
         );
       },
     );
+  }
+
+  static Future<_ProfileActivityData> _loadActivityData() async {
+    final results = await Future.wait([
+      ApiClient.fetchMe(),
+      ApiClient.fetchPlacebookCreatedPlacesList(
+        limit: 50,
+        orderBy: 'createdAt',
+        order: 'desc',
+      ),
+      ApiClient.fetchPlacebookFavoritePlacesList(
+        limit: 3,
+        orderBy: 'createdAt',
+        order: 'desc',
+      ),
+    ]);
+    final user = results[0] as AuthUser;
+    final createdAll =
+        _extractPlaceListItems(results[1] as Map<String, dynamic>);
+    final created = createdAll.take(3).toList(growable: false);
+    final favorites =
+        _extractPlaceListItems(results[2] as Map<String, dynamic>);
+    final topThemes = _extractTopThemes(createdAll, maxCount: 3);
+    return _ProfileActivityData(
+      user: user,
+      recentSaved: created,
+      recentFavorites: favorites,
+      topThemes: topThemes,
+    );
+  }
+
+  static List<Map<String, dynamic>> _extractPlaceListItems(
+    Map<String, dynamic> response,
+  ) {
+    final data = response['data'];
+    if (data is Map<String, dynamic>) {
+      final items = data['items'];
+      if (items is List) {
+        return items.whereType<Map<String, dynamic>>().toList();
+      }
+    }
+    final items = response['items'];
+    if (items is List) {
+      return items.whereType<Map<String, dynamic>>().toList();
+    }
+    return const [];
+  }
+
+  static List<String> _extractTopThemes(
+    List<Map<String, dynamic>> items, {
+    required int maxCount,
+  }) {
+    final counts = <String, int>{};
+    for (final place in items) {
+      final title = _themeTitleForPlace(place);
+      if (title.isEmpty) continue;
+      counts[title] = (counts[title] ?? 0) + 1;
+    }
+    final entries = counts.entries.toList()
+      ..sort((a, b) {
+        final count = b.value.compareTo(a.value);
+        if (count != 0) return count;
+        return a.key.compareTo(b.key);
+      });
+    return entries.take(maxCount).map((e) => e.key).toList();
+  }
+
+  static String _themeTitleForPlace(Map<String, dynamic> place) {
+    final themeTitle = place['themeTitle'];
+    if (themeTitle is String && themeTitle.trim().isNotEmpty) {
+      return themeTitle.trim();
+    }
+    final themeName = place['themeName'];
+    if (themeName is String && themeName.trim().isNotEmpty) {
+      return themeName.trim();
+    }
+    final theme = place['theme'];
+    if (theme is Map<String, dynamic>) {
+      final title = theme['title'];
+      if (title is String && title.trim().isNotEmpty) {
+        return title.trim();
+      }
+    }
+    return '';
+  }
+
+  static Widget _buildTopThemeSection({
+    required List<String> themes,
+    required bool isLoading,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          '자주 저장한 테마 TOP3',
+          style: TextStyle(
+            fontFamily: 'Pretendard',
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            color: Colors.black,
+          ),
+        ),
+        const SizedBox(height: 10),
+        if (isLoading)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: Center(
+              child: CommonActivityIndicator(size: 22),
+            ),
+          )
+        else if (themes.isEmpty)
+          const Text(
+            '아직 자주 저장한 테마가 없어요.',
+            style: TextStyle(
+              fontFamily: 'Pretendard',
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              color: Color(0xFF9E9E9E),
+            ),
+          )
+        else
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: themes.map((theme) {
+              return Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF4F4F4),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  theme,
+                  style: const TextStyle(
+                    fontFamily: 'Pretendard',
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF4A4A4A),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+      ],
+    );
+  }
+
+  static Widget _buildRecentPlaceSection({
+    required BuildContext context,
+    required String title,
+    required List<Map<String, dynamic>> items,
+    required bool isLoading,
+    required bool favorited,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            fontFamily: 'Pretendard',
+            fontSize: 20,
+            fontWeight: FontWeight.w700,
+            color: Colors.black,
+          ),
+        ),
+        const SizedBox(height: 10),
+        if (isLoading)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: Center(
+              child: CommonActivityIndicator(size: 22),
+            ),
+          )
+        else if (items.isEmpty)
+          const CommonEmptyView(
+            message: '표시할 장소가 없습니다.',
+            showButton: false,
+          )
+        else
+          Column(
+            children: items
+                .map((place) => _buildPlaceItem(context, place, favorited))
+                .toList(),
+          ),
+      ],
+    );
+  }
+
+  static Widget _buildPlaceItem(
+    BuildContext context,
+    Map<String, dynamic> place,
+    bool favorited,
+  ) {
+    final title = (place['title'] as String?) ??
+        (place['name'] as String?) ??
+        (place['placeName'] as String?) ??
+        '장소';
+    final address = (place['address'] as String?) ??
+        (place['roadAddress'] as String?) ??
+        (place['placeAddress'] as String?) ??
+        (place['location'] as String?) ??
+        '';
+    final themeText = (place['themeTitle'] as String?) ??
+        (place['themeName'] as String?) ??
+        (place['categoryTitle'] as String?) ??
+        (place['categoryName'] as String?) ??
+        (() {
+          final theme = place['theme'];
+          if (theme is Map<String, dynamic>) {
+            final title = theme['title'];
+            if (title is String && title.trim().isNotEmpty) {
+              return title.trim();
+            }
+          }
+          return null;
+        })() ??
+        (() {
+          final category = place['category'];
+          if (category is Map<String, dynamic>) {
+            final title = category['title'];
+            if (title is String && title.trim().isNotEmpty) {
+              return title.trim();
+            }
+          }
+          return null;
+        })() ??
+        '';
+    final commentCount = (place['commentCount'] as num?)?.toInt() ??
+        (place['comments'] as num?)?.toInt() ??
+        0;
+    final likeCount = (place['favoriteCount'] as num?)?.toInt() ??
+        (place['likeCount'] as num?)?.toInt() ??
+        (place['likes'] as num?)?.toInt() ??
+        0;
+    final distanceText = _distanceTextForPlace(place);
+    return CommonPlaceListItemView(
+      thumbnailUrl: _thumbnailForPlace(place),
+      title: title,
+      address: address,
+      commentCount: commentCount,
+      likeCount: likeCount,
+      themeText: themeText,
+      distanceText: distanceText.isEmpty ? null : distanceText,
+      favorited: favorited,
+      onTap: () {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => PlacebookDetailView(space: place),
+          ),
+        );
+      },
+    );
+  }
+
+  static String _thumbnailForPlace(Map<String, dynamic> place) {
+    final thumbnailRaw = place['thumbnail'];
+    final thumbnailMap = thumbnailRaw is Map<String, dynamic> ? thumbnailRaw : null;
+    Map<String, dynamic>? firstImage;
+    final imagesRaw = place['images'];
+    if (imagesRaw is List) {
+      for (final entry in imagesRaw) {
+        if (entry is Map<String, dynamic>) {
+          firstImage = entry;
+          break;
+        }
+      }
+    }
+    return (thumbnailRaw is String ? thumbnailRaw : null) ??
+        thumbnailMap?['cdnUrl'] as String? ??
+        thumbnailMap?['fileUrl'] as String? ??
+        place['thumbnailUrl'] as String? ??
+        place['imageUrl'] as String? ??
+        firstImage?['thumbnailUrl'] as String? ??
+        firstImage?['cdnUrl'] as String? ??
+        firstImage?['fileUrl'] as String? ??
+        '';
+  }
+
+  static String _distanceTextForPlace(Map<String, dynamic> place) {
+    final raw = place['distance'];
+    if (raw is String && raw.trim().isNotEmpty) return raw.trim();
+    if (raw is num) return '${raw.toDouble().toStringAsFixed(1)}km';
+    final kmRaw = place['distanceKm'];
+    if (kmRaw is num) return '${kmRaw.toDouble().toStringAsFixed(1)}km';
+    return '';
   }
 
   static TextSpan _buildActivitySummarySpans(
@@ -344,6 +654,20 @@ class _ProfileActivitySummarySection extends StatelessWidget {
     }
     return TextSpan(children: spans, style: baseStyle);
   }
+}
+
+class _ProfileActivityData {
+  const _ProfileActivityData({
+    required this.user,
+    required this.recentSaved,
+    required this.recentFavorites,
+    required this.topThemes,
+  });
+
+  final AuthUser user;
+  final List<Map<String, dynamic>> recentSaved;
+  final List<Map<String, dynamic>> recentFavorites;
+  final List<String> topThemes;
 }
 
 class _ProfileHeaderUserSection extends StatefulWidget {

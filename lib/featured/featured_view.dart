@@ -186,6 +186,9 @@ class _FeaturedViewState extends State<FeaturedView> {
             final nearbyPlaces = data is Map<String, dynamic>
                 ? (data['nearbyPlaces'] as List<dynamic>?) ?? const []
                 : const [];
+            final topEngagedPlaces = data is Map<String, dynamic>
+                ? (data['topEngagedPlaces'] as List<dynamic>?) ?? const []
+                : const [];
             final rankingUsers = data is Map<String, dynamic>
                 ? (data['rankingUsers'] as List<dynamic>?) ?? const []
                 : const [];
@@ -229,6 +232,11 @@ class _FeaturedViewState extends State<FeaturedView> {
                         .toList(),
                     latitude: _lastLatitude,
                     longitude: _lastLongitude,
+                  ),
+                  _FeaturedTopEngagedPlacesSection(
+                    places: topEngagedPlaces
+                        .whereType<Map<String, dynamic>>()
+                        .toList(),
                   ),
                   if (rankingUsers.isNotEmpty)
                     Padding(
@@ -611,6 +619,19 @@ class _FeaturedNearestPlacesSection extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 4),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16),
+            child: Text(
+              '지금 가장 핫한 장소는 어딜까요?',
+              style: TextStyle(
+                fontFamily: 'Pretendard',
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: Color(0xFF9E9E9E),
+              ),
+            ),
+          ),
+          const SizedBox(height: 4),
           if (places.isEmpty)
             Padding(
               padding: EdgeInsets.symmetric(vertical: 12),
@@ -670,6 +691,94 @@ class _FeaturedNearestPlacesSection extends StatelessWidget {
             const SizedBox(height: 24),
         ],
       );
+  }
+}
+
+class _FeaturedTopEngagedPlacesSection extends StatelessWidget {
+  const _FeaturedTopEngagedPlacesSection({
+    required this.places,
+  });
+
+  final List<Map<String, dynamic>> places;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 8),
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 16),
+          child: Text(
+            '지금 가장 핫한 장소는 어딜까요?',
+            style: TextStyle(
+              fontFamily: 'Pretendard',
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+              color: Colors.black,
+            ),
+          ),
+        ),
+        const SizedBox(height: 4),
+        if (places.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 12),
+            child: CommonEmptyView(
+              message: '표시할 장소가 없습니다.',
+              showButton: false,
+            ),
+          )
+        else
+          SizedBox(
+            width: double.infinity,
+            height: 148,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              itemCount: places.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 12),
+              itemBuilder: (context, index) {
+                final place = places[index];
+                final title = (place['title'] as String?) ?? '장소';
+                final address = (place['address'] as String?) ?? '';
+                final commentCount =
+                    (place['commentCount'] as num?)?.toInt() ?? 0;
+                final likeCount =
+                    (place['verificationCount'] as num?)?.toInt() ?? 0;
+                final favorited = (place['favorited'] as bool?) ??
+                    (place['isFavorited'] as bool?) ??
+                    false;
+                final distanceKm = place['distanceKm'];
+                final distanceText = distanceKm is num
+                    ? '${distanceKm.toStringAsFixed(distanceKm < 1 ? 2 : 1)}km'
+                    : null;
+                final themeText = _placeThemeTitle(place);
+                return SizedBox(
+                  width: 320,
+                  child: CommonPlaceCarouselListItemView(
+                    thumbnailUrl: _placeImageUrl(place),
+                    title: title,
+                    address: address,
+                    commentCount: commentCount,
+                    likeCount: likeCount,
+                    themeText: themeText,
+                    distanceText: distanceText,
+                    favorited: favorited,
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => PlacebookDetailView(space: place),
+                        ),
+                      );
+                    },
+                  ),
+                );
+              },
+            ),
+          ),
+        const SizedBox(height: 24),
+      ],
+    );
   }
 }
 

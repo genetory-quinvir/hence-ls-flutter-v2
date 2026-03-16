@@ -510,6 +510,87 @@ class ApiClient {
     throw Exception('Placebook place image upload failed: no imageId returned');
   }
 
+  static Future<Map<String, dynamic>> uploadPlacebookPlaceThumbnail({
+    required String placeId,
+    required File file,
+  }) async {
+    if (placeId.trim().isEmpty) {
+      throw Exception('Placebook place thumbnail upload failed: empty placeId');
+    }
+    final uri = Uri.parse(
+      '$baseUrl/api/v1/placebook/places/$placeId/thumbnail',
+    );
+
+    Future<http.Response> send() async {
+      final request = http.MultipartRequest('POST', uri);
+      request.headers.addAll(_headers());
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          'files',
+          file.path,
+          contentType: MediaType('image', 'webp'),
+          filename: 'placebook_thumbnail_${DateTime.now().microsecondsSinceEpoch}.webp',
+        ),
+      );
+      final streamed = await request.send();
+      return http.Response.fromStream(streamed);
+    }
+
+    _logRequest('POST', uri);
+    final response = await _sendWithAuthRetry(send, retryRequest: send);
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        'Placebook place thumbnail upload failed: ${response.statusCode}',
+      );
+    }
+    if (response.body.isEmpty) return <String, dynamic>{};
+    final json = jsonDecode(response.body);
+    if (json is Map<String, dynamic>) {
+      final data = json['data'];
+      if (data is Map<String, dynamic>) return data;
+      return json;
+    }
+    return <String, dynamic>{};
+  }
+
+  static Future<String> uploadPlaceThumbnailFile(File file) async {
+    final uri = Uri.parse('$baseUrl/api/v1/files/upload');
+
+    Future<http.Response> send() async {
+      final request = http.MultipartRequest('POST', uri);
+      request.headers.addAll(_headers());
+      request.fields['entityId'] = '';
+      request.fields['entityType'] = '';
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          'files',
+          file.path,
+          contentType: MediaType('image', 'webp'),
+          filename: 'place_thumbnail_${DateTime.now().microsecondsSinceEpoch}.webp',
+        ),
+      );
+      final streamed = await request.send();
+      return http.Response.fromStream(streamed);
+    }
+
+    _logRequest('POST', uri);
+    final response = await _sendWithAuthRetry(send, retryRequest: send);
+    _logResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('File upload failed: ${response.statusCode}');
+    }
+    if (response.body.isEmpty) {
+      throw Exception('File upload failed: empty response');
+    }
+    final json = jsonDecode(response.body);
+    final ids = _extractFileIds(json);
+    if (ids.isEmpty) {
+      throw Exception('File upload failed: no fileId returned');
+    }
+    return ids.first;
+  }
+
   static Future<Map<String, dynamic>?> createPersonalFeed({
     required String content,
     required List<String> fileIds,

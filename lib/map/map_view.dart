@@ -191,6 +191,24 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
       next['title'] ??= placeName;
     }
 
+    if (next['thumbnail'] == null && next['thumbnailUrl'] != null) {
+      final value = next['thumbnailUrl'];
+      if (value is String && value.trim().isNotEmpty) {
+        next['thumbnail'] = value.trim();
+      } else if (value is Map<String, dynamic>) {
+        next['thumbnail'] = value;
+      }
+    }
+    if (next['thumbnail'] == null && next['thumbnailUrls'] is List) {
+      final list = next['thumbnailUrls'] as List;
+      for (final entry in list) {
+        if (entry is String && entry.trim().isNotEmpty) {
+          next['thumbnail'] = entry.trim();
+          break;
+        }
+      }
+    }
+
     return next;
   }
 
@@ -1255,10 +1273,21 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
   String? _thumbnailForSpace(Map<String, dynamic> space) {
     final thumbnailRaw = space['thumbnail'];
     final thumbnailMap = thumbnailRaw is Map<String, dynamic> ? thumbnailRaw : null;
+    final thumbnailUrlRaw = space['thumbnailUrl'];
+    final thumbnailUrlMap =
+        thumbnailUrlRaw is Map<String, dynamic> ? thumbnailUrlRaw : null;
+    final thumbnailImageRaw = space['thumbnailImage'];
+    final thumbnailImageMap =
+        thumbnailImageRaw is Map<String, dynamic> ? thumbnailImageRaw : null;
     final imageIdRaw = space['imageId'];
     final imageIdMap = imageIdRaw is Map<String, dynamic> ? imageIdRaw : null;
     final imageRaw = space['image'];
     final imageMap = imageRaw is Map<String, dynamic> ? imageRaw : null;
+    final photoRaw = space['photo'];
+    final photoMap = photoRaw is Map<String, dynamic> ? photoRaw : null;
+    final representativeRaw = space['representativeImage'];
+    final representativeMap =
+        representativeRaw is Map<String, dynamic> ? representativeRaw : null;
     final feed = space['feed'];
     final feedMap = feed is Map<String, dynamic> ? feed : null;
     final images = (feedMap?['images'] ?? space['images']);
@@ -1266,17 +1295,51 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
         images is List && images.isNotEmpty && images.first is Map<String, dynamic>
             ? images.first as Map<String, dynamic>
             : null;
+    final firstImageUrl = images is List && images.isNotEmpty && images.first is String
+        ? images.first as String
+        : null;
+    String? firstThumbnailUrl;
+    final thumbnailUrls = space['thumbnailUrls'];
+    if (thumbnailUrls is List) {
+      for (final entry in thumbnailUrls) {
+        if (entry is String && entry.trim().isNotEmpty) {
+          firstThumbnailUrl = entry.trim();
+          break;
+        }
+      }
+    }
     return _firstValidImageUrl([
       thumbnailRaw is String ? thumbnailRaw : null,
+      thumbnailImageRaw is String ? thumbnailImageRaw : null,
       thumbnailMap?['cdnUrl'] as String?,
       thumbnailMap?['fileUrl'] as String?,
+      thumbnailMap?['thumbnailUrl'] as String?,
+      thumbnailUrlMap?['cdnUrl'] as String?,
+      thumbnailUrlMap?['fileUrl'] as String?,
+      thumbnailUrlMap?['thumbnailUrl'] as String?,
+      thumbnailImageMap?['cdnUrl'] as String?,
+      thumbnailImageMap?['fileUrl'] as String?,
+      thumbnailImageMap?['thumbnailUrl'] as String?,
       space['thumbnailUrl'] as String?,
+      space['thumbnailImageUrl'] as String?,
+      space['imageUrl'] as String?,
+      space['representativeImageUrl'] as String?,
+      space['mainImageUrl'] as String?,
+      space['coverImageUrl'] as String?,
       imageIdMap?['cdnUrl'] as String?,
       imageIdMap?['fileUrl'] as String?,
       imageIdMap?['thumbnailUrl'] as String?,
       imageMap?['cdnUrl'] as String?,
       imageMap?['fileUrl'] as String?,
       imageMap?['thumbnailUrl'] as String?,
+      photoMap?['cdnUrl'] as String?,
+      photoMap?['fileUrl'] as String?,
+      photoMap?['thumbnailUrl'] as String?,
+      representativeMap?['cdnUrl'] as String?,
+      representativeMap?['fileUrl'] as String?,
+      representativeMap?['thumbnailUrl'] as String?,
+      firstThumbnailUrl,
+      firstImageUrl,
       firstImage?['thumbnailUrl'] as String?,
       firstImage?['cdnUrl'] as String?,
       firstImage?['fileUrl'] as String?,
