@@ -78,8 +78,6 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
   Map<String, NPoint> _clusterCenterPoints = const {};
   final Map<String, NLatLng> _jitteredLatLngs = {};
   bool _showLiveMarkers = true;
-  int _markerRevealLimit = 0;
-  Timer? _markerRevealTimer;
   bool _isClusterMode = false;
   Timer? _markerUpdateDebounce;
   NLatLng? _lastMarkerUpdateCenter;
@@ -223,7 +221,6 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
       if (_awaitingFetchMarkers && mounted) {
         _awaitingFetchMarkers = false;
         setState(() => _showLiveMarkers = true);
-        _startMarkerReveal();
       }
       return;
     }
@@ -372,7 +369,6 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
       if (_awaitingFetchMarkers && mounted) {
         _awaitingFetchMarkers = false;
         setState(() => _showLiveMarkers = true);
-        _startMarkerReveal();
       }
     } catch (_) {
       if (!mounted) return;
@@ -384,7 +380,6 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
       if (_awaitingFetchMarkers && mounted) {
         _awaitingFetchMarkers = false;
         setState(() => _showLiveMarkers = true);
-        _startMarkerReveal();
       }
     } finally {
       if (mounted) setState(() => _isLoadingNear = false);
@@ -1030,16 +1025,13 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
     setState(() {
       _showLiveMarkers = false;
       _liveMarkerPoints = const {};
-      _markerRevealLimit = 0;
     });
-    _markerRevealTimer?.cancel();
     await Future<void>.delayed(const Duration(milliseconds: 60));
     await _updateLiveMarkerPoints();
     await Future<void>.delayed(const Duration(milliseconds: 120));
     await _updateLiveMarkerPoints();
     if (!mounted) return;
     setState(() => _showLiveMarkers = true);
-    _startMarkerReveal();
   }
 
   Future<void> _zoomBy(double delta) async {
@@ -1303,31 +1295,8 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
         if (!mounted) return;
         if (_showLiveMarkers) return;
         setState(() => _showLiveMarkers = true);
-        _startMarkerReveal();
       });
     });
-  }
-
-  void _startMarkerReveal() {
-    _markerRevealTimer?.cancel();
-    if (!mounted) return;
-    _markerRevealLimit = 0;
-    _markerRevealTimer = Timer.periodic(
-      const Duration(milliseconds: 30),
-      (timer) {
-        if (!mounted) {
-          timer.cancel();
-          return;
-        }
-        setState(() {
-          _markerRevealLimit += 6;
-          if (_markerRevealLimit >= 200) {
-            _markerRevealLimit = 200;
-            timer.cancel();
-          }
-        });
-      },
-    );
   }
 
   String? _thumbnailForSpace(Map<String, dynamic> space) {
@@ -1586,8 +1555,8 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
               child: AnimatedOpacity(
                 opacity: _showLiveMarkers ? 1 : 0,
                 duration: Duration.zero,
-                child: AnimatedScale(
-                  scale: _showLiveMarkers ? 1 : 0.92,
+                    child: AnimatedScale(
+                    scale: _showLiveMarkers ? 1 : 0.92,
                   duration: _showLiveMarkers
                       ? const Duration(milliseconds: 180)
                       : Duration.zero,
@@ -1713,19 +1682,19 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
                   opacity: _showLiveMarkers ? 1 : 0,
                   duration: _showLiveMarkers
                       ? const Duration(milliseconds: 180)
-                      : const Duration(milliseconds: 120),
+                      : Duration.zero,
                   curve: Curves.easeOutCubic,
                   child: AnimatedScale(
                     scale: _showLiveMarkers ? 1 : 0.92,
                     duration: _showLiveMarkers
                         ? const Duration(milliseconds: 180)
-                        : const Duration(milliseconds: 120),
+                        : Duration.zero,
                     curve: Curves.easeOutCubic,
                     alignment: Alignment.center,
                     child: showClusterMarker
                         ? CommonPlaceClusterMarker(
                             count: clusterCount,
-                            imageUrls: clusterThumbnailUrls,
+                            imageUrls: const [],
                             size: markerSize,
                             title: showClusterMarker ? null : title,
                           )
@@ -1735,7 +1704,7 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
                                         single.space['placeId'] ??
                                         single.space['spaceId'])
                                     ?.toString(),
-                                imageUrl: single.thumbnailUrl,
+                                imageUrl: null,
                                 size: markerSize,
                                 title: title,
                                 isFavorited:
@@ -1776,12 +1745,11 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
       ...clusterItems,
       ...markerItems,
     ];
-    final limit = _markerRevealLimit > 0 ? _markerRevealLimit : renderItems.length;
     return IgnorePointer(
       ignoring: !_showLiveMarkers,
       child: Stack(
         clipBehavior: Clip.none,
-        children: renderItems.take(limit).map((item) => item.child).toList(),
+        children: renderItems.map((item) => item.child).toList(),
       ),
     );
   }
@@ -2080,8 +2048,6 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
     if (_isCameraMoving) return;
     _isCameraMoving = true;
     _markerUpdateDebounce?.cancel();
-    _markerRevealTimer?.cancel();
-    _markerRevealLimit = 0;
     if (_selectedLiveMarkerId != null) {
       setState(() => _selectedLiveMarkerId = null);
     }
@@ -2099,7 +2065,6 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
         if (!mounted) return;
         if (_showLiveMarkers) return;
         setState(() => _showLiveMarkers = true);
-        _startMarkerReveal();
       });
       return;
     }

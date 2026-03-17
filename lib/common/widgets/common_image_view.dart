@@ -12,8 +12,8 @@ String _normalizeCacheKey(String raw) {
   if (trimmed.isEmpty) return trimmed;
   final uri = Uri.tryParse(trimmed);
   if (uri == null) return trimmed;
-  if (uri.query.isEmpty) return trimmed;
-  return uri.replace(query: '').toString();
+  final normalized = uri.replace(query: '', fragment: '');
+  return normalized.toString();
 }
 
 class CommonImageView extends StatelessWidget {

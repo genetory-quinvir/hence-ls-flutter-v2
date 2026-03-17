@@ -53,6 +53,7 @@ class CommonPlaceMarker extends StatelessWidget {
                 ),
               ),
               child: CommonImageView(
+                key: ValueKey(safeCacheKey ?? safeImageUrl),
                 memoryBytes: imageBytes,
                 networkUrl: safeImageUrl.isEmpty ? null : safeImageUrl,
                 cacheKey: (safeCacheKey == null || safeCacheKey.isEmpty)
@@ -63,7 +64,7 @@ class CommonPlaceMarker extends StatelessWidget {
                 placeholderLogoSize: 14,
                 replayNetworkFade: true,
                 enableFade: true,
-                disableFadeAfterFirstLoad: true,
+                disableFadeAfterFirstLoad: false,
                 memCacheWidth: 64,
                 memCacheHeight: 64,
               ),
