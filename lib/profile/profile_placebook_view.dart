@@ -117,6 +117,10 @@ class _ProfilePlacebookViewState extends State<ProfilePlacebookView> {
     final content = ListView.builder(
       controller: _scrollController,
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+      cacheExtent: 720,
+      addAutomaticKeepAlives: false,
+      addRepaintBoundaries: true,
+      addSemanticIndexes: false,
       physics: const AlwaysScrollableScrollPhysics(
         parent: BouncingScrollPhysics(),
       ),

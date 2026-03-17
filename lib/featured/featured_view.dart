@@ -1,4 +1,5 @@
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:hence_ls_flutter_v2/main.dart';
@@ -50,6 +51,8 @@ class _FeaturedViewState extends State<FeaturedView> {
   bool _didLogInitialRenderPerf = false;
   DateTime? _lastFeaturedSuccessAt;
   bool _didBackgroundPreciseRefresh = false;
+  static const bool _kFeaturedPerfLogs = false;
+  static const bool _kFeaturedBannerLogs = false;
 
   @override
   void initState() {
@@ -65,7 +68,9 @@ class _FeaturedViewState extends State<FeaturedView> {
     bool preferPreciseLocation = false,
   }) async {
     _featuredRequestCount += 1;
-    debugPrint('[PERF][FEATURED] request_count=$_featuredRequestCount');
+    if (kDebugMode && _kFeaturedPerfLogs) {
+      debugPrint('[PERF][FEATURED] request_count=$_featuredRequestCount');
+    }
     double? latitude;
     double? longitude;
     try {
@@ -154,7 +159,9 @@ class _FeaturedViewState extends State<FeaturedView> {
         final frameMs = DateTime.now()
             .difference(_lastFeaturedSuccessAt!)
             .inMilliseconds;
-        debugPrint('[PERF][FEATURED] api_to_frame_ms=$frameMs source=refresh');
+        if (kDebugMode && _kFeaturedPerfLogs) {
+          debugPrint('[PERF][FEATURED] api_to_frame_ms=$frameMs source=refresh');
+        }
       });
     } catch (_) {
       // Keep current data when refresh fails.
@@ -233,14 +240,16 @@ class _FeaturedViewState extends State<FeaturedView> {
             final banners = data is Map<String, dynamic>
                 ? (data['banners'] as List<dynamic>?) ?? const []
                 : const [];
-            debugPrint(
-              '[FEATURED] banners_count=${banners.length} data_keys=${data is Map<String, dynamic> ? data.keys.join(",") : "none"}',
-            );
-            if (banners.isNotEmpty && banners.first is Map<String, dynamic>) {
-              final first = banners.first as Map<String, dynamic>;
+            if (kDebugMode && _kFeaturedBannerLogs) {
               debugPrint(
-                '[FEATURED] first_banner_keys=${first.keys.join(",")}',
+                '[FEATURED] banners_count=${banners.length} data_keys=${data is Map<String, dynamic> ? data.keys.join(",") : "none"}',
               );
+              if (banners.isNotEmpty && banners.first is Map<String, dynamic>) {
+                final first = banners.first as Map<String, dynamic>;
+                debugPrint(
+                  '[FEATURED] first_banner_keys=${first.keys.join(",")}',
+                );
+              }
             }
             final themes = data is Map<String, dynamic>
                 ? (data['themes'] as List<dynamic>?) ?? const []
@@ -276,9 +285,11 @@ class _FeaturedViewState extends State<FeaturedView> {
                 final frameMs = DateTime.now()
                     .difference(_lastFeaturedSuccessAt!)
                     .inMilliseconds;
-                debugPrint(
-                  '[PERF][FEATURED] api_to_frame_ms=$frameMs source=initial',
-                );
+                if (kDebugMode && _kFeaturedPerfLogs) {
+                  debugPrint(
+                    '[PERF][FEATURED] api_to_frame_ms=$frameMs source=initial',
+                  );
+                }
               });
             }
             return CommonRefreshView(
@@ -287,6 +298,7 @@ class _FeaturedViewState extends State<FeaturedView> {
               notificationPredicate: (notification) =>
                   notification.metrics.axis == Axis.vertical,
               child: ListView(
+                cacheExtent: 900,
                 padding: EdgeInsets.fromLTRB(
                   0,
                   16,
@@ -294,42 +306,56 @@ class _FeaturedViewState extends State<FeaturedView> {
                   _kTabBarHeight + bottomInset,
                 ),
                 children: [
-                  _FeaturedHeader(
-                    onSearchTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const SearchView()),
-                      );
-                    },
+                  RepaintBoundary(
+                    child: _FeaturedHeader(
+                      onSearchTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => const SearchView()),
+                        );
+                      },
+                    ),
                   ),
                   const SizedBox(height: 16),
-                  _FeaturedBannerSection(items: banners),
+                  RepaintBoundary(
+                    child: _FeaturedBannerSection(items: banners),
+                  ),
                   if (categories.isNotEmpty) ...[
                     const SizedBox(height: 24),
-                    _FeaturedCategorySection(items: categories),
+                    RepaintBoundary(
+                      child: _FeaturedCategorySection(items: categories),
+                    ),
                   ],
                   const SizedBox(height: 32),
-                  _FeaturedNearestPlacesSection(
-                    places: nearbyPlaces,
-                    latitude: _lastLatitude,
-                    longitude: _lastLongitude,
+                  RepaintBoundary(
+                    child: _FeaturedNearestPlacesSection(
+                      places: nearbyPlaces,
+                      latitude: _lastLatitude,
+                      longitude: _lastLongitude,
+                    ),
                   ),
                   if (rankingUsers.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 28),
-                      child: _FeaturedRankingSection(
-                        items: rankingUsers
-                            .whereType<Map<String, dynamic>>()
-                            .toList(),
+                      child: RepaintBoundary(
+                        child: _FeaturedRankingSection(
+                          items: rankingUsers
+                              .whereType<Map<String, dynamic>>()
+                              .toList(),
+                        ),
                       ),
                     ),
-                  _FeaturedTopEngagedPlacesSection(
-                    places: topEngagedPlaces
-                        .whereType<Map<String, dynamic>>()
-                        .toList(),
+                  RepaintBoundary(
+                    child: _FeaturedTopEngagedPlacesSection(
+                      places: topEngagedPlaces
+                          .whereType<Map<String, dynamic>>()
+                          .toList(),
+                    ),
                   ),
-                  const _FeaturedSingleCardBannerSection(
-                    title: '장소를 등록하고 친구들과 공유해보세요',
-                    subtitle: '장소를 등록하고 친구들과 공유해보세요',
+                  const RepaintBoundary(
+                    child: _FeaturedSingleCardBannerSection(
+                      title: '장소를 등록하고 친구들과 공유해보세요',
+                      subtitle: '장소를 등록하고 친구들과 공유해보세요',
+                    ),
                   ),
                   const SizedBox(height: 32),
                   ...themes.map((entry) {
@@ -338,11 +364,13 @@ class _FeaturedViewState extends State<FeaturedView> {
                         : <String, dynamic>{};
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 28),
-                      child: _FeaturedThemeSection(
-                        item: item,
-                        onPlaceDeleted: _removeFeaturedPlace,
-                        latitude: _lastLatitude,
-                        longitude: _lastLongitude,
+                      child: RepaintBoundary(
+                        child: _FeaturedThemeSection(
+                          item: item,
+                          onPlaceDeleted: _removeFeaturedPlace,
+                          latitude: _lastLatitude,
+                          longitude: _lastLongitude,
+                        ),
                       ),
                     );
                   }),
@@ -379,6 +407,9 @@ class _FeaturedBannerSection extends StatelessWidget {
             physics: const BouncingScrollPhysics(),
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
             itemCount: items.length,
+            addAutomaticKeepAlives: false,
+            addRepaintBoundaries: true,
+            addSemanticIndexes: false,
             separatorBuilder: (_, _) => const SizedBox(width: 16),
             itemBuilder: (context, index) {
               final banner = items[index] is Map<String, dynamic>
@@ -531,6 +562,9 @@ class _FeaturedSingleCardBannerSection extends StatelessWidget {
                   'assets/images/img_my_place.webp',
                   fit: BoxFit.cover,
                   alignment: Alignment.centerRight,
+                  cacheWidth: 540,
+                  cacheHeight: 468,
+                  filterQuality: FilterQuality.low,
                 ),
               ),
             ),
@@ -721,6 +755,9 @@ class _FeaturedNearestPlacesSection extends StatelessWidget {
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               itemCount: places.length,
+              addAutomaticKeepAlives: false,
+              addRepaintBoundaries: true,
+              addSemanticIndexes: false,
               separatorBuilder: (_, _) => const SizedBox(width: 12),
               itemBuilder: (context, index) {
                 final place = places[index];
@@ -809,6 +846,9 @@ class _FeaturedTopEngagedPlacesSection extends StatelessWidget {
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               itemCount: places.length,
+              addAutomaticKeepAlives: false,
+              addRepaintBoundaries: true,
+              addSemanticIndexes: false,
               separatorBuilder: (_, _) => const SizedBox(width: 12),
               itemBuilder: (context, index) {
                 final place = places[index];
@@ -876,6 +916,9 @@ class _FeaturedCategorySection extends StatelessWidget {
             physics: const BouncingScrollPhysics(),
             padding: const EdgeInsets.symmetric(horizontal: 16),
             itemCount: items.length,
+            addAutomaticKeepAlives: false,
+            addRepaintBoundaries: true,
+            addSemanticIndexes: false,
             separatorBuilder: (_, _) => const SizedBox(width: 4),
             itemBuilder: (context, index) {
               final category = items[index];
@@ -1148,91 +1191,97 @@ class _FeaturedBannerCard extends StatelessWidget {
     return CommonInkWell(
       onTap: () => _showPreparingAlert(context),
       borderRadius: BorderRadius.circular(18),
-      child: Container(
-        width: 280,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(18),
-          boxShadow: AppShadows.card,
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(18),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              CommonImageView(
-                networkUrl: imageUrl,
-                fit: BoxFit.cover,
-                replayNetworkFade: true,
-                enableFade: true,
-                disableFadeAfterFirstLoad: false,
-                backgroundColor: const Color(0xFF1E1E1E),
-              ),
-              Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.black.withValues(alpha: 0.58),
-                      Colors.black.withValues(alpha: 0.10),
-                      Colors.black.withValues(alpha: 0.62),
-                    ],
-                    stops: const [0.0, 0.46, 1.0],
+      child: RepaintBoundary(
+        child: Container(
+          width: 280,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: AppShadows.card,
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(18),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                CommonImageView(
+                  networkUrl: imageUrl,
+                  cacheKey: imageUrl,
+                  fit: BoxFit.cover,
+                  memCacheWidth: 720,
+                  memCacheHeight: 560,
+                  replayNetworkFade: false,
+                  enableFade: true,
+                  disableFadeAfterFirstLoad: true,
+                  preferFadeOverMemoryCache: false,
+                  backgroundColor: const Color(0xFF1E1E1E),
+                ),
+                Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.black.withValues(alpha: 0.58),
+                        Colors.black.withValues(alpha: 0.10),
+                        Colors.black.withValues(alpha: 0.62),
+                      ],
+                      stops: const [0.0, 0.46, 1.0],
+                    ),
                   ),
                 ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontFamily: 'Pretendard',
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      subtitle,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontFamily: 'Pretendard',
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        color: Color(0xFFE0E0E0),
-                      ),
-                    ),
-                    const Spacer(),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 8,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: const Text(
-                        '지금 보기',
-                        style: TextStyle(
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
                           fontFamily: 'Pretendard',
-                          fontSize: 14,
+                          fontSize: 18,
                           fontWeight: FontWeight.w700,
                           color: Colors.white,
                         ),
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontFamily: 'Pretendard',
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: Color(0xFFE0E0E0),
+                        ),
+                      ),
+                      const Spacer(),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: const Text(
+                          '지금 보기',
+                          style: TextStyle(
+                            fontFamily: 'Pretendard',
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -1449,6 +1498,9 @@ class _FeaturedEmptySection extends StatelessWidget {
                 'assets/images/img_my_place.webp',
                 fit: BoxFit.cover,
                 alignment: Alignment.centerRight,
+                cacheWidth: 480,
+                cacheHeight: 288,
+                filterQuality: FilterQuality.low,
               ),
             ),
           ),
@@ -1494,6 +1546,7 @@ class _FeaturedEmptySection extends StatelessWidget {
 }
 
 final Set<String> _loggedBannerImageKeys = <String>{};
+const bool _kFeaturedBannerResolveLogs = false;
 
 String _bannerImageUrl(Map<String, dynamic> banner) {
   final onImage = banner['onImage'];
@@ -1580,13 +1633,15 @@ String _bannerImageUrl(Map<String, dynamic> banner) {
   final id = (banner['id'] ?? '').toString();
   final title = (banner['title'] ?? '').toString();
   final logKey = '$id|$title|$resolved';
-  if (_loggedBannerImageKeys.add(logKey)) {
-    debugPrint(
-      '[FEATURED][BANNER] id=$id title="$title" image_url="$resolved"',
-    );
-  }
-  if (resolved.isEmpty) {
-    debugPrint('[FEATURED][BANNER] image_url_empty id=$id title=$title');
+  if (kDebugMode && _kFeaturedBannerResolveLogs) {
+    if (_loggedBannerImageKeys.add(logKey)) {
+      debugPrint(
+        '[FEATURED][BANNER] id=$id title="$title" image_url="$resolved"',
+      );
+    }
+    if (resolved.isEmpty) {
+      debugPrint('[FEATURED][BANNER] image_url_empty id=$id title=$title');
+    }
   }
   return resolved;
 }

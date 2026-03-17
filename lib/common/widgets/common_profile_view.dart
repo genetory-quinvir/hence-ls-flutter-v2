@@ -12,12 +12,16 @@ class CommonProfileView extends StatelessWidget {
     this.assetPath,
     this.size = 56,
     this.placeholder,
+    this.memCacheWidth,
+    this.memCacheHeight,
   });
 
   final String? networkUrl;
   final String? assetPath;
   final double size;
   final Widget? placeholder;
+  final int? memCacheWidth;
+  final int? memCacheHeight;
 
   @override
   Widget build(BuildContext context) {
@@ -45,8 +49,15 @@ class CommonProfileView extends StatelessWidget {
                 ))
             : CommonImageView(
                 networkUrl: networkUrl,
+                cacheKey: networkUrl,
                 assetPath: assetPath,
                 fit: BoxFit.cover,
+                memCacheWidth: memCacheWidth ?? (size * 3).round(),
+                memCacheHeight: memCacheHeight ?? (size * 3).round(),
+                replayNetworkFade: false,
+                enableFade: true,
+                disableFadeAfterFirstLoad: true,
+                preferFadeOverMemoryCache: false,
               ),
       ),
     );

@@ -54,13 +54,7 @@ class CommonImageView extends StatelessWidget {
   static final Set<String> _loadedNetworkKeys = <String>{};
   static final Map<String, ImageProvider> _providerCache =
       <String, ImageProvider>{};
-  static final CacheManager _cacheManager = CacheManager(
-    Config(
-      'commonImageCache',
-      stalePeriod: const Duration(days: 7),
-      maxNrOfCacheObjects: 500,
-    ),
-  );
+  static final BaseCacheManager _cacheManager = _CommonImageCacheManager();
 
   static Future<Uint8List?> fetchNetworkBytes(String url) {
     return _fetchFromNetwork(url);
@@ -390,4 +384,21 @@ class _MemoryCache {
       _map.remove(_map.keys.first);
     }
   }
+}
+
+class _CommonImageCacheManager extends CacheManager with ImageCacheManager {
+  static const String _key = 'commonImageCache';
+  static final _CommonImageCacheManager _instance =
+      _CommonImageCacheManager._();
+
+  factory _CommonImageCacheManager() => _instance;
+
+  _CommonImageCacheManager._()
+      : super(
+          Config(
+            _key,
+            stalePeriod: const Duration(days: 7),
+            maxNrOfCacheObjects: 500,
+          ),
+        );
 }
