@@ -966,6 +966,9 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
         '도감';
     final imageUrls = _extractImageUrls(_space);
     final thumbnail = imageUrls.isNotEmpty ? imageUrls.first : '';
+    final resolvedThumbnail = _resolvePlaceImageUrl(_space);
+    final placeThumbnail =
+        resolvedThumbnail.isNotEmpty ? resolvedThumbnail : thumbnail;
     final user = _space['creator'] is Map<String, dynamic>
         ? _space['creator'] as Map<String, dynamic>
         : _space['createdBy'] is Map<String, dynamic>
@@ -1176,6 +1179,8 @@ class _PlacebookDetailViewState extends State<PlacebookDetailView> {
                                     status: status,
                                     profileImageUrl: profileImageUrl,
                                     nickname: nickname,
+                                    placeId: placeId,
+                                    thumbnailUrl: placeThumbnail,
                                   ),
                                 ),
                                 SliverToBoxAdapter(

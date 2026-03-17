@@ -2337,7 +2337,7 @@ class ApiClient {
     required double longitude,
     String? lastVerifiedAt,
     bool isActive = true,
-    int verificationCount = 0,
+    int helpfulCount = 0,
     String? cautionNote,
     String visibility = 'PRIVATE',
     List<String> tagIds = const [],
@@ -2358,7 +2358,7 @@ class ApiClient {
       if (lastVerifiedAt != null && lastVerifiedAt.isNotEmpty)
         'lastVerifiedAt': lastVerifiedAt,
       'isActive': isActive,
-      'verificationCount': verificationCount,
+      'helpfulCount': helpfulCount,
       if (cautionNote != null && cautionNote.isNotEmpty)
         'cautionNote': cautionNote,
       'visibility': visibility,

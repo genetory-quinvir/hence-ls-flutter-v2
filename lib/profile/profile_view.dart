@@ -8,7 +8,6 @@ import '../common/state/home_tab_controller.dart';
 import '../common/widgets/common_navigation_view.dart';
 import '../common/widgets/common_inkwell.dart';
 import '../common/widgets/common_profile_view.dart';
-import '../notification/notification_view.dart';
 import '../settings/settings_view.dart';
 import 'widgets/profile_not_signed_view.dart';
 import 'widgets/profile_signed_view.dart';

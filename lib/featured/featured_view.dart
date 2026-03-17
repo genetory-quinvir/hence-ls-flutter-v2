@@ -805,7 +805,9 @@ class _FeaturedTopEngagedPlacesSection extends StatelessWidget {
                 final commentCount =
                     (place['commentCount'] as num?)?.toInt() ?? 0;
                 final likeCount =
-                    (place['verificationCount'] as num?)?.toInt() ?? 0;
+                    (place['helpfulCount'] as num?)?.toInt() ??
+                    (place['verificationCount'] as num?)?.toInt() ??
+                    0;
                 final favorited =
                     (place['favorited'] as bool?) ??
                     (place['isFavorited'] as bool?) ??
@@ -1552,14 +1554,102 @@ String _placeAddress(Map<String, dynamic> place) {
 }
 
 String _placeImageUrl(Map<String, dynamic> place) {
+  String? pickFromMap(Map<String, dynamic>? map) {
+    return map?['thumbnailUrl'] as String? ??
+        map?['cdnUrl'] as String? ??
+        map?['fileUrl'] as String? ??
+        map?['url'] as String?;
+  }
+
+  final thumbnail = place['thumbnail'];
+  if (thumbnail is String && thumbnail.trim().isNotEmpty) {
+    return thumbnail.trim();
+  }
+  if (thumbnail is Map<String, dynamic>) {
+    final value = pickFromMap(thumbnail);
+    if (value != null && value.trim().isNotEmpty) return value.trim();
+  }
+
+  final thumbnailUrlRaw = place['thumbnailUrl'];
+  if (thumbnailUrlRaw is String && thumbnailUrlRaw.trim().isNotEmpty) {
+    return thumbnailUrlRaw.trim();
+  }
+  if (thumbnailUrlRaw is Map<String, dynamic>) {
+    final value = pickFromMap(thumbnailUrlRaw);
+    if (value != null && value.trim().isNotEmpty) return value.trim();
+  }
+
+  final thumbnailImage = place['thumbnailImage'];
+  if (thumbnailImage is String && thumbnailImage.trim().isNotEmpty) {
+    return thumbnailImage.trim();
+  }
+  if (thumbnailImage is Map<String, dynamic>) {
+    final value = pickFromMap(thumbnailImage);
+    if (value != null && value.trim().isNotEmpty) return value.trim();
+  }
+
+  final imageUrl = place['imageUrl'];
+  if (imageUrl is String && imageUrl.trim().isNotEmpty) {
+    return imageUrl.trim();
+  }
+
   final image = place['image'];
-  final imageMap = image is Map<String, dynamic> ? image : null;
-  return (place['thumbnailUrl'] as String?) ??
-      (place['imageUrl'] as String?) ??
-      (imageMap?['thumbnailUrl'] as String?) ??
-      (imageMap?['cdnUrl'] as String?) ??
-      (imageMap?['fileUrl'] as String?) ??
-      '';
+  if (image is String && image.trim().isNotEmpty) {
+    return image.trim();
+  }
+  if (image is Map<String, dynamic>) {
+    final value = pickFromMap(image);
+    if (value != null && value.trim().isNotEmpty) return value.trim();
+  }
+
+  final representative = place['representativeImage'];
+  if (representative is String && representative.trim().isNotEmpty) {
+    return representative.trim();
+  }
+  if (representative is Map<String, dynamic>) {
+    final value = pickFromMap(representative);
+    if (value != null && value.trim().isNotEmpty) return value.trim();
+  }
+
+  final imageCandidates = <dynamic>[
+    place['mainImageUrl'],
+    place['coverImageUrl'],
+    place['thumbnailImageUrl'],
+    place['representativeImageUrl'],
+  ];
+  for (final candidate in imageCandidates) {
+    if (candidate is String && candidate.trim().isNotEmpty) {
+      return candidate.trim();
+    }
+  }
+
+  final thumbnailUrls = place['thumbnailUrls'];
+  if (thumbnailUrls is List) {
+    for (final entry in thumbnailUrls) {
+      if (entry is String && entry.trim().isNotEmpty) {
+        return entry.trim();
+      }
+      if (entry is Map<String, dynamic>) {
+        final value = pickFromMap(entry);
+        if (value != null && value.trim().isNotEmpty) return value.trim();
+      }
+    }
+  }
+
+  final images = place['images'];
+  if (images is List) {
+    for (final entry in images) {
+      if (entry is String && entry.trim().isNotEmpty) {
+        return entry.trim();
+      }
+      if (entry is Map<String, dynamic>) {
+        final value = pickFromMap(entry);
+        if (value != null && value.trim().isNotEmpty) return value.trim();
+      }
+    }
+  }
+
+  return '';
 }
 
 List<Map<String, dynamic>> _extractFeaturedNearbyPlaces(

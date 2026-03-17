@@ -17,11 +17,9 @@ class CommonPlaceClusterMarker extends StatelessWidget {
     1: [Offset(0, 0)],
     2: [Offset(0, 0), Offset(12, -10)],
     3: [Offset(0, 0), Offset(12, -12), Offset(-10, 12)],
-    4: [Offset(0, 0), Offset(14, -12), Offset(-12, 12), Offset(-16, -6)],
-    5: [Offset(0, 0), Offset(14, -12), Offset(-12, 12), Offset(-16, -6), Offset(10, 16)],
   };
   static Offset visualCenterOffset(int count) {
-    final clamped = count.clamp(1, 5);
+    final clamped = count.clamp(1, 3);
     final offsets = _offsetsByCount[clamped] ?? const [Offset.zero];
     double sumX = 0;
     double sumY = 0;
@@ -45,7 +43,7 @@ class CommonPlaceClusterMarker extends StatelessWidget {
         .map((url) => url.trim())
         .where((url) => url.isNotEmpty)
         .toList();
-    final clusterCount = count.clamp(1, 5);
+    final clusterCount = count.clamp(1, 3);
     final imagesForStack = List<String>.generate(
       clusterCount,
       (index) => index < validImages.length ? validImages[index] : '',
@@ -54,16 +52,12 @@ class CommonPlaceClusterMarker extends StatelessWidget {
       size * 1.0,
       size * 0.9,
       size * 0.82,
-      size * 0.74,
-      size * 0.66,
     ];
     final offsetsByCount = _offsetsByCount;
     final anglesByCount = <int, List<double>>{
       1: const [0.0],
       2: const [0.0, 0.08],
       3: const [0.0, 0.1, -0.08],
-      4: const [0.0, 0.12, -0.1, 0.08],
-      5: const [0.0, 0.12, -0.1, 0.08, -0.06],
     };
     final offsets = offsetsByCount[clusterCount]!;
     final angles = anglesByCount[clusterCount]!;
@@ -87,6 +81,8 @@ class CommonPlaceClusterMarker extends StatelessWidget {
                   angle: angles[i],
                   child: CommonPlaceMarker(
                     imageUrl:
+                        imagesForStack[i].isNotEmpty ? imagesForStack[i] : null,
+                    cacheKey:
                         imagesForStack[i].isNotEmpty ? imagesForStack[i] : null,
                     size: sizes[i],
                   ),

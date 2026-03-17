@@ -259,17 +259,35 @@ class _ProfileActivitySummarySection extends StatelessWidget {
   static List<Map<String, dynamic>> _extractPlaceListItems(
     Map<String, dynamic> response,
   ) {
+    List<Map<String, dynamic>> asList(dynamic raw) {
+      if (raw is List) {
+        return raw.whereType<Map<String, dynamic>>().toList();
+      }
+      return const [];
+    }
+
+    final direct = asList(response['items']);
+    if (direct.isNotEmpty) return direct;
+
     final data = response['data'];
-    if (data is Map<String, dynamic>) {
-      final items = data['items'];
-      if (items is List) {
-        return items.whereType<Map<String, dynamic>>().toList();
+    if (data is List) {
+      final list = asList(data);
+      if (list.isNotEmpty) return list;
+    } else if (data is Map<String, dynamic>) {
+      final items = asList(
+        data['items'] ?? data['places'] ?? data['favorites'] ?? data['data'],
+      );
+      if (items.isNotEmpty) return items;
+      final nested = data['data'];
+      if (nested is Map<String, dynamic>) {
+        final nestedItems =
+            asList(nested['items'] ?? nested['places'] ?? nested['favorites']);
+        if (nestedItems.isNotEmpty) return nestedItems;
       }
     }
-    final items = response['items'];
-    if (items is List) {
-      return items.whereType<Map<String, dynamic>>().toList();
-    }
+
+    final fallback = asList(response['places'] ?? response['favorites']);
+    if (fallback.isNotEmpty) return fallback;
     return const [];
   }
 
@@ -339,9 +357,14 @@ class _ProfileActivitySummarySection extends StatelessWidget {
             ),
           )
         else if (items.isEmpty)
-          const CommonEmptyView(
-            message: '표시할 장소가 없습니다.',
-            showButton: false,
+          const SizedBox(
+            height: 140,
+            child: Center(
+              child: CommonEmptyView(
+                message: '표시할 장소가 없습니다.',
+                showButton: false,
+              ),
+            ),
           )
         else
           Column(

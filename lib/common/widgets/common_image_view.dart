@@ -2,9 +2,19 @@ import 'dart:collection';
 import 'dart:typed_data';
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:http/http.dart' as http;
+
+String _normalizeCacheKey(String raw) {
+  final trimmed = raw.trim();
+  if (trimmed.isEmpty) return trimmed;
+  final uri = Uri.tryParse(trimmed);
+  if (uri == null) return trimmed;
+  if (uri.query.isEmpty) return trimmed;
+  return uri.replace(query: '').toString();
+}
 
 class CommonImageView extends StatelessWidget {
   const CommonImageView({
@@ -17,6 +27,8 @@ class CommonImageView extends StatelessWidget {
     this.blurSigma = 8,
     this.backgroundColor = Colors.transparent,
     this.replayNetworkFade = true,
+    this.enableFade = true,
+    this.disableFadeAfterFirstLoad = false,
     this.placeholderLogoSize = 24,
     this.memCacheWidth,
     this.memCacheHeight,
@@ -30,11 +42,23 @@ class CommonImageView extends StatelessWidget {
   final double blurSigma;
   final Color backgroundColor;
   final bool replayNetworkFade;
+  final bool enableFade;
+  final bool disableFadeAfterFirstLoad;
   final double placeholderLogoSize;
   final int? memCacheWidth;
   final int? memCacheHeight;
 
   static final _MemoryCache _cache = _MemoryCache(maxEntries: 200);
+  static final Set<String> _loadedNetworkKeys = <String>{};
+  static final Map<String, ImageProvider> _providerCache =
+      <String, ImageProvider>{};
+  static final CacheManager _cacheManager = CacheManager(
+    Config(
+      'commonImageCache',
+      stalePeriod: const Duration(days: 7),
+      maxNrOfCacheObjects: 500,
+    ),
+  );
 
   static Future<Uint8List?> fetchNetworkBytes(String url) {
     return _fetchFromNetwork(url);
@@ -71,6 +95,13 @@ class CommonImageView extends StatelessWidget {
     final image = _buildImage();
     if (image == null) return _placeholder();
 
+    if (!enableFade || _isFadeSuppressed()) {
+      return Container(
+        color: backgroundColor,
+        child: image,
+      );
+    }
+
     return Container(
       color: backgroundColor,
       child: AnimatedSwitcher(
@@ -83,10 +114,12 @@ class CommonImageView extends StatelessWidget {
   }
 
   Widget? _buildImage() {
-    final cachedBytes = cacheKey == null ? null : _cache.get(cacheKey!);
+    final networkKey = _networkKey();
+    final normalizedKey = cacheKey == null ? null : _normalizeCacheKey(cacheKey!);
+    final cachedBytes = normalizedKey == null ? null : _cache.get(normalizedKey);
     if (memoryBytes != null && memoryBytes!.isNotEmpty) {
-      if (cacheKey != null) {
-        _cache.put(cacheKey!, memoryBytes!);
+      if (normalizedKey != null) {
+        _cache.put(normalizedKey, memoryBytes!);
       }
       return Image.memory(
         memoryBytes!,
@@ -108,17 +141,48 @@ class CommonImageView extends StatelessWidget {
       );
     }
     if (networkUrl != null && networkUrl!.trim().isNotEmpty) {
+      if (disableFadeAfterFirstLoad && networkKey != null) {
+        final cachedProvider = _providerCache[networkKey];
+        if (cachedProvider != null) {
+          return Image(
+            image: cachedProvider,
+            fit: fit,
+            width: double.infinity,
+            height: double.infinity,
+            gaplessPlayback: true,
+          );
+        }
+      }
+      final shouldFade = enableFade && !_isFadeSuppressed();
+      final fadeIn = shouldFade
+          ? (replayNetworkFade ? const Duration(milliseconds: 180) : Duration.zero)
+          : Duration.zero;
+      final fadeOut = shouldFade ? const Duration(milliseconds: 120) : Duration.zero;
       return CachedNetworkImage(
         imageUrl: networkUrl!.trim(),
         key: ValueKey(networkUrl!.trim()),
+        cacheManager: _cacheManager,
+        cacheKey: normalizedKey?.trim(),
         fit: fit,
         width: double.infinity,
         height: double.infinity,
         memCacheWidth: memCacheWidth,
         memCacheHeight: memCacheHeight,
-        fadeInDuration: replayNetworkFade
-            ? const Duration(milliseconds: 180)
-            : Duration.zero,
+        fadeInDuration: fadeIn,
+        fadeOutDuration: fadeOut,
+        imageBuilder: (context, imageProvider) {
+          if (disableFadeAfterFirstLoad && networkKey != null) {
+            _loadedNetworkKeys.add(networkKey);
+            _providerCache[networkKey] = imageProvider;
+          }
+          return Image(
+            image: imageProvider,
+            fit: fit,
+            width: double.infinity,
+            height: double.infinity,
+            gaplessPlayback: true,
+          );
+        },
         placeholder: (context, imageUrl) => _placeholder(),
         errorWidget: (context, imageUrl, error) => _placeholder(),
       );
@@ -135,6 +199,21 @@ class CommonImageView extends StatelessWidget {
       );
     }
     return null;
+  }
+
+  String? _networkKey() {
+    final key = cacheKey == null ? null : _normalizeCacheKey(cacheKey!);
+    if (key != null && key.isNotEmpty) return key;
+    final url = networkUrl?.trim();
+    if (url == null || url.isEmpty) return null;
+    return _normalizeCacheKey(url);
+  }
+
+  bool _isFadeSuppressed() {
+    if (!disableFadeAfterFirstLoad) return false;
+    final key = _networkKey();
+    if (key == null) return false;
+    return _loadedNetworkKeys.contains(key);
   }
 
   Widget _placeholder() {

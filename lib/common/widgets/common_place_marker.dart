@@ -12,6 +12,7 @@ class CommonPlaceMarker extends StatelessWidget {
     super.key,
     this.imageBytes,
     this.imageUrl,
+    this.cacheKey,
     this.title,
     this.size = 44,
     this.isFavorited = false,
@@ -19,6 +20,7 @@ class CommonPlaceMarker extends StatelessWidget {
 
   final Uint8List? imageBytes;
   final String? imageUrl;
+  final String? cacheKey;
   final String? title;
   final double size;
   final bool isFavorited;
@@ -26,6 +28,8 @@ class CommonPlaceMarker extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const borderWidth = 1.5;
+    final safeImageUrl = imageUrl?.trim() ?? '';
+    final safeCacheKey = cacheKey?.trim();
     final marker = Stack(
       clipBehavior: Clip.none,
       children: [
@@ -50,10 +54,18 @@ class CommonPlaceMarker extends StatelessWidget {
               ),
               child: CommonImageView(
                 memoryBytes: imageBytes,
-                networkUrl: imageUrl,
+                networkUrl: safeImageUrl.isEmpty ? null : safeImageUrl,
+                cacheKey: (safeCacheKey == null || safeCacheKey.isEmpty)
+                    ? null
+                    : safeCacheKey,
                 fit: BoxFit.cover,
                 backgroundColor: const Color(0xFFF2F2F2),
                 placeholderLogoSize: 14,
+                replayNetworkFade: true,
+                enableFade: true,
+                disableFadeAfterFirstLoad: true,
+                memCacheWidth: 64,
+                memCacheHeight: 64,
               ),
             ),
           ),

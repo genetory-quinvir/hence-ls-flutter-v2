@@ -355,7 +355,6 @@ class _CommonMapViewState extends State<CommonMapView> {
   Future<bool> _ensureLocationPermission({bool autoPrompt = false}) async {
     if (!mounted) return false;
     final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    debugPrint('[CommonMapView] serviceEnabled=$serviceEnabled');
     if (!serviceEnabled) {
       if (autoPrompt) {
         await _showLocationServiceAlert();
@@ -364,7 +363,6 @@ class _CommonMapViewState extends State<CommonMapView> {
     }
 
     var permission = await Geolocator.checkPermission();
-    debugPrint('[CommonMapView] currentPermission=$permission');
     if (permission == LocationPermission.always ||
         permission == LocationPermission.whileInUse) {
       return true;
@@ -398,7 +396,6 @@ class _CommonMapViewState extends State<CommonMapView> {
     if (!mounted || confirmed != true) return false;
 
     permission = await Geolocator.requestPermission();
-    debugPrint('[CommonMapView] requestedPermission=$permission');
     if (permission == LocationPermission.always ||
         permission == LocationPermission.whileInUse) {
       return true;
@@ -425,9 +422,6 @@ class _CommonMapViewState extends State<CommonMapView> {
           timeLimit: Duration(seconds: 3),
         ),
       );
-      debugPrint(
-        '[CommonMapView] position lat=${position.latitude}, lng=${position.longitude}',
-      );
       final target = NLatLng(position.latitude, position.longitude);
       final overlay = controller.getLocationOverlay();
       overlay.setIsVisible(true);
@@ -449,8 +443,7 @@ class _CommonMapViewState extends State<CommonMapView> {
           ),
         );
       }
-    } catch (e) {
-      debugPrint('[CommonMapView] syncMyLocationOverlay failed: $e');
+    } catch (_) {
       // Ignore transient GPS/platform errors; user can retry with the location button.
     } finally {
       _isFetchingMyLocation = false;

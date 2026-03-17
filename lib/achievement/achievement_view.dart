@@ -70,6 +70,14 @@ class _AchievementViewState extends State<AchievementView> {
     return direct;
   }
 
+  String _resolveDescription(Map<String, dynamic> item) {
+    for (final key in ['description', 'desc', 'subtitle']) {
+      final value = item[key]?.toString().trim() ?? '';
+      if (value.isNotEmpty && value.toLowerCase() != 'null') return value;
+    }
+    return '';
+  }
+
   @override
   Widget build(BuildContext context) {
     return AnnotatedRegion<SystemUiOverlayStyle>(
@@ -115,6 +123,7 @@ class _AchievementViewState extends State<AchievementView> {
                               final item = _items[index];
                               final title = _resolveTitle(item);
                               final imageUrl = _resolveImageUrl(item);
+                              final description = _resolveDescription(item);
                               return Column(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
@@ -162,6 +171,21 @@ class _AchievementViewState extends State<AchievementView> {
                                       color: Colors.black,
                                     ),
                                   ),
+                                  if (description.isNotEmpty) ...[
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      description,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      textAlign: TextAlign.center,
+                                      style: const TextStyle(
+                                        fontFamily: 'Pretendard',
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w400,
+                                        color: Color(0xFF9E9E9E),
+                                      ),
+                                    ),
+                                  ],
                                 ],
                               );
                             },

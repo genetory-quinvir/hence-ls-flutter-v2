@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:figma_squircle/figma_squircle.dart';
+import 'package:hence_ls_flutter_v2/main.dart';
 
 import '../styles/app_shadows.dart';
 import 'common_image_view.dart';
@@ -115,10 +116,10 @@ class CommonPlaceCarouselListItemView extends StatelessWidget {
                                   width: 2,
                                 ),
                               ),
-                              child: const Icon(
-                                PhosphorIconsBold.bookmarkSimple,
+                              child: Icon(
+                                PhosphorIconsFill.bookmarkSimple,
                                 size: 12,
-                                color: Colors.white,
+                                color: MyApp.primary200,
                               ),
                             ),
                           ),

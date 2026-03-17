@@ -22,6 +22,8 @@ class PlacebookDetailInfoView extends StatefulWidget {
     required this.status,
     required this.profileImageUrl,
     required this.nickname,
+    this.placeId,
+    this.thumbnailUrl,
   });
 
   final String title;
@@ -33,6 +35,8 @@ class PlacebookDetailInfoView extends StatefulWidget {
   final String status;
   final String? profileImageUrl;
   final String nickname;
+  final String? placeId;
+  final String? thumbnailUrl;
 
   @override
   State<PlacebookDetailInfoView> createState() =>
@@ -233,8 +237,12 @@ class _PlacebookDetailInfoViewState extends State<PlacebookDetailInfoView> {
                                       : Duration.zero,
                                   curve: Curves.easeOutCubic,
                                   alignment: Alignment.center,
-                                  child: const _AppearScaleIn(
-                                    child: CommonPlaceMarker(size: _markerSize),
+                                  child: _AppearScaleIn(
+                                    child: CommonPlaceMarker(
+                                      size: _markerSize,
+                                      imageUrl: widget.thumbnailUrl,
+                                      cacheKey: widget.placeId,
+                                    ),
                                   ),
                                 ),
                               ),

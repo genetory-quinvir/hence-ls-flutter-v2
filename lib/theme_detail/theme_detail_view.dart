@@ -74,6 +74,17 @@ class _ThemeDetailViewState extends State<ThemeDetailView> {
     return '';
   }
 
+  String get _themeSubtitle {
+    final subtitle =
+        (_theme['subtitle'] ?? _theme['description'] ?? _themeEntry['subtitle'])
+            ?.toString()
+            .trim();
+    if (subtitle != null && subtitle.isNotEmpty && subtitle != 'null') {
+      return subtitle;
+    }
+    return '';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -108,6 +119,7 @@ class _ThemeDetailViewState extends State<ThemeDetailView> {
                       )
                     : _ThemeInfoCard(
                         title: (_theme['title'] ?? widget.themeTitle).toString(),
+                        subtitle: _themeSubtitle,
                         categoryTitle: _categoryTitle,
                         savedCount: _savedCount,
                       ),
@@ -123,11 +135,13 @@ class _ThemeDetailViewState extends State<ThemeDetailView> {
 class _ThemeInfoCard extends StatelessWidget {
   const _ThemeInfoCard({
     required this.title,
+    required this.subtitle,
     required this.categoryTitle,
     required this.savedCount,
   });
 
   final String title;
+  final String subtitle;
   final String categoryTitle;
   final int savedCount;
 
@@ -163,7 +177,18 @@ class _ThemeInfoCard extends StatelessWidget {
               color: Colors.black,
             ),
           ),
-          const SizedBox(height: 8),
+          if (subtitle.isNotEmpty) const SizedBox(height: 2),
+          if (subtitle.isNotEmpty)
+            Text(
+              subtitle,
+              style: const TextStyle(
+                fontFamily: 'Pretendard',
+                fontSize: 13,
+                fontWeight: FontWeight.w400,
+                color: Color(0xFF9E9E9E),
+              ),
+            ),
+          const SizedBox(height: 12),
           Row(
             children: [
               Text.rich(

@@ -273,7 +273,10 @@ class _PlacebookViewState extends State<PlacebookView>
     final themeTitle = _placeThemeTitle(place);
     final imageUrl = _firstImageUrl(place['thumbnail'] ?? place['image']);
     final favoriteCount = (place['favoriteCount'] as num?)?.toInt() ?? 0;
-    final verificationCount = (place['verificationCount'] as num?)?.toInt() ?? 0;
+    final helpfulCount =
+        (place['helpfulCount'] as num?)?.toInt() ??
+        (place['verificationCount'] as num?)?.toInt() ??
+        0;
     final favorited = (place['isFavorited'] as bool?) ?? false;
 
     return Column(
@@ -296,7 +299,7 @@ class _PlacebookViewState extends State<PlacebookView>
             thumbnailUrl: imageUrl,
             title: title.isEmpty ? '이름 없는 장소' : title,
             address: address,
-            commentCount: verificationCount,
+            commentCount: helpfulCount,
             likeCount: favoriteCount,
             themeText: themeTitle.isEmpty ? null : themeTitle,
             favorited: favorited,
