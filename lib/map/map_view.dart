@@ -79,7 +79,6 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
   final Map<String, NLatLng> _jitteredLatLngs = {};
   bool _showLiveMarkers = true;
   bool _isClusterMode = false;
-  Timer? _markerUpdateDebounce;
   NLatLng? _lastMarkerUpdateCenter;
   double? _lastMarkerUpdateZoom;
   bool _isCameraMoving = false;
@@ -588,7 +587,6 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
     HomeTabController.currentIndex.removeListener(_tabIndexListener);
     _reverseGeocodeDebounce?.cancel();
     _mapToggleToastTimer?.cancel();
-    _markerUpdateDebounce?.cancel();
     _chipScrollController.dispose();
     super.dispose();
   }
@@ -1275,27 +1273,19 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
 
   void _scheduleMarkerUpdate({Duration delay = const Duration(milliseconds: 300)}) {
     if (_isCameraMoving) return;
-    _markerUpdateDebounce?.cancel();
-    _markerUpdateDebounce = Timer(delay, () {
-      if (!mounted) return;
-      if (_isCameraMoving) return;
-      _updateLiveMarkerPoints();
-    });
+    if (!mounted) return;
+    _updateLiveMarkerPoints();
   }
 
   void _scheduleMarkerUpdateWithReveal({
     Duration delay = const Duration(milliseconds: 300),
   }) {
     if (_isCameraMoving) return;
-    _markerUpdateDebounce?.cancel();
-    _markerUpdateDebounce = Timer(delay, () {
+    if (!mounted) return;
+    _updateLiveMarkerPoints().whenComplete(() {
       if (!mounted) return;
-      if (_isCameraMoving) return;
-      _updateLiveMarkerPoints().whenComplete(() {
-        if (!mounted) return;
-        if (_showLiveMarkers) return;
-        setState(() => _showLiveMarkers = true);
-      });
+      if (_showLiveMarkers) return;
+      setState(() => _showLiveMarkers = true);
     });
   }
 
@@ -2047,7 +2037,6 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
   void _onMapCameraMoving() {
     if (_isCameraMoving) return;
     _isCameraMoving = true;
-    _markerUpdateDebounce?.cancel();
     if (_selectedLiveMarkerId != null) {
       setState(() => _selectedLiveMarkerId = null);
     }
