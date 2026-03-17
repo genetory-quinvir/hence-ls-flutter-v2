@@ -7,7 +7,7 @@ class NotificationRouter {
     if (link == null || link.isEmpty) return;
 
     if (link.contains('notifications')) {
-      HomeTabController.switchTo(3);
+      HomeTabController.switchTo(4);
       return;
     }
 

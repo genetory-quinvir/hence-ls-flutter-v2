@@ -8,6 +8,7 @@ import '../common/state/home_tab_controller.dart';
 import '../common/widgets/common_navigation_view.dart';
 import '../common/widgets/common_inkwell.dart';
 import '../common/widgets/common_profile_view.dart';
+import '../notification/notification_view.dart';
 import '../settings/settings_view.dart';
 import 'widgets/profile_not_signed_view.dart';
 import 'widgets/profile_signed_view.dart';
@@ -30,7 +31,7 @@ class _ProfileViewState extends State<ProfileView> {
     super.initState();
     _tabListener = () {
       if (!mounted) return;
-      if (HomeTabController.currentIndex.value == 4) {
+      if (HomeTabController.currentIndex.value == 3) {
         _refreshMe();
       }
     };
@@ -42,7 +43,7 @@ class _ProfileViewState extends State<ProfileView> {
     HomeTabController.profileReloadSignal.addListener(_profileReloadListener);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      if (HomeTabController.currentIndex.value == 4) {
+      if (HomeTabController.currentIndex.value == 3) {
         _refreshMe();
       }
     });
@@ -101,6 +102,24 @@ class _ProfileViewState extends State<ProfileView> {
                     right: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
+                        CommonInkWell(
+                          onTap: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => const NotificationView(),
+                              ),
+                            );
+                          },
+                          child: const SizedBox(
+                            width: 44,
+                            height: 44,
+                            child: Icon(
+                              PhosphorIconsRegular.bell,
+                              size: 24,
+                              color: Colors.black,
+                            ),
+                          ),
+                        ),
                         CommonInkWell(
                           onTap: () {
                             Navigator.of(context).push(

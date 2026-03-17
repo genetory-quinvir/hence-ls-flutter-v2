@@ -1542,25 +1542,10 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
                   targetZoom: _clusterTapAutoZoomTarget,
                 );
               },
-              child: AnimatedOpacity(
-                opacity: _showLiveMarkers ? 1 : 0,
-                duration: Duration.zero,
-                    child: AnimatedScale(
-                    scale: _showLiveMarkers ? 1 : 0.92,
-                  duration: _showLiveMarkers
-                      ? const Duration(milliseconds: 180)
-                      : Duration.zero,
-                  curve: Curves.easeOutCubic,
-                  alignment: Alignment.center,
-                  child: _AppearScaleIn(
-                    key: ValueKey('appear_${entry.markerId}'),
-                    child: CommonPlaceClusterMarker(
-                      count: clusterCount,
-                      imageUrls: const [],
-                      size: markerSize,
-                    ),
-                  ),
-                ),
+              child: CommonPlaceClusterMarker(
+                count: clusterCount,
+                imageUrls: const [],
+                size: markerSize,
               ),
             ),
           ),
@@ -1630,7 +1615,7 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
             width: itemWidth,
             height: itemHeight,
             child: RepaintBoundary(
-              child: GestureDetector(
+                child: GestureDetector(
                 behavior: HitTestBehavior.translucent,
                 onTap: () async {
                   if (!mounted) return;
@@ -1668,45 +1653,30 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
                     }
                   });
                 },
-                child: AnimatedOpacity(
-                  opacity: _showLiveMarkers ? 1 : 0,
-                  duration: _showLiveMarkers
-                      ? const Duration(milliseconds: 180)
-                      : Duration.zero,
-                  curve: Curves.easeOutCubic,
-                  child: AnimatedScale(
-                    scale: _showLiveMarkers ? 1 : 0.92,
-                    duration: _showLiveMarkers
-                        ? const Duration(milliseconds: 180)
-                        : Duration.zero,
-                    curve: Curves.easeOutCubic,
-                    alignment: Alignment.center,
-                    child: showClusterMarker
-                        ? CommonPlaceClusterMarker(
-                            count: clusterCount,
-                            imageUrls: clusterThumbnailUrls,
+                child: showClusterMarker
+                    ? CommonPlaceClusterMarker(
+                        count: clusterCount,
+                        imageUrls: clusterThumbnailUrls,
+                        size: markerSize,
+                        title: showClusterMarker ? null : title,
+                      )
+                    : isPrimarySingle
+                        ? CommonPlaceMarker(
+                            cacheKey: (single.space['id'] ??
+                                    single.space['placeId'] ??
+                                    single.space['spaceId'])
+                                ?.toString(),
+                            imageUrl: single.thumbnailUrl,
                             size: markerSize,
-                            title: showClusterMarker ? null : title,
+                            title: title,
+                            isFavorited:
+                                (single.space['favorited'] as bool?) ??
+                                    (single.space['isFavorited'] as bool?) ??
+                                    false,
                           )
-                        : isPrimarySingle
-                            ? CommonPlaceMarker(
-                                cacheKey: (single.space['id'] ??
-                                        single.space['placeId'] ??
-                                        single.space['spaceId'])
-                                    ?.toString(),
-                                imageUrl: single.thumbnailUrl,
-                                size: markerSize,
-                                title: title,
-                                isFavorited:
-                                    (single.space['favorited'] as bool?) ??
-                                        (single.space['isFavorited'] as bool?) ??
-                                        false,
-                              )
-                            : const Center(
-                                child: _PlaceDotMarker(),
-                              ),
-                  ),
-                ),
+                        : const Center(
+                            child: _PlaceDotMarker(),
+                          ),
               ),
             ),
           ),
@@ -2867,51 +2837,6 @@ class _MapToggleVertical extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _AppearScaleIn extends StatefulWidget {
-  const _AppearScaleIn({
-    super.key,
-    required this.child,
-  });
-
-  final Widget child;
-
-  @override
-  State<_AppearScaleIn> createState() => _AppearScaleInState();
-}
-
-class _AppearScaleInState extends State<_AppearScaleIn>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-  late final Animation<double> _scale;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      duration: const Duration(milliseconds: 180),
-      vsync: this,
-    );
-    _scale = Tween<double>(begin: 0.86, end: 1).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOutBack),
-    );
-    _controller.forward();
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return ScaleTransition(
-      scale: _scale,
-      child: widget.child,
     );
   }
 }

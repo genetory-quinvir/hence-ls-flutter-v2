@@ -1021,7 +1021,7 @@ class _FeaturedHeader extends StatelessWidget {
                   ),
                   if (isSignedIn)
                     CommonInkWell(
-                      onTap: () => HomeTabController.switchTo(4),
+                      onTap: () => HomeTabController.switchTo(3),
                       borderRadius: BorderRadius.circular(999),
                       child: CommonProfileView(
                         size: 48,
@@ -1149,7 +1149,9 @@ class _FeaturedBannerCard extends StatelessWidget {
               CommonImageView(
                 networkUrl: imageUrl,
                 fit: BoxFit.cover,
-                replayNetworkFade: true,
+                replayNetworkFade: false,
+                enableFade: false,
+                disableFadeAfterFirstLoad: true,
                 backgroundColor: const Color(0xFF1E1E1E),
               ),
               Container(

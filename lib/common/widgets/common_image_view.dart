@@ -26,9 +26,9 @@ class CommonImageView extends StatelessWidget {
     this.fit = BoxFit.contain,
     this.blurSigma = 8,
     this.backgroundColor = Colors.transparent,
-    this.replayNetworkFade = true,
-    this.enableFade = true,
-    this.disableFadeAfterFirstLoad = false,
+    this.replayNetworkFade = false,
+    this.enableFade = false,
+    this.disableFadeAfterFirstLoad = true,
     this.placeholderLogoSize = 24,
     this.memCacheWidth,
     this.memCacheHeight,
@@ -92,28 +92,69 @@ class CommonImageView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final image = _buildImage();
-    if (image == null) return _placeholder();
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final resolved = _resolveMemCacheSize(context, constraints);
+        final image = _buildImage(
+          resolvedMemCacheWidth: resolved.width,
+          resolvedMemCacheHeight: resolved.height,
+        );
+        if (image == null) return _placeholder();
 
-    if (!enableFade || _isFadeSuppressed()) {
-      return Container(
-        color: backgroundColor,
-        child: image,
-      );
-    }
+        if (!enableFade || _isFadeSuppressed()) {
+          return Container(
+            color: backgroundColor,
+            child: image,
+          );
+        }
 
-    return Container(
-      color: backgroundColor,
-      child: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 200),
-        switchInCurve: Curves.easeOut,
-        switchOutCurve: Curves.easeIn,
-        child: image,
-      ),
+        return Container(
+          color: backgroundColor,
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 200),
+            switchInCurve: Curves.easeOut,
+            switchOutCurve: Curves.easeIn,
+            child: image,
+          ),
+        );
+      },
     );
   }
 
-  Widget? _buildImage() {
+  _ResolvedMemCacheSize _resolveMemCacheSize(
+    BuildContext context,
+    BoxConstraints constraints,
+  ) {
+    int? toPx(double? logicalSize) {
+      if (logicalSize == null ||
+          logicalSize.isNaN ||
+          logicalSize.isInfinite ||
+          logicalSize <= 0) {
+        return null;
+      }
+      final dpr = MediaQuery.maybeDevicePixelRatioOf(context) ?? 1.0;
+      final px = (logicalSize * dpr).round();
+      if (px < 16) return null;
+      return px.clamp(16, 2048);
+    }
+
+    final inferredWidth = constraints.hasBoundedWidth
+        ? toPx(constraints.maxWidth)
+        : null;
+    final inferredHeight = constraints.hasBoundedHeight
+        ? toPx(constraints.maxHeight)
+        : null;
+
+    return _ResolvedMemCacheSize(
+      width: memCacheWidth ?? inferredWidth,
+      height: memCacheHeight ?? inferredHeight,
+    );
+  }
+
+  Widget? _buildImage({
+    int? resolvedMemCacheWidth,
+    int? resolvedMemCacheHeight,
+  }) {
     final networkKey = _networkKey();
     final normalizedKey = cacheKey == null ? null : _normalizeCacheKey(cacheKey!);
     final cachedBytes = normalizedKey == null ? null : _cache.get(normalizedKey);
@@ -124,6 +165,7 @@ class CommonImageView extends StatelessWidget {
       return Image.memory(
         memoryBytes!,
         fit: fit,
+        filterQuality: FilterQuality.low,
         width: double.infinity,
         height: double.infinity,
         gaplessPlayback: true,
@@ -134,6 +176,7 @@ class CommonImageView extends StatelessWidget {
       return Image.memory(
         cachedBytes,
         fit: fit,
+        filterQuality: FilterQuality.low,
         width: double.infinity,
         height: double.infinity,
         gaplessPlayback: true,
@@ -147,6 +190,7 @@ class CommonImageView extends StatelessWidget {
           return Image(
             image: cachedProvider,
             fit: fit,
+            filterQuality: FilterQuality.low,
             width: double.infinity,
             height: double.infinity,
             gaplessPlayback: true,
@@ -166,8 +210,8 @@ class CommonImageView extends StatelessWidget {
         fit: fit,
         width: double.infinity,
         height: double.infinity,
-        memCacheWidth: memCacheWidth,
-        memCacheHeight: memCacheHeight,
+        memCacheWidth: resolvedMemCacheWidth,
+        memCacheHeight: resolvedMemCacheHeight,
         fadeInDuration: fadeIn,
         fadeOutDuration: fadeOut,
         imageBuilder: (context, imageProvider) {
@@ -178,6 +222,7 @@ class CommonImageView extends StatelessWidget {
           return Image(
             image: imageProvider,
             fit: fit,
+            filterQuality: FilterQuality.low,
             width: double.infinity,
             height: double.infinity,
             gaplessPlayback: true,
@@ -192,6 +237,7 @@ class CommonImageView extends StatelessWidget {
         assetPath!,
         key: ValueKey(assetPath),
         fit: fit,
+        filterQuality: FilterQuality.low,
         width: double.infinity,
         height: double.infinity,
         gaplessPlayback: true,
@@ -228,6 +274,16 @@ class CommonImageView extends StatelessWidget {
       ),
     );
   }
+}
+
+class _ResolvedMemCacheSize {
+  const _ResolvedMemCacheSize({
+    required this.width,
+    required this.height,
+  });
+
+  final int? width;
+  final int? height;
 }
 
 class _MemoryCache {
