@@ -1694,7 +1694,7 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
                     child: showClusterMarker
                         ? CommonPlaceClusterMarker(
                             count: clusterCount,
-                            imageUrls: const [],
+                            imageUrls: clusterThumbnailUrls,
                             size: markerSize,
                             title: showClusterMarker ? null : title,
                           )
@@ -1704,7 +1704,7 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
                                         single.space['placeId'] ??
                                         single.space['spaceId'])
                                     ?.toString(),
-                                imageUrl: null,
+                                imageUrl: single.thumbnailUrl,
                                 size: markerSize,
                                 title: title,
                                 isFavorited:
