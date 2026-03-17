@@ -156,9 +156,17 @@ class _ProfilePlacebookViewState extends State<ProfilePlacebookView> {
         final place = _places[index];
         final title = (place['title'] as String?) ?? '장소';
         final address = _extractAddressTitle(place);
-        final commentCount =
-            (place['commentCount'] as num?)?.toInt() ?? 0;
-        final likeCount = (place['likeCount'] as num?)?.toInt() ?? 0;
+        final commentCount = _readPlaceCount(place, const [
+          'commentCount',
+          'commentsCount',
+          'comments',
+        ]);
+        final likeCount = _readPlaceCount(place, const [
+          'helpfulCount',
+          'verificationCount',
+          'likeCount',
+          'favoriteCount',
+        ]);
         final themeText = _extractThemeTitle(place);
         final favorited = (place['favorited'] as bool?) ??
             (place['isFavorited'] as bool?) ??
@@ -348,6 +356,23 @@ String _placeListFilter(String key) {
     default:
       return 'mine';
   }
+}
+
+int _toPlaceCount(dynamic value) {
+  if (value is num) return value.toInt();
+  if (value is String) return int.tryParse(value.trim()) ?? 0;
+  return 0;
+}
+
+int _readPlaceCount(Map<String, dynamic> json, List<String> keys) {
+  for (final key in keys) {
+    final count = _toPlaceCount(json[key]);
+    if (count > 0) return count;
+  }
+  for (final key in keys) {
+    if (json.containsKey(key)) return _toPlaceCount(json[key]);
+  }
+  return 0;
 }
 
 String _extractThemeTitle(Map<String, dynamic> place) {

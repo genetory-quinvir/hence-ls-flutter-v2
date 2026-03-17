@@ -104,7 +104,6 @@ class _PlacebookCreateBodyState extends State<_PlacebookCreateBody> {
   final FocusNode _addressFocusNode = FocusNode();
   File? _photoPreview;
   Uint8List? _photoPreviewBytes;
-  bool _isUploadingPhoto = false;
   String? _photoFileId;
   bool _showMapStep = false;
   bool _showInfoStep = false;
@@ -117,6 +116,7 @@ class _PlacebookCreateBodyState extends State<_PlacebookCreateBody> {
   Timer? _reverseGeocodeDebounce;
   List<Map<String, dynamic>> _themes = const [];
   bool _isLoadingThemes = false;
+  bool _didAutoOpenThemeSheet = false;
   String? _selectedThemeId;
   String? _selectedThemeTitle;
   String? _selectedCategoryId;
@@ -175,11 +175,30 @@ class _PlacebookCreateBodyState extends State<_PlacebookCreateBody> {
         _themes = themes.map(_resolveThemeData).toList();
         _applySelectedThemeFromList();
       });
+      _openThemeSheetIfNeeded();
     } catch (_) {
       // ignore
     } finally {
       if (mounted) setState(() => _isLoadingThemes = false);
     }
+  }
+
+  void _openThemeSheetIfNeeded() {
+    if (!mounted) return;
+    if (_didAutoOpenThemeSheet) return;
+    final selectedThemeId = (_selectedThemeId ?? '').trim();
+    if (selectedThemeId.isNotEmpty) return;
+    if (_themes.isEmpty) return;
+    _didAutoOpenThemeSheet = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      Future.delayed(const Duration(milliseconds: 280), () {
+        if (!mounted) return;
+        final route = ModalRoute.of(context);
+        if (route != null && !route.isCurrent) return;
+        _openThemeSheet();
+      });
+    });
   }
 
   Map<String, dynamic> _resolveThemeData(Map<String, dynamic> theme) {
@@ -412,90 +431,78 @@ class _PlacebookCreateBodyState extends State<_PlacebookCreateBody> {
       return;
     }
 
+    final photoFile = _photoPreview;
+    final imageBytes = _photoPreviewBytes;
+    final saveFuture = _createPlaceAndResolveImageUrl(
+      categoryId: categoryId,
+      themeId: themeId,
+      title: title,
+      description: description,
+      subtitle: subtitle,
+      address: address,
+      latitude: lat,
+      longitude: lng,
+      thumbnailFileId: _photoFileId,
+      tagIds: tagIds,
+      commonTagIds: commonTagIds,
+      photoFile: photoFile,
+    );
+    if (!mounted) return;
     setState(() => _isSaving = true);
-    try {
-      var created = await ApiClient.createPlacebookPlace(
-        categoryId: categoryId,
-        themeId: themeId,
-        title: title,
-        description: description,
-        subtitle: subtitle,
-        address: address,
-        latitude: lat,
-        longitude: lng,
-        thumbnailFileId: _photoFileId,
-        tagIds: tagIds,
-        commonTagIds: commonTagIds,
-      );
-      final placeId = created['id']?.toString() ?? '';
-      if (placeId.isNotEmpty &&
-          _photoPreview != null &&
-          !_hasImageUrl(created)) {
-        try {
-          setState(() => _isUploadingPhoto = true);
-          final webp = await MediaConversionService.toWebp(_photoPreview!);
-          final updated = await ApiClient.uploadPlacebookPlaceThumbnail(
-            placeId: placeId,
-            file: webp,
-          );
-          if (updated.isNotEmpty) {
-            created = updated;
-          }
-        } finally {
-          if (mounted) setState(() => _isUploadingPhoto = false);
-        }
-      }
-      if (!mounted) return;
-      final imageUrl = _resolveCreatedImageUrl(created);
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (_) => PlacebookSavedView(
-            imageBytes: _photoPreviewBytes,
-            imageUrl: imageUrl,
-          ),
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (_) => PlacebookSavedView(
+          imageBytes: imageBytes,
+          saveFuture: saveFuture,
         ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      _showSnack('저장에 실패했어요. 잠시 후 다시 시도해주세요.');
-    } finally {
-      if (mounted) setState(() => _isSaving = false);
+      ),
+    );
+  }
+
+  Future<PlacebookSaveResult> _createPlaceAndResolveImageUrl({
+    required String categoryId,
+    required String themeId,
+    required String title,
+    required String description,
+    required String subtitle,
+    required String address,
+    required double latitude,
+    required double longitude,
+    required String? thumbnailFileId,
+    required List<String> tagIds,
+    required List<String> commonTagIds,
+    required File? photoFile,
+  }) async {
+    var resolvedThumbnailFileId = (thumbnailFileId ?? '').trim().isEmpty
+        ? null
+        : thumbnailFileId!.trim();
+    if (photoFile != null) {
+      final webp = await MediaConversionService.toWebp(photoFile);
+      resolvedThumbnailFileId = await ApiClient.uploadPlacebookPlaceImage(webp);
     }
+
+    var created = await ApiClient.createPlacebookPlace(
+      categoryId: categoryId,
+      themeId: themeId,
+      title: title,
+      description: description,
+      subtitle: subtitle,
+      address: address,
+      latitude: latitude,
+      longitude: longitude,
+      thumbnailFileId: resolvedThumbnailFileId,
+      tagIds: tagIds,
+      commonTagIds: commonTagIds,
+    );
+    return PlacebookSaveResult(
+      imageUrl: _resolveCreatedImageUrl(created),
+    );
   }
 
   void _showSnack(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
     );
-  }
-
-  bool _hasImageUrl(Map<String, dynamic> place) {
-    final thumb = place['thumbnailUrl'] as String?;
-    if (thumb != null && thumb.trim().isNotEmpty) return true;
-    final image = place['imageUrl'] as String?;
-    if (image != null && image.trim().isNotEmpty) return true;
-    final imageIdRaw = place['imageId'];
-    if (imageIdRaw is Map<String, dynamic>) {
-      final url = imageIdRaw['cdnUrl'] as String? ??
-          imageIdRaw['fileUrl'] as String? ??
-          imageIdRaw['thumbnailUrl'] as String?;
-      if (url != null && url.trim().isNotEmpty) return true;
-    }
-    final imageRaw = place['image'];
-    if (imageRaw is Map<String, dynamic>) {
-      final url = imageRaw['cdnUrl'] as String? ??
-          imageRaw['fileUrl'] as String? ??
-          imageRaw['thumbnailUrl'] as String?;
-      if (url != null && url.trim().isNotEmpty) return true;
-    }
-    final thumbnailRaw = place['thumbnail'];
-    if (thumbnailRaw is Map<String, dynamic>) {
-      final url = thumbnailRaw['cdnUrl'] as String? ??
-          thumbnailRaw['fileUrl'] as String? ??
-          thumbnailRaw['thumbnailUrl'] as String?;
-      if (url != null && url.trim().isNotEmpty) return true;
-    }
-    return false;
   }
 
   String? _resolveCreatedImageUrl(Map<String, dynamic> place) {
@@ -534,7 +541,6 @@ class _PlacebookCreateBodyState extends State<_PlacebookCreateBody> {
   }
 
   Future<void> _pickPhoto() async {
-    if (_isUploadingPhoto) return;
     await CommonTitleActionSheet.show(
       context,
       title: '사진 추가',
@@ -570,17 +576,8 @@ class _PlacebookCreateBodyState extends State<_PlacebookCreateBody> {
         setState(() {
           _photoPreview = pickedFile;
           _photoPreviewBytes = bytes;
+          _photoFileId = null;
         });
-        setState(() => _isUploadingPhoto = true);
-        try {
-          final webp = await MediaConversionService.toWebp(pickedFile);
-          final id = await ApiClient.uploadPlaceThumbnailFile(webp);
-          _photoFileId = id;
-        } catch (e) {
-          _showSnack('사진 업로드에 실패했어요.');
-        } finally {
-          if (mounted) setState(() => _isUploadingPhoto = false);
-        }
       },
     );
   }
@@ -636,17 +633,19 @@ class _PlacebookCreateBodyState extends State<_PlacebookCreateBody> {
   @override
   Widget build(BuildContext context) {
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
-    return SingleChildScrollView(
-      physics: _isMapInteracting
-          ? const NeverScrollableScrollPhysics()
-          : const AlwaysScrollableScrollPhysics(
-              parent: BouncingScrollPhysics(),
-            ),
-      padding: EdgeInsets.fromLTRB(20, 16, 20, 24 + bottomInset),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildHeader(),
+    return Stack(
+      children: [
+        SingleChildScrollView(
+          physics: _isMapInteracting
+              ? const NeverScrollableScrollPhysics()
+              : const AlwaysScrollableScrollPhysics(
+                  parent: BouncingScrollPhysics(),
+                ),
+          padding: EdgeInsets.fromLTRB(20, 16, 20, 24 + bottomInset),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildHeader(),
           // 테마는 헤더에서 선택
           if (_currentThemeId().isNotEmpty && !_showMapStep) ...[
             const SizedBox(height: 16),
@@ -872,8 +871,10 @@ class _PlacebookCreateBodyState extends State<_PlacebookCreateBody> {
             ),
             const SizedBox(height: 16),
           ],
-        ],
-      ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

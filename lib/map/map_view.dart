@@ -18,6 +18,7 @@ import '../common/state/home_tab_controller.dart';
 import '../sign/sign_view.dart';
 import '../common/network/api_client.dart';
 import '../common/state/placebook_cache.dart';
+import '../common/widgets/common_image_view.dart';
 import '../common/widgets/common_map_view.dart';
 import '../common/widgets/common_place_marker.dart';
 import '../common/widgets/common_empty_view.dart';
@@ -53,6 +54,7 @@ class MapView extends StatefulWidget {
 }
 
 class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
+  static const NLatLng _fallbackCenter = NLatLng(37.498095, 127.027610);
   static const double _focusMarkerRadiusMeters = 1200;
   static const double _liveClusterDistancePx = 84;
   static const double _markerJitterMaxMeters = 12;
@@ -100,7 +102,6 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
   static const String _radiusOverlayId = 'api-radius';
   NCircleOverlay? _radiusOverlay;
   final bool _showRadiusOverlay = false;
-  late final Widget _mapWidget;
   final CommonMapViewController _mapViewController = CommonMapViewController();
   List<Map<String, dynamic>> _categoryFilters = const [];
   List<Map<String, dynamic>> _themeFilters = const [];
@@ -121,6 +122,7 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
   int _mapToggleToastSequence = 0;
   bool _skipToastOutAnimation = false;
   int _chipShuffleSequence = 0;
+  int _markerRevealSequence = 0;
 
   Map<String, dynamic> _normalizePlaceItem(Map<String, dynamic> item) {
     final next = Map<String, dynamic>.from(item);
@@ -136,7 +138,11 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
       return null;
     }
 
-    void setLatLng(dynamic source, {String latKey = 'latitude', String lngKey = 'longitude'}) {
+    void setLatLng(
+      dynamic source, {
+      String latKey = 'latitude',
+      String lngKey = 'longitude',
+    }) {
       if (source is! Map<String, dynamic>) return;
       next['latitude'] ??= source[latKey] ?? source['lat'];
       next['longitude'] ??= source[lngKey] ?? source['lng'] ?? source['lon'];
@@ -158,7 +164,8 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
     setLatLng(item['coords']);
 
     if (next['clusterCount'] == null) {
-      final rawCount = item['count'] ?? item['clusterCount'] ?? item['placeCount'];
+      final rawCount =
+          item['count'] ?? item['clusterCount'] ?? item['placeCount'];
       if (rawCount is num) {
         next['clusterCount'] = rawCount.toInt();
       } else if (rawCount is String) {
@@ -231,7 +238,7 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
     }
     setState(() => _isLoadingNear = true);
     try {
-      final center = _lastCenter ?? const NLatLng(37.5665, 126.9780);
+      final center = _lastCenter ?? _fallbackCenter;
       final radiusKm = _radiusKmForScreen() ?? 10.0;
       final radiusMeters = (radiusKm * 1000).round();
       await _updateRadiusOverlay(center: center);
@@ -239,8 +246,12 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
       const orderBy = 'distance';
       const order = 'ASC';
       final categoryId = _selectedCategoryId;
-      final themeIds = _effectiveThemeIds.isNotEmpty ? _effectiveThemeIds : null;
-      final themeId = (themeIds != null && themeIds.length == 1) ? themeIds.first : null;
+      final themeIds = _effectiveThemeIds.isNotEmpty
+          ? _effectiveThemeIds
+          : null;
+      final themeId = (themeIds != null && themeIds.length == 1)
+          ? themeIds.first
+          : null;
       final filter = _placesFilterForIndex();
       final zoom = _lastZoom ?? widget.config.mapPlacesZoomThreshold;
       final shouldUseClusters = _shouldUseClusterApi(zoom);
@@ -363,11 +374,12 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
         _nearSpaces = merged;
         _isClusterMode = isClusterMode;
       });
+      unawaited(_prefetchListThumbnails(merged));
       await _updateLiveMarkerPoints();
       await _fitToAllPlaces();
       if (_awaitingFetchMarkers && mounted) {
         _awaitingFetchMarkers = false;
-        setState(() => _showLiveMarkers = true);
+        _showMarkersWithReveal();
       }
     } catch (_) {
       if (!mounted) return;
@@ -378,7 +390,7 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
       await _updateLiveMarkerPoints();
       if (_awaitingFetchMarkers && mounted) {
         _awaitingFetchMarkers = false;
-        setState(() => _showLiveMarkers = true);
+        _showMarkersWithReveal();
       }
     } finally {
       if (mounted) setState(() => _isLoadingNear = false);
@@ -388,6 +400,24 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
           _fetchPlacebookSpaces();
         }
       }
+    }
+  }
+
+  Future<void> _prefetchListThumbnails(
+    List<Map<String, dynamic>> spaces,
+  ) async {
+    final urls = spaces
+        .map((space) => (_thumbnailForSpace(space) ?? '').trim())
+        .where((url) => url.isNotEmpty)
+        .take(24)
+        .toList(growable: false);
+    if (urls.isEmpty) return;
+    try {
+      await CommonImageView.prefetchNetworkUrls(
+        urls,
+      ).timeout(const Duration(milliseconds: 900));
+    } catch (_) {
+      // Ignore prefetch failures; list should render regardless.
     }
   }
 
@@ -413,7 +443,8 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
 
   bool _isClusterSpace(Map<String, dynamic> space) {
     if (space['isCluster'] == true) return true;
-    final rawCount = space['clusterCount'] ?? space['count'] ?? space['placeCount'];
+    final rawCount =
+        space['clusterCount'] ?? space['count'] ?? space['placeCount'];
     if (rawCount is num && rawCount.toInt() > 1) return true;
     if (_isClusterMode) return true;
     return false;
@@ -474,32 +505,6 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
     if (fixed != null && fixed.isNotEmpty) {
       _selectedThemeIds = List<String>.from(fixed);
     }
-    _mapWidget = CommonMapView(
-      controller: _mapViewController,
-      showMyLocationButton: false,
-      onMyLocationChanged: (location) {
-        _lastMyLocation = location;
-      },
-      onCenterChanged: _onMapCenterChanged,
-      onCameraMoving: _onMapCameraMoving,
-      onCameraIdle: _onMapCameraIdle,
-      onMapReady: (controller) {
-        _mapController = controller;
-        if (_lastCenter != null && _pendingMapFocusRequest == null) {
-          controller.updateCamera(
-            NCameraUpdate.withParams(target: _lastCenter!),
-          );
-        }
-        controller
-            .getCameraPosition()
-            .then((camera) => _updateRadiusOverlay(center: camera.target));
-        final pending = _pendingMapFocusRequest;
-        if (pending != null) {
-          _focusToCreatedLivespace(pending);
-        }
-        _updateLiveMarkerPoints();
-      },
-    );
     _mapFocusListener = _handleMapFocusRequest;
     _mapFilterListener = _handleMapFilterRequest;
     HomeTabController.mapFocusRequest.addListener(_mapFocusListener);
@@ -527,6 +532,36 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
     _chipKeys = <String, GlobalKey>{};
   }
 
+  Widget _buildMapWidget() {
+    return CommonMapView(
+      key: const ValueKey('home-main-common-map-view'),
+      controller: _mapViewController,
+      showMyLocationButton: false,
+      onMyLocationChanged: (location) {
+        _lastMyLocation = location;
+      },
+      onCenterChanged: _onMapCenterChanged,
+      onCameraMoving: _onMapCameraMoving,
+      onCameraIdle: _onMapCameraIdle,
+      onMapReady: (controller) {
+        _mapController = controller;
+        if (_lastCenter != null && _pendingMapFocusRequest == null) {
+          controller.updateCamera(
+            NCameraUpdate.withParams(target: _lastCenter!),
+          );
+        }
+        controller.getCameraPosition().then(
+          (camera) => _updateRadiusOverlay(center: camera.target),
+        );
+        final pending = _pendingMapFocusRequest;
+        if (pending != null) {
+          _focusToCreatedLivespace(pending);
+        }
+        _updateLiveMarkerPoints();
+      },
+    );
+  }
+
   void _ensureMapInitialized() {
     if (_didInitialLoad) return;
     _didInitialLoad = true;
@@ -550,7 +585,7 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
   }
 
   Future<NLatLng> _resolveInitialCenter() async {
-    const fallback = NLatLng(37.5665, 126.9780);
+    const fallback = _fallbackCenter;
     try {
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
       final granted = await LocationPermissionService.isGranted();
@@ -633,11 +668,19 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
     final spaces = List<Map<String, dynamic>>.from(_listSpaces);
     if (_selectedListSort == '인기순') {
       spaces.sort((a, b) {
-        final aLikes = (a['likeCount'] as num?)?.toInt() ?? 0;
-        final bLikes = (b['likeCount'] as num?)?.toInt() ?? 0;
+        final aLikes = _readCount(a, const [
+          'helpfulCount',
+          'verificationCount',
+          'likeCount',
+        ]);
+        final bLikes = _readCount(b, const [
+          'helpfulCount',
+          'verificationCount',
+          'likeCount',
+        ]);
         if (aLikes != bLikes) return bLikes.compareTo(aLikes);
-        final aComments = (a['commentCount'] as num?)?.toInt() ?? 0;
-        final bComments = (b['commentCount'] as num?)?.toInt() ?? 0;
+        final aComments = _readCount(a, const ['commentCount']);
+        final bComments = _readCount(b, const ['commentCount']);
         return bComments.compareTo(aComments);
       });
       return spaces;
@@ -712,15 +755,16 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
   Future<void> _loadCategoryFilters() async {
     final categories = await PlacebookCache.loadCategories();
     if (!mounted) return;
-    final active = categories
-        .whereType<Map<String, dynamic>>()
-        .where((item) => item['isActive'] != false)
-        .toList()
-      ..sort((a, b) {
-        final aOrder = (a['sortOrder'] as num?)?.toInt() ?? 0;
-        final bOrder = (b['sortOrder'] as num?)?.toInt() ?? 0;
-        return aOrder.compareTo(bOrder);
-      });
+    final active =
+        categories
+            .whereType<Map<String, dynamic>>()
+            .where((item) => item['isActive'] != false)
+            .toList()
+          ..sort((a, b) {
+            final aOrder = (a['sortOrder'] as num?)?.toInt() ?? 0;
+            final bOrder = (b['sortOrder'] as num?)?.toInt() ?? 0;
+            return aOrder.compareTo(bOrder);
+          });
     setState(() {
       _categoryFilters = active;
     });
@@ -742,8 +786,7 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
       _chipKeys
         ..clear()
         ..addAll({
-          for (final item in chips)
-            (item['id']?.toString() ?? ''): GlobalKey(),
+          for (final item in chips) (item['id']?.toString() ?? ''): GlobalKey(),
         });
     });
   }
@@ -768,8 +811,7 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
       _chipKeys
         ..clear()
         ..addAll({
-          for (final item in chips)
-            (item['id']?.toString() ?? ''): GlobalKey(),
+          for (final item in chips) (item['id']?.toString() ?? ''): GlobalKey(),
         });
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -830,10 +872,7 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
       _isProgrammaticMove = true;
       if (points.length == 1) {
         await controller.updateCamera(
-          NCameraUpdate.withParams(
-            target: points.first,
-            zoom: 15.5,
-          ),
+          NCameraUpdate.withParams(target: points.first, zoom: 15.5),
         );
       } else {
         final bounds = NLatLngBounds.from(points);
@@ -926,7 +965,10 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
       if (item['id'] == optimisticId) return true;
       final lat = (item['latitude'] as num?)?.toDouble();
       final lng = (item['longitude'] as num?)?.toDouble();
-      if (optimisticLat == null || optimisticLng == null || lat == null || lng == null) {
+      if (optimisticLat == null ||
+          optimisticLng == null ||
+          lat == null ||
+          lng == null) {
         return false;
       }
       return _spaceType(item) == _spaceType(optimistic) &&
@@ -969,10 +1011,7 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
       _skipNextCameraIdleFetch = true;
       _isProgrammaticMove = true;
       await controller.updateCamera(
-        NCameraUpdate.withParams(
-          target: target,
-          zoom: 16.0,
-        ),
+        NCameraUpdate.withParams(target: target, zoom: 16.0),
       );
     } catch (_) {
       // Ignore camera update errors.
@@ -1039,10 +1078,7 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
       final camera = await controller.getCameraPosition();
       final nextZoom = (camera.zoom + delta).clamp(1.0, 20.0);
       await controller.updateCamera(
-        NCameraUpdate.withParams(
-          target: camera.target,
-          zoom: nextZoom,
-        ),
+        NCameraUpdate.withParams(target: camera.target, zoom: nextZoom),
       );
     } catch (_) {
       // Ignore transient map camera errors.
@@ -1052,16 +1088,19 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
   void _onMapCenterChanged(NLatLng center) {
     _lastCenter = center;
     _reverseGeocodeDebounce?.cancel();
-    _reverseGeocodeDebounce = Timer(const Duration(milliseconds: 320), () async {
-      final place = await NaverLocationService.reverseGeocode(
-        latitude: center.latitude,
-        longitude: center.longitude,
-      );
-      if (!mounted) return;
-      final next = _toShortPlace((place ?? '').trim());
-      if (next == _centerPlaceText) return;
-      setState(() => _centerPlaceText = next);
-    });
+    _reverseGeocodeDebounce = Timer(
+      const Duration(milliseconds: 320),
+      () async {
+        final place = await NaverLocationService.reverseGeocode(
+          latitude: center.latitude,
+          longitude: center.longitude,
+        );
+        if (!mounted) return;
+        final next = _toShortPlace((place ?? '').trim());
+        if (next == _centerPlaceText) return;
+        setState(() => _centerPlaceText = next);
+      },
+    );
   }
 
   String _toShortPlace(String raw) {
@@ -1115,7 +1154,6 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
     return items.length;
   }
 
-
   Future<void> _updateRadiusOverlay({NLatLng? center}) async {
     final controller = _mapController;
     if (controller == null) return;
@@ -1149,7 +1187,6 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
     }
   }
 
-
   Future<void> _updateLiveMarkerPoints() async {
     final controller = _mapController;
     if (controller == null) return;
@@ -1172,7 +1209,8 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
       }
       final lastCenter = _lastMarkerUpdateCenter;
       final lastZoom = _lastMarkerUpdateZoom;
-      final canReuse = camera != null &&
+      final canReuse =
+          camera != null &&
           lastCenter != null &&
           lastZoom != null &&
           _distanceMeters(
@@ -1197,26 +1235,25 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
             continue;
           }
         }
-        final displayLatLng = _displayLatLngForSpace(
-          space,
-          lat: lat,
-          lng: lng,
-        );
+        final displayLatLng = _displayLatLngForSpace(space, lat: lat, lng: lng);
         final point = await controller.latLngToScreenLocation(displayLatLng);
         if (!_isPointInView(point)) continue;
         nextPoints[markerId] = point;
       }
-      final markerEntries = <({
-        String markerId,
-        String type,
-        NPoint point,
-        String? thumbnailUrl,
-        Map<String, dynamic> space,
-        bool isFocused,
-        bool isCluster,
-        double lat,
-        double lng,
-      })>[];
+      final markerEntries =
+          <
+            ({
+              String markerId,
+              String type,
+              NPoint point,
+              String? thumbnailUrl,
+              Map<String, dynamic> space,
+              bool isFocused,
+              bool isCluster,
+              double lat,
+              double lng,
+            })
+          >[];
       for (var i = 0; i < _typeScopedSpaces.length; i += 1) {
         final space = _typeScopedSpaces[i];
         final type = _spaceType(space);
@@ -1247,8 +1284,7 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
       if (mounted) {
         setState(() {
           _liveMarkerPoints = nextPoints;
-          _clusterCenterPoints =
-              _isClusterMode ? const {} : nextClusterCenters;
+          _clusterCenterPoints = _isClusterMode ? const {} : nextClusterCenters;
           if (_selectedLiveMarkerId != null &&
               !_liveMarkerPoints.containsKey(_selectedLiveMarkerId)) {
             _selectedLiveMarkerId = null;
@@ -1271,7 +1307,17 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
     }
   }
 
-  void _scheduleMarkerUpdate({Duration delay = const Duration(milliseconds: 300)}) {
+  void _showMarkersWithReveal() {
+    if (!mounted) return;
+    setState(() {
+      _markerRevealSequence += 1;
+      _showLiveMarkers = true;
+    });
+  }
+
+  void _scheduleMarkerUpdate({
+    Duration delay = const Duration(milliseconds: 300),
+  }) {
     if (_isCameraMoving) return;
     if (!mounted) return;
     _updateLiveMarkerPoints();
@@ -1284,20 +1330,23 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
     if (!mounted) return;
     _updateLiveMarkerPoints().whenComplete(() {
       if (!mounted) return;
-      if (_showLiveMarkers) return;
-      setState(() => _showLiveMarkers = true);
+      _showMarkersWithReveal();
     });
   }
 
   String? _thumbnailForSpace(Map<String, dynamic> space) {
     final thumbnailRaw = space['thumbnail'];
-    final thumbnailMap = thumbnailRaw is Map<String, dynamic> ? thumbnailRaw : null;
+    final thumbnailMap = thumbnailRaw is Map<String, dynamic>
+        ? thumbnailRaw
+        : null;
     final thumbnailUrlRaw = space['thumbnailUrl'];
-    final thumbnailUrlMap =
-        thumbnailUrlRaw is Map<String, dynamic> ? thumbnailUrlRaw : null;
+    final thumbnailUrlMap = thumbnailUrlRaw is Map<String, dynamic>
+        ? thumbnailUrlRaw
+        : null;
     final thumbnailImageRaw = space['thumbnailImage'];
-    final thumbnailImageMap =
-        thumbnailImageRaw is Map<String, dynamic> ? thumbnailImageRaw : null;
+    final thumbnailImageMap = thumbnailImageRaw is Map<String, dynamic>
+        ? thumbnailImageRaw
+        : null;
     final imageIdRaw = space['imageId'];
     final imageIdMap = imageIdRaw is Map<String, dynamic> ? imageIdRaw : null;
     final imageRaw = space['image'];
@@ -1305,16 +1354,20 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
     final photoRaw = space['photo'];
     final photoMap = photoRaw is Map<String, dynamic> ? photoRaw : null;
     final representativeRaw = space['representativeImage'];
-    final representativeMap =
-        representativeRaw is Map<String, dynamic> ? representativeRaw : null;
+    final representativeMap = representativeRaw is Map<String, dynamic>
+        ? representativeRaw
+        : null;
     final feed = space['feed'];
     final feedMap = feed is Map<String, dynamic> ? feed : null;
     final images = (feedMap?['images'] ?? space['images']);
     final firstImage =
-        images is List && images.isNotEmpty && images.first is Map<String, dynamic>
-            ? images.first as Map<String, dynamic>
-            : null;
-    final firstImageUrl = images is List && images.isNotEmpty && images.first is String
+        images is List &&
+            images.isNotEmpty &&
+            images.first is Map<String, dynamic>
+        ? images.first as Map<String, dynamic>
+        : null;
+    final firstImageUrl =
+        images is List && images.isNotEmpty && images.first is String
         ? images.first as String
         : null;
     String? firstThumbnailUrl;
@@ -1434,9 +1487,9 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
     final type = _spaceType(space);
     final rawId = _isClusterSpace(space)
         ? (space['clusterId'] ??
-            space['id'] ??
-            '${space['latitude']}_${space['longitude']}' ??
-            index)
+              space['id'] ??
+              '${space['latitude']}_${space['longitude']}' ??
+              index)
         : (space['id'] ?? space['feedId'] ?? space['entityId'] ?? index);
     return 'space_${type}_$rawId';
   }
@@ -1452,14 +1505,14 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
     final cached = _jitteredLatLngs[key];
     if (cached != null) return cached;
     final hash = key.hashCode;
-    final radius =
-        ((hash & 0xFF) / 255.0) * _markerJitterMaxMeters;
-    final angle =
-        (((hash >> 8) & 0xFF) / 255.0) * 2 * math.pi;
+    final radius = ((hash & 0xFF) / 255.0) * _markerJitterMaxMeters;
+    final angle = (((hash >> 8) & 0xFF) / 255.0) * 2 * math.pi;
     final latRad = lat * math.pi / 180.0;
     const metersPerDegLat = 111320.0;
-    final metersPerDegLng =
-        (111320.0 * math.cos(latRad)).abs().clamp(1.0, 111320.0);
+    final metersPerDegLng = (111320.0 * math.cos(latRad)).abs().clamp(
+      1.0,
+      111320.0,
+    );
     final deltaLat = (radius * math.cos(angle)) / metersPerDegLat;
     final deltaLng = (radius * math.sin(angle)) / metersPerDegLng;
     final jittered = NLatLng(lat + deltaLat, lng + deltaLng);
@@ -1468,23 +1521,29 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
   }
 
   Widget _buildLiveMarkerOverlay() {
-    if (_typeScopedSpaces.isEmpty || _liveMarkerPoints.isEmpty) {
+    if (!_showLiveMarkers ||
+        _typeScopedSpaces.isEmpty ||
+        _liveMarkerPoints.isEmpty) {
       return const SizedBox.shrink();
     }
+    const maxRichOverlays = 5;
     const markerSize = 44.0;
     const labelHeight = 38.0;
     const labelWidth = 96.0;
-    var markerEntries = <({
-      String markerId,
-      String type,
-      NPoint point,
-      String? thumbnailUrl,
-      Map<String, dynamic> space,
-      bool isFocused,
-      bool isCluster,
-      double lat,
-      double lng,
-    })>[];
+    var markerEntries =
+        <
+          ({
+            String markerId,
+            String type,
+            NPoint point,
+            String? thumbnailUrl,
+            Map<String, dynamic> space,
+            bool isFocused,
+            bool isCluster,
+            double lat,
+            double lng,
+          })
+        >[];
     for (var i = 0; i < _typeScopedSpaces.length; i += 1) {
       final space = _typeScopedSpaces[i];
       final type = _spaceType(space);
@@ -1507,26 +1566,28 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
         lng: lng,
       ));
     }
-    final zoom = _lastZoom ?? widget.config.mapPlacesZoomThreshold;
-    final maxMarkers = _maxMarkersForZoom(zoom, isCluster: _isClusterMode);
     final center = _lastCenter;
-    if (_isClusterMode && center != null && markerEntries.length > maxMarkers) {
-      markerEntries = _limitEntriesByDistance(
-        markerEntries,
-        maxMarkers,
-        distanceOf: (entry) => _distanceMeters(
-          lat1: center.latitude,
-          lng1: center.longitude,
-          lat2: entry.lat,
-          lng2: entry.lng,
-        ),
-      );
-    }
     if (_isClusterMode) {
+      final richEntries = center != null && markerEntries.length > maxRichOverlays
+          ? _limitEntriesByDistance(
+              markerEntries,
+              maxRichOverlays,
+              distanceOf: (entry) => _distanceMeters(
+                lat1: center.latitude,
+                lng1: center.longitude,
+                lat2: entry.lat,
+                lng2: entry.lng,
+              ),
+            )
+          : markerEntries;
+      final richIds = richEntries
+          .map((entry) => entry.markerId)
+          .toSet();
       final items = <Widget>[];
       for (final entry in markerEntries) {
         final clusterCount = _clusterCountForSpace(entry.space);
         final clusterSize = CommonPlaceClusterMarker.stackSizeFor(markerSize);
+        final isRich = richIds.contains(entry.markerId);
         items.add(
           Positioned(
             key: ValueKey(entry.markerId),
@@ -1542,33 +1603,38 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
                   targetZoom: _clusterTapAutoZoomTarget,
                 );
               },
-              child: CommonPlaceClusterMarker(
-                count: clusterCount,
-                imageUrls: const [],
-                size: markerSize,
+              child: _buildMarkerReveal(
+                id: entry.markerId,
+                child: isRich
+                    ? CommonPlaceClusterMarker(
+                        count: clusterCount,
+                        imageUrls: [entry.thumbnailUrl],
+                        size: markerSize,
+                      )
+                    : const Center(child: _PlaceDotMarker()),
               ),
             ),
           ),
         );
       }
-      return Stack(
-        clipBehavior: Clip.none,
-        children: items,
-      );
+      return Stack(clipBehavior: Clip.none, children: items);
     }
     var clusters = _buildLiveMarkerClusters(markerEntries);
-    if (center != null && clusters.length > maxMarkers) {
-      clusters = _limitEntriesByDistance(
-        clusters,
-        maxMarkers,
-        distanceOf: (cluster) => _distanceMeters(
-          lat1: center.latitude,
-          lng1: center.longitude,
-          lat2: cluster.centerLatLng.latitude,
-          lng2: cluster.centerLatLng.longitude,
-        ),
-      );
-    }
+    final richClusters = center != null && clusters.length > maxRichOverlays
+        ? _limitEntriesByDistance(
+            clusters,
+            maxRichOverlays,
+            distanceOf: (cluster) => _distanceMeters(
+              lat1: center.latitude,
+              lng1: center.longitude,
+              lat2: cluster.centerLatLng.latitude,
+              lng2: cluster.centerLatLng.longitude,
+            ),
+          )
+        : clusters;
+    final richClusterIds = richClusters
+        .map((cluster) => cluster.clusterId)
+        .toSet();
     final displayCenters = _clusterCenterPoints.isNotEmpty
         ? _clusterCenterPoints
         : {for (final cluster in clusters) cluster.clusterId: cluster.center};
@@ -1580,12 +1646,6 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
       final displayCenter =
           single?.point ?? displayCenters[cluster.clusterId] ?? cluster.center;
       final adjustedCenter = displayCenter;
-      final clusterThumbnailUrls = cluster.members
-          .map((member) => member.thumbnailUrl)
-          .whereType<String>()
-          .map((url) => url.trim())
-          .where((url) => url.isNotEmpty)
-          .toList();
       final isClusterSpace = single != null && _isClusterSpace(single.space);
       final clusterCount = single == null
           ? cluster.members.fold<int>(
@@ -1593,11 +1653,16 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
               (sum, member) => sum + _clusterCountForSpace(member.space),
             )
           : _clusterCountForSpace(single.space);
-      final showClusterMarker = single == null || (isClusterSpace && clusterCount > 1);
-      final isPrimarySingle = single != null &&
+      final showClusterMarker =
+          single == null || (isClusterSpace && clusterCount > 1);
+      final isRichCluster = richClusterIds.contains(cluster.clusterId);
+      final isPrimarySingle =
+          single != null &&
           (cluster.clusterId == primaryClusterId ||
               cluster.clusterId == _selectedLiveMarkerId);
-      final title = single == null ? '$clusterCount' : _titleForSpace(single.space);
+      final title = single == null
+          ? '$clusterCount'
+          : _titleForSpace(single.space);
       final hasLabel = single != null && !showClusterMarker && title.isNotEmpty;
       final clusterSize = showClusterMarker
           ? CommonPlaceClusterMarker.stackSizeFor(markerSize)
@@ -1615,7 +1680,7 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
             width: itemWidth,
             height: itemHeight,
             child: RepaintBoundary(
-                child: GestureDetector(
+              child: GestureDetector(
                 behavior: HitTestBehavior.translucent,
                 onTap: () async {
                   if (!mounted) return;
@@ -1642,41 +1707,44 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
                   }
                   Navigator.of(context)
                       .push(
-                    MaterialPageRoute(
-                      builder: (_) => PlacebookDetailView(space: single.space),
-                    ),
-                  )
-                      .then((deleted) {
-                    if (deleted == true) {
-                      final placeId = _placeIdOf(single.space);
-                      _removePlaceFromMap(placeId);
-                    }
-                  });
-                },
-                child: showClusterMarker
-                    ? CommonPlaceClusterMarker(
-                        count: clusterCount,
-                        imageUrls: clusterThumbnailUrls,
-                        size: markerSize,
-                        title: showClusterMarker ? null : title,
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              PlacebookDetailView(space: single.space),
+                        ),
                       )
-                    : isPrimarySingle
-                        ? CommonPlaceMarker(
-                            cacheKey: (single.space['id'] ??
-                                    single.space['placeId'] ??
-                                    single.space['spaceId'])
-                                ?.toString(),
-                            imageUrl: single.thumbnailUrl,
-                            size: markerSize,
-                            title: title,
-                            isFavorited:
-                                (single.space['favorited'] as bool?) ??
-                                    (single.space['isFavorited'] as bool?) ??
-                                    false,
-                          )
-                        : const Center(
-                            child: _PlaceDotMarker(),
-                          ),
+                      .then((deleted) {
+                        if (deleted == true) {
+                          final placeId = _placeIdOf(single.space);
+                          _removePlaceFromMap(placeId);
+                        }
+                      });
+                },
+                child: _buildMarkerReveal(
+                  id: cluster.clusterId,
+                  child: !isRichCluster
+                      ? const Center(child: _PlaceDotMarker())
+                      : showClusterMarker
+                      ? CommonPlaceClusterMarker(
+                          count: clusterCount,
+                          imageUrls: cluster.members
+                              .map((member) => member.thumbnailUrl)
+                              .toList(growable: false),
+                          size: markerSize,
+                          title: showClusterMarker ? null : title,
+                        )
+                      : isPrimarySingle
+                      ? CommonPlaceMarker(
+                          cacheKey: single.thumbnailUrl,
+                          imageUrl: single.thumbnailUrl,
+                          size: markerSize,
+                          title: title,
+                          isFavorited:
+                              (single.space['favorited'] as bool?) ??
+                              (single.space['isFavorited'] as bool?) ??
+                              false,
+                        )
+                      : const Center(child: _PlaceDotMarker()),
+                ),
               ),
             ),
           ),
@@ -1705,12 +1773,29 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
       ...clusterItems,
       ...markerItems,
     ];
-    return IgnorePointer(
-      ignoring: !_showLiveMarkers,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: renderItems.map((item) => item.child).toList(),
-      ),
+    return Stack(
+      clipBehavior: Clip.none,
+      children: renderItems.map((item) => item.child).toList(),
+    );
+  }
+
+  Widget _buildMarkerReveal({required String id, required Widget child}) {
+    return TweenAnimationBuilder<double>(
+      key: ValueKey('marker-reveal-$id-$_markerRevealSequence'),
+      tween: Tween(begin: 0.72, end: 1.0),
+      duration: const Duration(milliseconds: 240),
+      curve: Curves.easeOutBack,
+      child: child,
+      builder: (context, value, builtChild) {
+        return Opacity(
+          opacity: value.clamp(0.0, 1.0),
+          child: Transform.scale(
+            scale: value,
+            alignment: Alignment.center,
+            child: builtChild,
+          ),
+        );
+      },
     );
   }
 
@@ -1776,17 +1861,20 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
   }
 
   List<_LiveMarkerCluster> _buildLiveMarkerClusters(
-    List<({
-      String markerId,
-      String type,
-      NPoint point,
-      String? thumbnailUrl,
-      Map<String, dynamic> space,
-      bool isFocused,
-      bool isCluster,
-      double lat,
-      double lng,
-    })> entries,
+    List<
+      ({
+        String markerId,
+        String type,
+        NPoint point,
+        String? thumbnailUrl,
+        Map<String, dynamic> space,
+        bool isFocused,
+        bool isCluster,
+        double lat,
+        double lng,
+      })
+    >
+    entries,
   ) {
     if (entries.isEmpty) return const [];
     final clusters = <_LiveMarkerCluster>[];
@@ -1795,17 +1883,20 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
       if (visited.contains(i)) continue;
       visited.add(i);
       final seed = entries[i];
-      final members = <({
-      String markerId,
-      String type,
-      NPoint point,
-      String? thumbnailUrl,
-      Map<String, dynamic> space,
-      bool isFocused,
-      bool isCluster,
-      double lat,
-      double lng,
-    })>[seed];
+      final members =
+          <
+            ({
+              String markerId,
+              String type,
+              NPoint point,
+              String? thumbnailUrl,
+              Map<String, dynamic> space,
+              bool isFocused,
+              bool isCluster,
+              double lat,
+              double lng,
+            })
+          >[seed];
       if (!seed.isCluster) {
         for (var j = i + 1; j < entries.length; j += 1) {
           if (visited.contains(j)) continue;
@@ -1826,7 +1917,10 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
       final center = NPoint(sumX / members.length, sumY / members.length);
       final sumLat = members.fold<double>(0, (sum, it) => sum + it.lat);
       final sumLng = members.fold<double>(0, (sum, it) => sum + it.lng);
-      final centerLatLng = NLatLng(sumLat / members.length, sumLng / members.length);
+      final centerLatLng = NLatLng(
+        sumLat / members.length,
+        sumLng / members.length,
+      );
       final memberIds = members.map((member) => member.markerId).toList()
         ..sort();
       final clusterId = members.length == 1
@@ -1848,7 +1942,9 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
     List<_LiveMarkerCluster> clusters,
   ) {
     if (clusters.length <= 1) {
-      return {for (final cluster in clusters) cluster.clusterId: cluster.center};
+      return {
+        for (final cluster in clusters) cluster.clusterId: cluster.center,
+      };
     }
     const overlapDistancePx = 2.0;
     const spreadRadiusPx = 18.0;
@@ -1916,19 +2012,13 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
       final diff = clampedTarget - camera.zoom;
       if (diff <= 0.05) {
         await controller.updateCamera(
-          NCameraUpdate.withParams(
-            target: target,
-            zoom: camera.zoom,
-          ),
+          NCameraUpdate.withParams(target: target, zoom: camera.zoom),
         );
         return;
       }
       final nextZoom = math.min(clampedTarget, camera.zoom + 1.1);
       await controller.updateCamera(
-        NCameraUpdate.withParams(
-          target: target,
-          zoom: nextZoom,
-        ),
+        NCameraUpdate.withParams(target: target, zoom: nextZoom),
       );
     } catch (_) {
       // Ignore transient map camera errors.
@@ -1984,10 +2074,7 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
     return '${km.toStringAsFixed(1)}km';
   }
 
-  bool _shouldFetchPlacebook({
-    required NLatLng center,
-    required double zoom,
-  }) {
+  bool _shouldFetchPlacebook({required NLatLng center, required double zoom}) {
     final lastCenter = _lastFetchCenter;
     final lastZoom = _lastFetchZoom;
     if (lastCenter == null || lastZoom == null) return true;
@@ -2022,8 +2109,7 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
       _isProgrammaticMove = false;
       _updateLiveMarkerPoints().whenComplete(() {
         if (!mounted) return;
-        if (_showLiveMarkers) return;
-        setState(() => _showLiveMarkers = true);
+        _showMarkersWithReveal();
       });
       return;
     }
@@ -2058,9 +2144,7 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
     final center = _lastCenter;
     if (controller == null || center == null) return;
     try {
-      await controller.updateCamera(
-        NCameraUpdate.withParams(target: center),
-      );
+      await controller.updateCamera(NCameraUpdate.withParams(target: center));
     } catch (_) {
       // Ignore transient map camera errors.
     }
@@ -2141,7 +2225,7 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
     final effectiveThemeIds = _effectiveThemeIds;
     return Container(
       height: 56,
-      padding: const EdgeInsets.only(top: 8, bottom: 8, left: 8,),
+      padding: const EdgeInsets.only(top: 8, bottom: 8, left: 8),
       child: Padding(
         padding: const EdgeInsets.only(left: 36, right: 32),
         child: SingleChildScrollView(
@@ -2152,10 +2236,12 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
             children: [
               if (themeChips.isEmpty)
                 Padding(
-                  padding: const EdgeInsets.only(right: 8,),
+                  padding: const EdgeInsets.only(right: 8),
                   child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 8,
+                    ),
                     decoration: const ShapeDecoration(
                       color: Colors.white,
                       shape: ContinuousRectangleBorder(
@@ -2179,7 +2265,8 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
                   final index = themeChips.indexOf(theme);
                   final themeId = theme['id']?.toString() ?? '';
                   final displayLabel = (theme['title'] as String?) ?? '';
-                  final selected = themeId.isNotEmpty &&
+                  final selected =
+                      themeId.isNotEmpty &&
                       effectiveThemeIds.length == 1 &&
                       effectiveThemeIds.first == themeId;
                   return Padding(
@@ -2216,12 +2303,15 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
                           duration: const Duration(milliseconds: 180),
                           curve: Curves.easeOut,
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 14, vertical: 8),
+                            horizontal: 14,
+                            vertical: 8,
+                          ),
                           decoration: ShapeDecoration(
                             color: selected ? Colors.black : Colors.white,
                             shape: const ContinuousRectangleBorder(
-                              borderRadius:
-                                  BorderRadius.all(Radius.circular(16)),
+                              borderRadius: BorderRadius.all(
+                                Radius.circular(16),
+                              ),
                             ),
                             shadows: AppShadows.card,
                           ),
@@ -2234,9 +2324,7 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
                                   fontFamily: 'Pretendard',
                                   fontSize: 13,
                                   fontWeight: FontWeight.w600,
-                                  color: selected
-                                      ? Colors.white
-                                      : Colors.black,
+                                  color: selected ? Colors.white : Colors.black,
                                 ),
                               ),
                             ],
@@ -2286,12 +2374,15 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
       ),
     );
   }
+
   Widget _buildTopFilterButton() {
     if (!widget.showFilterButton) return const SizedBox.shrink();
     final effectiveThemeIds = _effectiveThemeIds;
     final filterCount = effectiveThemeIds.isNotEmpty
         ? effectiveThemeIds.length
-        : (_selectedCategoryId != null && _selectedCategoryId!.isNotEmpty ? 1 : 0);
+        : (_selectedCategoryId != null && _selectedCategoryId!.isNotEmpty
+              ? 1
+              : 0);
     final showFilterBadge = filterCount > 0;
     return Stack(
       clipBehavior: Clip.none,
@@ -2370,8 +2461,8 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
   Widget build(BuildContext context) {
     final mediaSize = MediaQuery.of(context).size;
     final bottomSafe = MediaQuery.of(context).padding.bottom - 32;
-    final mapBottomInset = _placeListPeekHeight +
-        (widget.useBottomSafeArea ? bottomSafe : 0);
+    final mapBottomInset =
+        _placeListPeekHeight + (widget.useBottomSafeArea ? bottomSafe : 0);
     _screenScale = (mediaSize.shortestSide / 375).clamp(0.85, 1.3);
     final topSafe = MediaQuery.of(context).padding.top;
     const searchBarHeight = 50.0;
@@ -2411,9 +2502,11 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
                           _mapViewportHeight = constraints.maxHeight;
                         }
                         final widthChanged =
-                            (_mapViewportWidth - _lastViewportWidth).abs() > 0.5;
+                            (_mapViewportWidth - _lastViewportWidth).abs() >
+                            0.5;
                         final heightChanged =
-                            (_mapViewportHeight - _lastViewportHeight).abs() > 0.5;
+                            (_mapViewportHeight - _lastViewportHeight).abs() >
+                            0.5;
                         if (widthChanged || heightChanged) {
                           _lastViewportWidth = _mapViewportWidth;
                           _lastViewportHeight = _mapViewportHeight;
@@ -2422,7 +2515,7 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
                             _updateLiveMarkerPoints();
                           });
                         }
-                        return _mapWidget;
+                        return _buildMapWidget();
                       },
                     ),
                   ),
@@ -2569,60 +2662,75 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
                           ),
                         ]
                       : _sortedListSpaces().map((space) {
-                    final lat = (space['latitude'] as num?)?.toDouble();
-                    final lng = (space['longitude'] as num?)?.toDouble();
-                    final title = _titleForSpace(space);
-                    final placeName = _addressForSpace(space);
-                    String? pickTitle(dynamic raw) {
-                      if (raw is Map<String, dynamic>) {
-                        final title = raw['title'];
-                        if (title is String && title.trim().isNotEmpty) {
-                          return title.trim();
-                        }
-                      }
-                      if (raw is String && raw.trim().isNotEmpty) {
-                        return raw.trim();
-                      }
-                      return null;
-                    }
-                    final categoryText =
-                        pickTitle(space['category']) ?? pickTitle(space['categoryTitle']);
-                    final themeText =
-                        pickTitle(space['theme']) ?? pickTitle(space['themeTitle']);
-                    final commentCount = (space['commentCount'] as num?)?.toInt() ?? 0;
-                    final likeCount = (space['likeCount'] as num?)?.toInt() ?? 0;
-                    final dateText =
-                        (space['createdAt'] ?? space['updatedAt'] ?? '') as String;
-                    final favorited = (space['favorited'] as bool?) ??
-                        (space['isFavorited'] as bool?) ??
-                        false;
-                    final placeId = _placeIdOf(space);
-                    return KeyedSubtree(
-                      key: ValueKey('place_$placeId'),
-                      child: CommonPlaceListItemView(
-                        thumbnailUrl: _thumbnailForSpace(space) ?? '',
-                        title: title.isNotEmpty ? title : '장소',
-                        address: placeName,
-                        commentCount: commentCount,
-                        likeCount: likeCount,
-                        categoryText: categoryText,
-                        themeText: themeText,
-                        distanceText:
-                            _distanceLabelForSpace(lat: lat, lng: lng),
-                        favorited: favorited,
-                        onTap: () async {
-                          final deleted = await Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => PlacebookDetailView(space: space),
+                          final lat = (space['latitude'] as num?)?.toDouble();
+                          final lng = (space['longitude'] as num?)?.toDouble();
+                          final title = _titleForSpace(space);
+                          final placeName = _addressForSpace(space);
+                          String? pickTitle(dynamic raw) {
+                            if (raw is Map<String, dynamic>) {
+                              final title = raw['title'];
+                              if (title is String && title.trim().isNotEmpty) {
+                                return title.trim();
+                              }
+                            }
+                            if (raw is String && raw.trim().isNotEmpty) {
+                              return raw.trim();
+                            }
+                            return null;
+                          }
+
+                          final categoryText =
+                              pickTitle(space['category']) ??
+                              pickTitle(space['categoryTitle']);
+                          final themeText =
+                              pickTitle(space['theme']) ??
+                              pickTitle(space['themeTitle']);
+                          final commentCount = _readCount(space, const [
+                            'commentCount',
+                          ]);
+                          final likeCount = _readCount(space, const [
+                            'helpfulCount',
+                            'verificationCount',
+                            'likeCount',
+                          ]);
+                          final dateText =
+                              (space['createdAt'] ?? space['updatedAt'] ?? '')
+                                  as String;
+                          final favorited =
+                              (space['favorited'] as bool?) ??
+                              (space['isFavorited'] as bool?) ??
+                              false;
+                          final placeId = _placeIdOf(space);
+                          return KeyedSubtree(
+                            key: ValueKey('place_$placeId'),
+                            child: CommonPlaceListItemView(
+                              thumbnailUrl: _thumbnailForSpace(space) ?? '',
+                              title: title.isNotEmpty ? title : '장소',
+                              address: placeName,
+                              commentCount: commentCount,
+                              likeCount: likeCount,
+                              categoryText: categoryText,
+                              themeText: themeText,
+                              distanceText: _distanceLabelForSpace(
+                                lat: lat,
+                                lng: lng,
+                              ),
+                              favorited: favorited,
+                              onTap: () async {
+                                final deleted = await Navigator.of(context)
+                                    .push(
+                                      MaterialPageRoute(
+                                        builder: (_) =>
+                                            PlacebookDetailView(space: space),
+                                      ),
+                                    );
+                                if (deleted == true) {
+                                  _removePlaceFromMap(placeId);
+                                }
+                              },
                             ),
                           );
-                          if (deleted == true) {
-                            _removePlaceFromMap(placeId);
-                          }
-                        },
-                      ),
-                    );
-                  }).toList(),
+                        }).toList(),
                 ),
               ),
             ),
@@ -2631,7 +2739,6 @@ class _MapViewState extends State<MapView> with SingleTickerProviderStateMixin {
       ),
     );
   }
-
 }
 
 class _LiveMarkerCluster {
@@ -2645,17 +2752,20 @@ class _LiveMarkerCluster {
   final String clusterId;
   final NPoint center;
   final NLatLng centerLatLng;
-  final List<({
-    String markerId,
-    String type,
-    NPoint point,
-    String? thumbnailUrl,
-    Map<String, dynamic> space,
-    bool isFocused,
-    bool isCluster,
-    double lat,
-    double lng,
-  })> members;
+  final List<
+    ({
+      String markerId,
+      String type,
+      NPoint point,
+      String? thumbnailUrl,
+      Map<String, dynamic> space,
+      bool isFocused,
+      bool isCluster,
+      double lat,
+      double lng,
+    })
+  >
+  members;
 }
 
 class _PlaceDotMarker extends StatelessWidget {
@@ -2722,9 +2832,7 @@ class _MapToggleButton extends StatelessWidget {
 }
 
 class _MapFilterBadge extends StatelessWidget {
-  const _MapFilterBadge({
-    required this.text,
-  });
+  const _MapFilterBadge({required this.text});
 
   final String text;
 
@@ -2750,10 +2858,7 @@ class _MapFilterBadge extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.black,
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-          color: Colors.white,
-          width: 2,
-        ),
+        border: Border.all(color: Colors.white, width: 2),
       ),
       alignment: Alignment.center,
       child: content,
@@ -2867,21 +2972,14 @@ class _MapFloatingButton extends StatelessWidget {
           shadows: AppShadows.card,
         ),
         alignment: Alignment.center,
-        child: Icon(
-          icon,
-          size: 20,
-          color: iconColor,
-        ),
+        child: Icon(icon, size: 20, color: iconColor),
       ),
     );
   }
 }
 
 class _MapZoomButton extends StatelessWidget {
-  const _MapZoomButton({
-    required this.onZoomIn,
-    required this.onZoomOut,
-  });
+  const _MapZoomButton({required this.onZoomIn, required this.onZoomOut});
 
   final VoidCallback onZoomIn;
   final VoidCallback onZoomOut;
@@ -2948,4 +3046,35 @@ class MapViewConfig {
   final int placeCountForCluster;
   final int Function(double zoom)? gridSizeMetersForZoom;
   final int Function(double zoom, {required bool isCluster})? maxMarkersForZoom;
+}
+
+int _toIntCount(dynamic value) {
+  if (value == null) return 0;
+  if (value is num) return value.toInt();
+  if (value is String) return int.tryParse(value.trim()) ?? 0;
+  if (value is Map) {
+    return _toIntCount(value['count']) != 0
+        ? _toIntCount(value['count'])
+        : _toIntCount(value['value']);
+  }
+  return 0;
+}
+
+int _readCount(Map<String, dynamic> source, List<String> keys) {
+  for (final key in keys) {
+    if (!source.containsKey(key)) continue;
+    final raw = source[key];
+    if (raw == null) continue;
+    return _toIntCount(raw);
+  }
+  final data = source['data'];
+  if (data is Map<String, dynamic>) {
+    for (final key in keys) {
+      if (!data.containsKey(key)) continue;
+      final raw = data[key];
+      if (raw == null) continue;
+      return _toIntCount(raw);
+    }
+  }
+  return 0;
 }

@@ -37,7 +37,8 @@ class CommonPlaceListItemView extends StatelessWidget {
   Widget build(BuildContext context) {
     final safeTitle = title.trim().isEmpty ? '장소' : title.trim();
     final rawAddress = address.trim();
-    final safeAddress = (rawAddress.isEmpty ||
+    final safeAddress =
+        (rawAddress.isEmpty ||
             rawAddress == '{}' ||
             rawAddress.toLowerCase() == 'null')
         ? '장소 등록 안됨'
@@ -83,8 +84,15 @@ class CommonPlaceListItemView extends StatelessWidget {
                       ),
                       child: CommonImageView(
                         networkUrl: thumbnailUrl,
+                        cacheKey: thumbnailUrl,
                         fit: BoxFit.cover,
-                        backgroundColor: const Color(0xFFF2F2F2),
+                        backgroundColor: Colors.transparent,
+                        memCacheWidth: 180,
+                        memCacheHeight: 180,
+                        replayNetworkFade: true,
+                        enableFade: true,
+                        disableFadeAfterFirstLoad: false,
+                        preferFadeOverMemoryCache: true,
                       ),
                     ),
                   ),
@@ -150,10 +158,7 @@ class CommonPlaceListItemView extends StatelessWidget {
                   Row(
                     children: [
                       if (distanceText != null && distanceText!.isNotEmpty)
-                        Text(
-                          '~ ${distanceText!}',
-                          style: metaStyle,
-                        ),
+                        Text('~ ${distanceText!}', style: metaStyle),
                       if (distanceText != null && distanceText!.isNotEmpty)
                         const SizedBox(width: 12),
                       const Icon(
@@ -162,10 +167,7 @@ class CommonPlaceListItemView extends StatelessWidget {
                         color: Color(0xFF757575),
                       ),
                       const SizedBox(width: 4),
-                      Text(
-                        '$commentCount',
-                        style: metaStyle,
-                      ),
+                      Text('$commentCount', style: metaStyle),
                       const SizedBox(width: 12),
                       const Icon(
                         PhosphorIconsBold.sealCheck,
@@ -173,10 +175,7 @@ class CommonPlaceListItemView extends StatelessWidget {
                         color: Color(0xFF757575),
                       ),
                       const SizedBox(width: 4),
-                      Text(
-                        '$likeCount',
-                        style: metaStyle,
-                      ),
+                      Text('$likeCount', style: metaStyle),
                     ],
                   ),
                 ],

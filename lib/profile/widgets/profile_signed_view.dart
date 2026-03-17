@@ -411,13 +411,18 @@ class _ProfileActivitySummarySection extends StatelessWidget {
           return null;
         })() ??
         '';
-    final commentCount = (place['commentCount'] as num?)?.toInt() ??
-        (place['comments'] as num?)?.toInt() ??
-        0;
-    final likeCount = (place['favoriteCount'] as num?)?.toInt() ??
-        (place['likeCount'] as num?)?.toInt() ??
-        (place['likes'] as num?)?.toInt() ??
-        0;
+    final commentCount = _readPlaceCount(place, const [
+      'commentCount',
+      'commentsCount',
+      'comments',
+    ]);
+    final likeCount = _readPlaceCount(place, const [
+      'helpfulCount',
+      'verificationCount',
+      'favoriteCount',
+      'likeCount',
+      'likes',
+    ]);
     final distanceText = _distanceTextForPlace(place);
     return CommonPlaceListItemView(
       thumbnailUrl: _thumbnailForPlace(place),
@@ -469,6 +474,23 @@ class _ProfileActivitySummarySection extends StatelessWidget {
     final kmRaw = place['distanceKm'];
     if (kmRaw is num) return '${kmRaw.toDouble().toStringAsFixed(1)}km';
     return '';
+  }
+
+  static int _toPlaceCount(dynamic value) {
+    if (value is num) return value.toInt();
+    if (value is String) return int.tryParse(value.trim()) ?? 0;
+    return 0;
+  }
+
+  static int _readPlaceCount(Map<String, dynamic> json, List<String> keys) {
+    for (final key in keys) {
+      final count = _toPlaceCount(json[key]);
+      if (count > 0) return count;
+    }
+    for (final key in keys) {
+      if (json.containsKey(key)) return _toPlaceCount(json[key]);
+    }
+    return 0;
   }
 
   static String _addressForPlace(Map<String, dynamic> place) {

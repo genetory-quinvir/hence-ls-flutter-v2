@@ -257,6 +257,23 @@ class _SearchViewState extends State<SearchView> {
     return titleFrom(place['theme']) ?? titleFrom(place['themeTitle']);
   }
 
+  int _toIntCount(dynamic value) {
+    if (value is num) return value.toInt();
+    if (value is String) return int.tryParse(value.trim()) ?? 0;
+    return 0;
+  }
+
+  int _readCount(Map<String, dynamic> json, List<String> keys) {
+    for (final key in keys) {
+      final count = _toIntCount(json[key]);
+      if (count > 0) return count;
+    }
+    for (final key in keys) {
+      if (json.containsKey(key)) return _toIntCount(json[key]);
+    }
+    return 0;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -420,11 +437,17 @@ class _SearchViewState extends State<SearchView> {
                       }
                       final place = _results[index];
                       final placeId = _placeIdOf(place);
-                      final commentCount =
-                          (place['commentCount'] as num?)?.toInt() ?? 0;
-                      final likeCount = (place['likeCount'] as num?)?.toInt() ??
-                          (place['favoriteCount'] as num?)?.toInt() ??
-                          0;
+                      final commentCount = _readCount(place, const [
+                        'commentCount',
+                        'commentsCount',
+                        'comments',
+                      ]);
+                      final likeCount = _readCount(place, const [
+                        'helpfulCount',
+                        'verificationCount',
+                        'likeCount',
+                        'favoriteCount',
+                      ]);
                       final favorited = (place['favorited'] as bool?) ??
                           (place['isFavorited'] as bool?) ??
                           false;

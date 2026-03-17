@@ -233,6 +233,15 @@ class _FeaturedViewState extends State<FeaturedView> {
             final banners = data is Map<String, dynamic>
                 ? (data['banners'] as List<dynamic>?) ?? const []
                 : const [];
+            debugPrint(
+              '[FEATURED] banners_count=${banners.length} data_keys=${data is Map<String, dynamic> ? data.keys.join(",") : "none"}',
+            );
+            if (banners.isNotEmpty && banners.first is Map<String, dynamic>) {
+              final first = banners.first as Map<String, dynamic>;
+              debugPrint(
+                '[FEATURED] first_banner_keys=${first.keys.join(",")}',
+              );
+            }
             final themes = data is Map<String, dynamic>
                 ? (data['themes'] as List<dynamic>?) ?? const []
                 : const [];
@@ -288,9 +297,7 @@ class _FeaturedViewState extends State<FeaturedView> {
                   _FeaturedHeader(
                     onSearchTap: () {
                       Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => const SearchView(),
-                        ),
+                        MaterialPageRoute(builder: (_) => const SearchView()),
                       );
                     },
                   ),
@@ -719,9 +726,14 @@ class _FeaturedNearestPlacesSection extends StatelessWidget {
                 final place = places[index];
                 final title = (place['title'] as String?) ?? '장소';
                 final address = _placeAddress(place);
-                final commentCount =
-                    (place['commentCount'] as num?)?.toInt() ?? 0;
-                final likeCount = (place['likeCount'] as num?)?.toInt() ?? 0;
+                final commentCount = _readFeaturedCount(place, const [
+                  'commentCount',
+                ]);
+                final likeCount = _readFeaturedCount(place, const [
+                  'helpfulCount',
+                  'verificationCount',
+                  'likeCount',
+                ]);
                 final favorited =
                     (place['favorited'] as bool?) ??
                     (place['isFavorited'] as bool?) ??
@@ -802,12 +814,13 @@ class _FeaturedTopEngagedPlacesSection extends StatelessWidget {
                 final place = places[index];
                 final title = (place['title'] as String?) ?? '장소';
                 final address = _placeAddress(place);
-                final commentCount =
-                    (place['commentCount'] as num?)?.toInt() ?? 0;
-                final likeCount =
-                    (place['helpfulCount'] as num?)?.toInt() ??
-                    (place['verificationCount'] as num?)?.toInt() ??
-                    0;
+                final commentCount = _readFeaturedCount(place, const [
+                  'commentCount',
+                ]);
+                final likeCount = _readFeaturedCount(place, const [
+                  'helpfulCount',
+                  'verificationCount',
+                ]);
                 final favorited =
                     (place['favorited'] as bool?) ??
                     (place['isFavorited'] as bool?) ??
@@ -938,9 +951,7 @@ class _FeaturedCategorySection extends StatelessWidget {
 }
 
 class _FeaturedHeader extends StatelessWidget {
-  const _FeaturedHeader({
-    required this.onSearchTap,
-  });
+  const _FeaturedHeader({required this.onSearchTap});
 
   final VoidCallback onSearchTap;
 
@@ -1045,7 +1056,9 @@ class _FeaturedHeader extends StatelessWidget {
                         height: 40,
                         radius: 8,
                         backgroundColor: const Color(0xFFF2F2F2),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                        ),
                         textStyle: const TextStyle(
                           fontFamily: 'Pretendard',
                           fontSize: 14,
@@ -1149,9 +1162,9 @@ class _FeaturedBannerCard extends StatelessWidget {
               CommonImageView(
                 networkUrl: imageUrl,
                 fit: BoxFit.cover,
-                replayNetworkFade: false,
-                enableFade: false,
-                disableFadeAfterFirstLoad: true,
+                replayNetworkFade: true,
+                enableFade: true,
+                disableFadeAfterFirstLoad: false,
                 backgroundColor: const Color(0xFF1E1E1E),
               ),
               Container(
@@ -1362,9 +1375,14 @@ class _FeaturedThemeSection extends StatelessWidget {
                     : <String, dynamic>{};
                 final placeTitle = (place['title'] as String?) ?? '장소';
                 final placeAddress = _placeAddress(place);
-                final commentCount =
-                    (place['commentCount'] as num?)?.toInt() ?? 0;
-                final likeCount = (place['likeCount'] as num?)?.toInt() ?? 0;
+                final commentCount = _readFeaturedCount(place, const [
+                  'commentCount',
+                ]);
+                final likeCount = _readFeaturedCount(place, const [
+                  'helpfulCount',
+                  'verificationCount',
+                  'likeCount',
+                ]);
                 final favorited =
                     (place['favorited'] as bool?) ??
                     (place['isFavorited'] as bool?) ??
@@ -1475,34 +1493,102 @@ class _FeaturedEmptySection extends StatelessWidget {
   }
 }
 
+final Set<String> _loggedBannerImageKeys = <String>{};
+
 String _bannerImageUrl(Map<String, dynamic> banner) {
   final onImage = banner['onImage'];
-  final offImage = banner['offImage'];
-  final thumbnail = banner['thumbnail'];
-  final image = banner['image'];
-  final onMap = onImage is Map<String, dynamic> ? onImage : null;
-  final offMap = offImage is Map<String, dynamic> ? offImage : null;
-  final thumbnailMap = thumbnail is Map<String, dynamic> ? thumbnail : null;
-  final imageMap = image is Map<String, dynamic> ? image : null;
-  final thumbnailString = thumbnail is String ? thumbnail.trim() : null;
-  final imageString = image is String ? image.trim() : null;
-  return (onMap?['cdnUrl'] as String?) ??
-      (onMap?['fileUrl'] as String?) ??
-      (onMap?['thumbnailUrl'] as String?) ??
-      (offMap?['cdnUrl'] as String?) ??
-      (offMap?['fileUrl'] as String?) ??
-      (offMap?['thumbnailUrl'] as String?) ??
-      (imageMap?['cdnUrl'] as String?) ??
-      (imageMap?['fileUrl'] as String?) ??
-      (imageMap?['thumbnailUrl'] as String?) ??
-      (thumbnailMap?['cdnUrl'] as String?) ??
-      (thumbnailMap?['fileUrl'] as String?) ??
-      (thumbnailMap?['thumbnailUrl'] as String?) ??
-      (banner['imageUrl'] as String?) ??
-      (banner['thumbnailUrl'] as String?) ??
-      ((thumbnailString?.isNotEmpty ?? false) ? thumbnailString : null) ??
-      ((imageString?.isNotEmpty ?? false) ? imageString : null) ??
-      '';
+  if (onImage is Map<String, dynamic>) {
+    final thumb = onImage['thumbnailUrl'];
+    if (thumb is String && thumb.trim().isNotEmpty) {
+      return thumb.trim();
+    }
+    final cdn = onImage['cdnUrl'];
+    if (cdn is String && cdn.trim().isNotEmpty) {
+      return cdn.trim();
+    }
+    final file = onImage['fileUrl'];
+    if (file is String && file.trim().isNotEmpty) {
+      return file.trim();
+    }
+  }
+
+  String? pick(dynamic raw) {
+    if (raw is String) {
+      final trimmed = raw.trim();
+      return trimmed.isEmpty ? null : trimmed;
+    }
+    if (raw is List) {
+      for (final entry in raw) {
+        final value = pick(entry);
+        if (value != null && value.isNotEmpty) return value;
+      }
+      return null;
+    }
+    if (raw is Map<String, dynamic>) {
+      const directKeys = [
+        'cdnUrl',
+        'cdn_url',
+        'thumbnailUrl',
+        'thumbnailURL',
+        'thumbnail_url',
+        'fileUrl',
+        'file_url',
+        'url',
+        'imageUrl',
+        'image_url',
+        'onImageUrl',
+        'onimageUrl',
+        'on_image_url',
+        'offImageUrl',
+        'offimageUrl',
+        'off_image_url',
+        'mobileImageUrl',
+        'mobile_image_url',
+        'pcImageUrl',
+        'pc_image_url',
+      ];
+      for (final key in directKeys) {
+        final value = pick(raw[key]);
+        if (value != null && value.isNotEmpty) return value;
+      }
+      const nestedKeys = [
+        'onImage',
+        'onimage',
+        'on_image',
+        'offImage',
+        'offimage',
+        'off_image',
+        'thumbnail',
+        'thumb',
+        'image',
+        'imageFile',
+        'image_file',
+        'imageId',
+        'image_id',
+        'images',
+        'data',
+      ];
+      for (final key in nestedKeys) {
+        final value = pick(raw[key]);
+        if (value != null && value.isNotEmpty) return value;
+      }
+    }
+    return null;
+  }
+
+  final resolved = pick(banner) ?? '';
+  final id = (banner['id'] ?? '').toString();
+  final title = (banner['title'] ?? '').toString();
+  final logKey = '$id|$title|$resolved';
+  if (_loggedBannerImageKeys.add(logKey)) {
+    debugPrint(
+      '[FEATURED][BANNER] id=$id title="$title" image_url="$resolved"',
+    );
+  }
+  if (resolved.isEmpty) {
+    debugPrint('[FEATURED][BANNER] image_url_empty id=$id title=$title');
+  }
+  return resolved;
 }
 
 String _featuredPlaceId(Map<String, dynamic> place) {
@@ -1699,4 +1785,35 @@ List<Map<String, dynamic>> _extractFeaturedNearbyPlaces(
   }
 
   return const <Map<String, dynamic>>[];
+}
+
+int _toFeaturedCount(dynamic value) {
+  if (value == null) return 0;
+  if (value is num) return value.toInt();
+  if (value is String) return int.tryParse(value.trim()) ?? 0;
+  if (value is Map) {
+    final count = _toFeaturedCount(value['count']);
+    if (count != 0) return count;
+    return _toFeaturedCount(value['value']);
+  }
+  return 0;
+}
+
+int _readFeaturedCount(Map<String, dynamic> source, List<String> keys) {
+  for (final key in keys) {
+    if (!source.containsKey(key)) continue;
+    final raw = source[key];
+    if (raw == null) continue;
+    return _toFeaturedCount(raw);
+  }
+  final data = source['data'];
+  if (data is Map<String, dynamic>) {
+    for (final key in keys) {
+      if (!data.containsKey(key)) continue;
+      final raw = data[key];
+      if (raw == null) continue;
+      return _toFeaturedCount(raw);
+    }
+  }
+  return 0;
 }

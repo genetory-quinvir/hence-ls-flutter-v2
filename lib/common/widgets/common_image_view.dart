@@ -26,12 +26,13 @@ class CommonImageView extends StatelessWidget {
     this.fit = BoxFit.contain,
     this.blurSigma = 8,
     this.backgroundColor = Colors.transparent,
-    this.replayNetworkFade = false,
-    this.enableFade = false,
-    this.disableFadeAfterFirstLoad = true,
+    this.replayNetworkFade = true,
+    this.enableFade = true,
+    this.disableFadeAfterFirstLoad = false,
     this.placeholderLogoSize = 24,
     this.memCacheWidth,
     this.memCacheHeight,
+    this.preferFadeOverMemoryCache = false,
   });
 
   final String? networkUrl;
@@ -47,6 +48,7 @@ class CommonImageView extends StatelessWidget {
   final double placeholderLogoSize;
   final int? memCacheWidth;
   final int? memCacheHeight;
+  final bool preferFadeOverMemoryCache;
 
   static final _MemoryCache _cache = _MemoryCache(maxEntries: 200);
   static final Set<String> _loadedNetworkKeys = <String>{};
@@ -67,15 +69,21 @@ class CommonImageView extends StatelessWidget {
   static Future<void> prefetchNetworkUrls(Iterable<String> urls) async {
     final futures = <Future<Uint8List?>>[];
     for (final raw in urls) {
-      final url = raw.trim();
-      if (url.isEmpty) continue;
-      futures.add(_fetchFromNetwork(url));
+      final normalized = _normalizeCacheKey(raw);
+      if (normalized.isEmpty) continue;
+      if (_cache.get(normalized) != null) continue;
+      futures.add(_fetchFromNetwork(normalized));
     }
     if (futures.isEmpty) return;
     await Future.wait(futures);
   }
 
   static Future<Uint8List?> _fetchFromNetwork(String url) async {
+    final normalized = _normalizeCacheKey(url);
+    final cached = _cache.get(normalized);
+    if (cached != null && cached.isNotEmpty) {
+      return cached;
+    }
     try {
       final uri = Uri.tryParse(url);
       if (uri == null) return null;
@@ -84,7 +92,9 @@ class CommonImageView extends StatelessWidget {
         return null;
       }
       final bytes = response.bodyBytes;
-      return bytes.isEmpty ? null : bytes;
+      if (bytes.isEmpty) return null;
+      _cache.put(normalized, bytes);
+      return bytes;
     } catch (_) {
       return null;
     }
@@ -100,23 +110,7 @@ class CommonImageView extends StatelessWidget {
           resolvedMemCacheHeight: resolved.height,
         );
         if (image == null) return _placeholder();
-
-        if (!enableFade || _isFadeSuppressed()) {
-          return Container(
-            color: backgroundColor,
-            child: image,
-          );
-        }
-
-        return Container(
-          color: backgroundColor,
-          child: AnimatedSwitcher(
-            duration: const Duration(milliseconds: 200),
-            switchInCurve: Curves.easeOut,
-            switchOutCurve: Curves.easeIn,
-            child: image,
-          ),
-        );
+        return Container(color: backgroundColor, child: image);
       },
     );
   }
@@ -156,8 +150,16 @@ class CommonImageView extends StatelessWidget {
     int? resolvedMemCacheHeight,
   }) {
     final networkKey = _networkKey();
-    final normalizedKey = cacheKey == null ? null : _normalizeCacheKey(cacheKey!);
-    final cachedBytes = normalizedKey == null ? null : _cache.get(normalizedKey);
+    final normalizedNetworkUrl = networkUrl == null
+        ? null
+        : _normalizeCacheKey(networkUrl!.trim());
+    final normalizedCacheKey = cacheKey == null
+        ? null
+        : _normalizeCacheKey(cacheKey!);
+    final normalizedKey = normalizedCacheKey ?? normalizedNetworkUrl;
+    final cachedBytes = normalizedKey == null
+        ? null
+        : _cache.get(normalizedKey);
     if (memoryBytes != null && memoryBytes!.isNotEmpty) {
       if (normalizedKey != null) {
         _cache.put(normalizedKey, memoryBytes!);
@@ -172,7 +174,9 @@ class CommonImageView extends StatelessWidget {
         errorBuilder: (context, error, stackTrace) => _placeholder(),
       );
     }
-    if (cachedBytes != null && cachedBytes.isNotEmpty) {
+    if (!preferFadeOverMemoryCache &&
+        cachedBytes != null &&
+        cachedBytes.isNotEmpty) {
       return Image.memory(
         cachedBytes,
         fit: fit,
@@ -184,7 +188,7 @@ class CommonImageView extends StatelessWidget {
       );
     }
     if (networkUrl != null && networkUrl!.trim().isNotEmpty) {
-      if (disableFadeAfterFirstLoad && networkKey != null) {
+      if (!enableFade && disableFadeAfterFirstLoad && networkKey != null) {
         final cachedProvider = _providerCache[networkKey];
         if (cachedProvider != null) {
           return Image(
@@ -197,39 +201,28 @@ class CommonImageView extends StatelessWidget {
           );
         }
       }
-      final shouldFade = enableFade && !_isFadeSuppressed();
-      final fadeIn = shouldFade
-          ? (replayNetworkFade ? const Duration(milliseconds: 180) : Duration.zero)
-          : Duration.zero;
-      final fadeOut = shouldFade ? const Duration(milliseconds: 120) : Duration.zero;
-      return CachedNetworkImage(
-        imageUrl: networkUrl!.trim(),
-        key: ValueKey(networkUrl!.trim()),
+      final shouldFade =
+          enableFade && (replayNetworkFade || !_isFadeSuppressed());
+      return _NetworkDissolveImage(
+        key: ValueKey(
+          replayNetworkFade
+              ? '${normalizedKey ?? networkUrl}-replay'
+              : '${normalizedKey ?? networkUrl}-once',
+        ),
+        url: networkUrl!.trim(),
         cacheManager: _cacheManager,
         cacheKey: normalizedKey?.trim(),
         fit: fit,
-        width: double.infinity,
-        height: double.infinity,
         memCacheWidth: resolvedMemCacheWidth,
         memCacheHeight: resolvedMemCacheHeight,
-        fadeInDuration: fadeIn,
-        fadeOutDuration: fadeOut,
-        imageBuilder: (context, imageProvider) {
+        placeholder: _placeholder(),
+        shouldFade: shouldFade,
+        onImageResolved: (provider) {
           if (disableFadeAfterFirstLoad && networkKey != null) {
             _loadedNetworkKeys.add(networkKey);
-            _providerCache[networkKey] = imageProvider;
+            _providerCache[networkKey] = provider;
           }
-          return Image(
-            image: imageProvider,
-            fit: fit,
-            filterQuality: FilterQuality.low,
-            width: double.infinity,
-            height: double.infinity,
-            gaplessPlayback: true,
-          );
         },
-        placeholder: (context, imageUrl) => _placeholder(),
-        errorWidget: (context, imageUrl, error) => _placeholder(),
       );
     }
     if (assetPath != null && assetPath!.trim().isNotEmpty) {
@@ -277,13 +270,102 @@ class CommonImageView extends StatelessWidget {
 }
 
 class _ResolvedMemCacheSize {
-  const _ResolvedMemCacheSize({
-    required this.width,
-    required this.height,
-  });
+  const _ResolvedMemCacheSize({required this.width, required this.height});
 
   final int? width;
   final int? height;
+}
+
+class _NetworkDissolveImage extends StatefulWidget {
+  const _NetworkDissolveImage({
+    super.key,
+    required this.url,
+    required this.cacheManager,
+    required this.cacheKey,
+    required this.fit,
+    required this.memCacheWidth,
+    required this.memCacheHeight,
+    required this.placeholder,
+    required this.shouldFade,
+    required this.onImageResolved,
+  });
+
+  final String url;
+  final BaseCacheManager cacheManager;
+  final String? cacheKey;
+  final BoxFit fit;
+  final int? memCacheWidth;
+  final int? memCacheHeight;
+  final Widget placeholder;
+  final bool shouldFade;
+  final ValueChanged<ImageProvider> onImageResolved;
+
+  @override
+  State<_NetworkDissolveImage> createState() => _NetworkDissolveImageState();
+}
+
+class _NetworkDissolveImageState extends State<_NetworkDissolveImage> {
+  bool _resolved = false;
+  bool _failed = false;
+
+  void _markResolved(ImageProvider provider) {
+    if (_resolved || _failed || !mounted) return;
+    widget.onImageResolved(provider);
+    setState(() => _resolved = true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final canResizeWithCacheManager = widget.cacheManager is ImageCacheManager;
+    final provider = CachedNetworkImageProvider(
+      widget.url,
+      cacheManager: widget.cacheManager,
+      cacheKey: widget.cacheKey,
+      maxWidth: canResizeWithCacheManager ? widget.memCacheWidth : null,
+      maxHeight: canResizeWithCacheManager ? widget.memCacheHeight : null,
+    );
+    final image = Image(
+      image: provider,
+      fit: widget.fit,
+      filterQuality: FilterQuality.low,
+      width: double.infinity,
+      height: double.infinity,
+      gaplessPlayback: true,
+      frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+        if (frame != null || wasSynchronouslyLoaded) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _markResolved(provider);
+          });
+        }
+        return child;
+      },
+      errorBuilder: (context, error, stackTrace) {
+        debugPrint('[CommonImageView] image_load_failed url=${widget.url} error=$error');
+        if (!_failed && mounted) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            setState(() => _failed = true);
+          });
+        }
+        return const SizedBox.shrink();
+      },
+    );
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        widget.placeholder,
+        AnimatedOpacity(
+          opacity: _resolved ? 1 : 0,
+          duration: widget.shouldFade
+              ? const Duration(milliseconds: 180)
+              : Duration.zero,
+          curve: Curves.easeOut,
+          child: image,
+        ),
+      ],
+    );
+  }
 }
 
 class _MemoryCache {
