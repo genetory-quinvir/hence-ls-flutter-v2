@@ -2,14 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:hence_ls_flutter_v2/main.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:hence_ls_flutter_v2/achievement/achievement_view.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../common/auth/auth_store.dart';
 import '../../common/widgets/common_inkwell.dart';
 import '../../common/widgets/common_profile_view.dart';
 import '../../common/widgets/common_rounded_button.dart';
 import '../../profile_edit/profile_edit_view.dart';
-import '../profile_placebook_view.dart';
 import '../models/profile_display_user.dart';
 
 class ProfileUserSection extends StatefulWidget {

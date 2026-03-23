@@ -141,7 +141,7 @@ class _ReportViewState extends State<ReportView> {
                       ),
                     ),
                   );
-                }).toList(),
+                }),
                 const SizedBox(height: 8),
                 const Text(
                   '상세 내용 (선택)',

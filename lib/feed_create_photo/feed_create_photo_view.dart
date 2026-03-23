@@ -239,10 +239,6 @@ class _FeedCreatePhotoViewState extends State<FeedCreatePhotoView> {
     if (picked == null) return;
     final asset = await PhotoManager.editor.saveImageWithPath(picked.path);
     if (!mounted) return;
-    if (asset == null) {
-      _showSnack('촬영한 사진을 불러올 수 없습니다.');
-      return;
-    }
     setState(() {
       if (_assets.every((item) => item.id != asset.id)) {
         _assets.insert(0, asset);

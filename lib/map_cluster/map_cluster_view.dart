@@ -216,7 +216,7 @@ class _MapClusterViewState extends State<MapClusterView> {
                   title,
                   style: const TextStyle(
                     fontFamily: 'Pretendard',
-                    fontSize: 20,
+                    fontSize: 16,
                     fontWeight: FontWeight.w700,
                     color: Colors.black,
                   ),
@@ -234,7 +234,7 @@ class _MapClusterViewState extends State<MapClusterView> {
                 ? ListView.separated(
                     padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
                     itemCount: feedEntries.length,
-                    separatorBuilder: (_, __) => const SizedBox.shrink(),
+                    separatorBuilder: (_, _) => const SizedBox.shrink(),
                     itemBuilder: (context, index) {
                       final feed = feedEntries[index].feed;
                       final source = feedEntries[index].item;
@@ -269,7 +269,7 @@ class _MapClusterViewState extends State<MapClusterView> {
                 : ListView.separated(
                     padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
                     itemCount: widget.items.length,
-                    separatorBuilder: (_, __) => const SizedBox.shrink(),
+                    separatorBuilder: (_, _) => const SizedBox.shrink(),
                     itemBuilder: (context, index) {
                       final item = widget.items[index];
                       final commentCount = (item['commentCount'] as num?)?.toInt() ??

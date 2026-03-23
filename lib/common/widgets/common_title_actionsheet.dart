@@ -86,7 +86,7 @@ class CommonTitleActionSheet extends StatelessWidget {
                   ? const NeverScrollableScrollPhysics()
                   : const BouncingScrollPhysics(),
               itemCount: items.length,
-              separatorBuilder: (_, __) => const SizedBox.shrink(),
+              separatorBuilder: (_, _) => const SizedBox.shrink(),
               itemBuilder: (context, index) {
                 final item = items[index];
                 return CommonInkWell(

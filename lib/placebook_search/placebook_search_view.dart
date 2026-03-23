@@ -248,7 +248,7 @@ class _PlacebookSearchViewState extends State<PlacebookSearchView> {
                                   const EdgeInsets.fromLTRB(16, 8, 16, 24),
                               itemCount: _results.length +
                                   (_isEnd ? 0 : 1),
-                              separatorBuilder: (_, __) =>
+                              separatorBuilder: (_, _) =>
                                   const SizedBox(height: 12),
                               itemBuilder: (context, index) {
                                 if (index >= _results.length) {

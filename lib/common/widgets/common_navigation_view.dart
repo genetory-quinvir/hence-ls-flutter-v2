@@ -128,8 +128,8 @@ class CommonNavigationView extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        if (resolvedTitle != null) resolvedTitle,
-                        if (resolvedSubTitle != null) resolvedSubTitle,
+                        ?resolvedTitle,
+                        ?resolvedSubTitle,
                       ],
                     ),
                   ),

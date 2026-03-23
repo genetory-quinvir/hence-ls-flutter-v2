@@ -96,7 +96,7 @@ class _CommonCalendarViewState extends State<CommonCalendarView> {
       _displayedMonth = DateTime(picked.year, picked.month, 1);
       final lastDay = DateTime(picked.year, picked.month + 1, 0).day;
       final day = _selectedDate.day;
-      final newDay = day.clamp(1, lastDay) as int;
+      final newDay = day.clamp(1, lastDay);
       _selectedDate = DateTime(picked.year, picked.month, newDay);
     });
   }
@@ -114,8 +114,8 @@ class _CommonCalendarViewState extends State<CommonCalendarView> {
     );
     final months = List<int>.generate(12, (i) => i + 1);
     var yearIndex =
-        years.indexOf(initialYear).clamp(0, years.length - 1) as int;
-    var monthIndex = (initialMonth - 1).clamp(0, 11) as int;
+        years.indexOf(initialYear).clamp(0, years.length - 1);
+    var monthIndex = (initialMonth - 1).clamp(0, 11);
 
     final yearController = FixedExtentScrollController(initialItem: yearIndex);
     final monthController = FixedExtentScrollController(initialItem: monthIndex);

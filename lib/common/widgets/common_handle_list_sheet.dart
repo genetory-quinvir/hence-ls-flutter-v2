@@ -105,7 +105,7 @@ class CommonHandleListSheet extends StatelessWidget {
                                   )
                                 else
                                   const Spacer(),
-                                if (trailing != null) trailing!,
+                                ?trailing,
                               ],
                             ),
                           ),

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import '../common/widgets/common_refresh_view.dart';
 import 'package:flutter/services.dart';
-import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../common/widgets/common_navigation_view.dart';
 import '../common/auth/auth_store.dart';
