@@ -109,10 +109,6 @@ class _ProfileSignedViewState extends State<ProfileSignedView> {
 
   @override
   Widget build(BuildContext context) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      _measureHeaderHeight();
-    });
     return CommonRefreshView(
       onRefresh: () => _refreshProfileInfo(force: true),
       topPadding: 0,
@@ -132,8 +128,10 @@ class _ProfileSignedViewState extends State<ProfileSignedView> {
             ),
           ),
           const SliverToBoxAdapter(child: SizedBox(height: 16)),
-          const SliverToBoxAdapter(
-            child: _ProfileActivitySummarySection(),
+          SliverToBoxAdapter(
+            child: _ProfileActivitySummarySection(
+              refreshSignal: _headerRefreshSignal,
+            ),
           ),
           const SliverToBoxAdapter(child: SizedBox(height: 24)),
           const SliverToBoxAdapter(child: SizedBox(height: 24)),
@@ -143,13 +141,56 @@ class _ProfileSignedViewState extends State<ProfileSignedView> {
   }
 }
 
-class _ProfileActivitySummarySection extends StatelessWidget {
-  const _ProfileActivitySummarySection();
+class _ProfileActivitySummarySection extends StatefulWidget {
+  const _ProfileActivitySummarySection({
+    required this.refreshSignal,
+  });
+
+  final ValueListenable<int> refreshSignal;
+
+  @override
+  State<_ProfileActivitySummarySection> createState() =>
+      _ProfileActivitySummarySectionState();
+}
+
+class _ProfileActivitySummarySectionState
+    extends State<_ProfileActivitySummarySection> {
+  late Future<_ProfileActivityData> _future;
+  late final VoidCallback _refreshListener;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _ProfileActivitySummarySectionState._loadActivityData();
+    _refreshListener = _reload;
+    widget.refreshSignal.addListener(_refreshListener);
+  }
+
+  @override
+  void didUpdateWidget(covariant _ProfileActivitySummarySection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.refreshSignal == widget.refreshSignal) return;
+    oldWidget.refreshSignal.removeListener(_refreshListener);
+    widget.refreshSignal.addListener(_refreshListener);
+  }
+
+  @override
+  void dispose() {
+    widget.refreshSignal.removeListener(_refreshListener);
+    super.dispose();
+  }
+
+  void _reload() {
+    if (!mounted) return;
+    setState(() {
+      _future = _ProfileActivitySummarySectionState._loadActivityData();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<_ProfileActivityData>(
-      future: _loadActivityData(),
+      future: _future,
       builder: (context, snapshot) {
         final data = snapshot.data;
         final isLoading = snapshot.connectionState == ConnectionState.waiting;
@@ -411,13 +452,18 @@ class _ProfileActivitySummarySection extends StatelessWidget {
           return null;
         })() ??
         '';
-    final commentCount = (place['commentCount'] as num?)?.toInt() ??
-        (place['comments'] as num?)?.toInt() ??
-        0;
-    final likeCount = (place['favoriteCount'] as num?)?.toInt() ??
-        (place['likeCount'] as num?)?.toInt() ??
-        (place['likes'] as num?)?.toInt() ??
-        0;
+    final commentCount = _readPlaceCount(place, const [
+      'commentCount',
+      'commentsCount',
+      'comments',
+    ]);
+    final likeCount = _readPlaceCount(place, const [
+      'helpfulCount',
+      'verificationCount',
+      'favoriteCount',
+      'likeCount',
+      'likes',
+    ]);
     final distanceText = _distanceTextForPlace(place);
     return CommonPlaceListItemView(
       thumbnailUrl: _thumbnailForPlace(place),
@@ -469,6 +515,23 @@ class _ProfileActivitySummarySection extends StatelessWidget {
     final kmRaw = place['distanceKm'];
     if (kmRaw is num) return '${kmRaw.toDouble().toStringAsFixed(1)}km';
     return '';
+  }
+
+  static int _toPlaceCount(dynamic value) {
+    if (value is num) return value.toInt();
+    if (value is String) return int.tryParse(value.trim()) ?? 0;
+    return 0;
+  }
+
+  static int _readPlaceCount(Map<String, dynamic> json, List<String> keys) {
+    for (final key in keys) {
+      final count = _toPlaceCount(json[key]);
+      if (count > 0) return count;
+    }
+    for (final key in keys) {
+      if (json.containsKey(key)) return _toPlaceCount(json[key]);
+    }
+    return 0;
   }
 
   static String _addressForPlace(Map<String, dynamic> place) {

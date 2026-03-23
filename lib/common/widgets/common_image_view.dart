@@ -32,6 +32,7 @@ class CommonImageView extends StatelessWidget {
     this.placeholderLogoSize = 24,
     this.memCacheWidth,
     this.memCacheHeight,
+    this.preferFadeOverMemoryCache = false,
   });
 
   final String? networkUrl;
@@ -47,18 +48,13 @@ class CommonImageView extends StatelessWidget {
   final double placeholderLogoSize;
   final int? memCacheWidth;
   final int? memCacheHeight;
+  final bool preferFadeOverMemoryCache;
 
   static final _MemoryCache _cache = _MemoryCache(maxEntries: 200);
   static final Set<String> _loadedNetworkKeys = <String>{};
   static final Map<String, ImageProvider> _providerCache =
       <String, ImageProvider>{};
-  static final CacheManager _cacheManager = CacheManager(
-    Config(
-      'commonImageCache',
-      stalePeriod: const Duration(days: 7),
-      maxNrOfCacheObjects: 500,
-    ),
-  );
+  static final BaseCacheManager _cacheManager = _CommonImageCacheManager();
 
   static Future<Uint8List?> fetchNetworkBytes(String url) {
     return _fetchFromNetwork(url);
@@ -67,15 +63,21 @@ class CommonImageView extends StatelessWidget {
   static Future<void> prefetchNetworkUrls(Iterable<String> urls) async {
     final futures = <Future<Uint8List?>>[];
     for (final raw in urls) {
-      final url = raw.trim();
-      if (url.isEmpty) continue;
-      futures.add(_fetchFromNetwork(url));
+      final normalized = _normalizeCacheKey(raw);
+      if (normalized.isEmpty) continue;
+      if (_cache.get(normalized) != null) continue;
+      futures.add(_fetchFromNetwork(normalized));
     }
     if (futures.isEmpty) return;
     await Future.wait(futures);
   }
 
   static Future<Uint8List?> _fetchFromNetwork(String url) async {
+    final normalized = _normalizeCacheKey(url);
+    final cached = _cache.get(normalized);
+    if (cached != null && cached.isNotEmpty) {
+      return cached;
+    }
     try {
       final uri = Uri.tryParse(url);
       if (uri == null) return null;
@@ -84,7 +86,9 @@ class CommonImageView extends StatelessWidget {
         return null;
       }
       final bytes = response.bodyBytes;
-      return bytes.isEmpty ? null : bytes;
+      if (bytes.isEmpty) return null;
+      _cache.put(normalized, bytes);
+      return bytes;
     } catch (_) {
       return null;
     }
@@ -92,31 +96,64 @@ class CommonImageView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final image = _buildImage();
-    if (image == null) return _placeholder();
-
-    if (!enableFade || _isFadeSuppressed()) {
-      return Container(
-        color: backgroundColor,
-        child: image,
-      );
-    }
-
-    return Container(
-      color: backgroundColor,
-      child: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 200),
-        switchInCurve: Curves.easeOut,
-        switchOutCurve: Curves.easeIn,
-        child: image,
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final resolved = _resolveMemCacheSize(context, constraints);
+        final image = _buildImage(
+          resolvedMemCacheWidth: resolved.width,
+          resolvedMemCacheHeight: resolved.height,
+        );
+        if (image == null) return _placeholder();
+        return Container(color: backgroundColor, child: image);
+      },
     );
   }
 
-  Widget? _buildImage() {
+  _ResolvedMemCacheSize _resolveMemCacheSize(
+    BuildContext context,
+    BoxConstraints constraints,
+  ) {
+    int? toPx(double? logicalSize) {
+      if (logicalSize == null ||
+          logicalSize.isNaN ||
+          logicalSize.isInfinite ||
+          logicalSize <= 0) {
+        return null;
+      }
+      final dpr = MediaQuery.maybeDevicePixelRatioOf(context) ?? 1.0;
+      final px = (logicalSize * dpr).round();
+      if (px < 16) return null;
+      return px.clamp(16, 2048);
+    }
+
+    final inferredWidth = constraints.hasBoundedWidth
+        ? toPx(constraints.maxWidth)
+        : null;
+    final inferredHeight = constraints.hasBoundedHeight
+        ? toPx(constraints.maxHeight)
+        : null;
+
+    return _ResolvedMemCacheSize(
+      width: memCacheWidth ?? inferredWidth,
+      height: memCacheHeight ?? inferredHeight,
+    );
+  }
+
+  Widget? _buildImage({
+    int? resolvedMemCacheWidth,
+    int? resolvedMemCacheHeight,
+  }) {
     final networkKey = _networkKey();
-    final normalizedKey = cacheKey == null ? null : _normalizeCacheKey(cacheKey!);
-    final cachedBytes = normalizedKey == null ? null : _cache.get(normalizedKey);
+    final normalizedNetworkUrl = networkUrl == null
+        ? null
+        : _normalizeCacheKey(networkUrl!.trim());
+    final normalizedCacheKey = cacheKey == null
+        ? null
+        : _normalizeCacheKey(cacheKey!);
+    final normalizedKey = normalizedCacheKey ?? normalizedNetworkUrl;
+    final cachedBytes = normalizedKey == null
+        ? null
+        : _cache.get(normalizedKey);
     if (memoryBytes != null && memoryBytes!.isNotEmpty) {
       if (normalizedKey != null) {
         _cache.put(normalizedKey, memoryBytes!);
@@ -124,16 +161,20 @@ class CommonImageView extends StatelessWidget {
       return Image.memory(
         memoryBytes!,
         fit: fit,
+        filterQuality: FilterQuality.low,
         width: double.infinity,
         height: double.infinity,
         gaplessPlayback: true,
         errorBuilder: (context, error, stackTrace) => _placeholder(),
       );
     }
-    if (cachedBytes != null && cachedBytes.isNotEmpty) {
+    if (!preferFadeOverMemoryCache &&
+        cachedBytes != null &&
+        cachedBytes.isNotEmpty) {
       return Image.memory(
         cachedBytes,
         fit: fit,
+        filterQuality: FilterQuality.low,
         width: double.infinity,
         height: double.infinity,
         gaplessPlayback: true,
@@ -141,50 +182,41 @@ class CommonImageView extends StatelessWidget {
       );
     }
     if (networkUrl != null && networkUrl!.trim().isNotEmpty) {
-      if (disableFadeAfterFirstLoad && networkKey != null) {
+      if (!enableFade && disableFadeAfterFirstLoad && networkKey != null) {
         final cachedProvider = _providerCache[networkKey];
         if (cachedProvider != null) {
           return Image(
             image: cachedProvider,
             fit: fit,
+            filterQuality: FilterQuality.low,
             width: double.infinity,
             height: double.infinity,
             gaplessPlayback: true,
           );
         }
       }
-      final shouldFade = enableFade && !_isFadeSuppressed();
-      final fadeIn = shouldFade
-          ? (replayNetworkFade ? const Duration(milliseconds: 180) : Duration.zero)
-          : Duration.zero;
-      final fadeOut = shouldFade ? const Duration(milliseconds: 120) : Duration.zero;
-      return CachedNetworkImage(
-        imageUrl: networkUrl!.trim(),
-        key: ValueKey(networkUrl!.trim()),
+      final shouldFade =
+          enableFade && (replayNetworkFade || !_isFadeSuppressed());
+      return _NetworkDissolveImage(
+        key: ValueKey(
+          replayNetworkFade
+              ? '${normalizedKey ?? networkUrl}-replay'
+              : '${normalizedKey ?? networkUrl}-once',
+        ),
+        url: networkUrl!.trim(),
         cacheManager: _cacheManager,
         cacheKey: normalizedKey?.trim(),
         fit: fit,
-        width: double.infinity,
-        height: double.infinity,
-        memCacheWidth: memCacheWidth,
-        memCacheHeight: memCacheHeight,
-        fadeInDuration: fadeIn,
-        fadeOutDuration: fadeOut,
-        imageBuilder: (context, imageProvider) {
+        memCacheWidth: resolvedMemCacheWidth,
+        memCacheHeight: resolvedMemCacheHeight,
+        placeholder: _placeholder(),
+        shouldFade: shouldFade,
+        onImageResolved: (provider) {
           if (disableFadeAfterFirstLoad && networkKey != null) {
             _loadedNetworkKeys.add(networkKey);
-            _providerCache[networkKey] = imageProvider;
+            _providerCache[networkKey] = provider;
           }
-          return Image(
-            image: imageProvider,
-            fit: fit,
-            width: double.infinity,
-            height: double.infinity,
-            gaplessPlayback: true,
-          );
         },
-        placeholder: (context, imageUrl) => _placeholder(),
-        errorWidget: (context, imageUrl, error) => _placeholder(),
       );
     }
     if (assetPath != null && assetPath!.trim().isNotEmpty) {
@@ -192,6 +224,7 @@ class CommonImageView extends StatelessWidget {
         assetPath!,
         key: ValueKey(assetPath),
         fit: fit,
+        filterQuality: FilterQuality.low,
         width: double.infinity,
         height: double.infinity,
         gaplessPlayback: true,
@@ -230,6 +263,105 @@ class CommonImageView extends StatelessWidget {
   }
 }
 
+class _ResolvedMemCacheSize {
+  const _ResolvedMemCacheSize({required this.width, required this.height});
+
+  final int? width;
+  final int? height;
+}
+
+class _NetworkDissolveImage extends StatefulWidget {
+  const _NetworkDissolveImage({
+    super.key,
+    required this.url,
+    required this.cacheManager,
+    required this.cacheKey,
+    required this.fit,
+    required this.memCacheWidth,
+    required this.memCacheHeight,
+    required this.placeholder,
+    required this.shouldFade,
+    required this.onImageResolved,
+  });
+
+  final String url;
+  final BaseCacheManager cacheManager;
+  final String? cacheKey;
+  final BoxFit fit;
+  final int? memCacheWidth;
+  final int? memCacheHeight;
+  final Widget placeholder;
+  final bool shouldFade;
+  final ValueChanged<ImageProvider> onImageResolved;
+
+  @override
+  State<_NetworkDissolveImage> createState() => _NetworkDissolveImageState();
+}
+
+class _NetworkDissolveImageState extends State<_NetworkDissolveImage> {
+  bool _resolved = false;
+  bool _failed = false;
+
+  void _markResolved(ImageProvider provider) {
+    if (_resolved || _failed || !mounted) return;
+    widget.onImageResolved(provider);
+    setState(() => _resolved = true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final canResizeWithCacheManager = widget.cacheManager is ImageCacheManager;
+    final provider = CachedNetworkImageProvider(
+      widget.url,
+      cacheManager: widget.cacheManager,
+      cacheKey: widget.cacheKey,
+      maxWidth: canResizeWithCacheManager ? widget.memCacheWidth : null,
+      maxHeight: canResizeWithCacheManager ? widget.memCacheHeight : null,
+    );
+    final image = Image(
+      image: provider,
+      fit: widget.fit,
+      filterQuality: FilterQuality.low,
+      width: double.infinity,
+      height: double.infinity,
+      gaplessPlayback: true,
+      frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+        if (frame != null || wasSynchronouslyLoaded) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _markResolved(provider);
+          });
+        }
+        return child;
+      },
+      errorBuilder: (context, error, stackTrace) {
+        debugPrint('[CommonImageView] image_load_failed url=${widget.url} error=$error');
+        if (!_failed && mounted) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            setState(() => _failed = true);
+          });
+        }
+        return const SizedBox.shrink();
+      },
+    );
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        widget.placeholder,
+        AnimatedOpacity(
+          opacity: _resolved ? 1 : 0,
+          duration: widget.shouldFade
+              ? const Duration(milliseconds: 180)
+              : Duration.zero,
+          curve: Curves.easeOut,
+          child: image,
+        ),
+      ],
+    );
+  }
+}
+
 class _MemoryCache {
   _MemoryCache({required this.maxEntries});
 
@@ -252,4 +384,21 @@ class _MemoryCache {
       _map.remove(_map.keys.first);
     }
   }
+}
+
+class _CommonImageCacheManager extends CacheManager with ImageCacheManager {
+  static const String _key = 'commonImageCache';
+  static final _CommonImageCacheManager _instance =
+      _CommonImageCacheManager._();
+
+  factory _CommonImageCacheManager() => _instance;
+
+  _CommonImageCacheManager._()
+      : super(
+          Config(
+            _key,
+            stalePeriod: const Duration(days: 7),
+            maxNrOfCacheObjects: 500,
+          ),
+        );
 }

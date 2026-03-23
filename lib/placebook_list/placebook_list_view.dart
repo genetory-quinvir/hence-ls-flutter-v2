@@ -84,9 +84,7 @@ class _PlacebookListViewState extends State<PlacebookListView> {
       if (serviceEnabled && granted) {
         final position = await Geolocator.getCurrentPosition(
           desiredAccuracy: LocationAccuracy.medium,
-        ).timeout(
-          const Duration(seconds: 2),
-        );
+        ).timeout(const Duration(seconds: 2));
         _latitude = position.latitude;
         _longitude = position.longitude;
       }
@@ -160,9 +158,11 @@ class _PlacebookListViewState extends State<PlacebookListView> {
     ).map(_normalizePlaceListItem).toList(growable: false);
     final meta = _extractPagingMeta(response);
     final nextCursorRaw = meta?['nextCursor']?.toString();
-    final nextCursor =
-        (nextCursorRaw == null || nextCursorRaw.isEmpty) ? null : nextCursorRaw;
-    final hasNext = (meta?['hasNext'] as bool?) ??
+    final nextCursor = (nextCursorRaw == null || nextCursorRaw.isEmpty)
+        ? null
+        : nextCursorRaw;
+    final hasNext =
+        (meta?['hasNext'] as bool?) ??
         (meta?['hasMore'] as bool?) ??
         (nextCursor != null);
     if (!mounted) return;
@@ -503,10 +503,15 @@ class _PlacebookListViewState extends State<PlacebookListView> {
                               final place = _places[dataIndex];
                               final title = (place['title'] ?? '').toString();
                               final address = _addressText(place);
-                              final commentCount =
-                                  (place['commentCount'] as num?)?.toInt() ?? 0;
-                              final likeCount =
-                                  (place['likeCount'] as num?)?.toInt() ?? 0;
+                              final commentCount = _readListCount(place, const [
+                                'commentCount',
+                                'commentsCount',
+                              ]);
+                              final likeCount = _readListCount(place, const [
+                                'helpfulCount',
+                                'verificationCount',
+                                'likeCount',
+                              ]);
                               final theme = place['theme'];
                               final themeText = theme is Map<String, dynamic>
                                   ? theme['title']?.toString()
@@ -641,6 +646,37 @@ class _PlacebookListViewState extends State<PlacebookListView> {
         pick(place['placeName']) ??
         '';
   }
+}
+
+int _toListCount(dynamic value) {
+  if (value == null) return 0;
+  if (value is num) return value.toInt();
+  if (value is String) return int.tryParse(value.trim()) ?? 0;
+  if (value is Map) {
+    final count = _toListCount(value['count']);
+    if (count != 0) return count;
+    return _toListCount(value['value']);
+  }
+  return 0;
+}
+
+int _readListCount(Map<String, dynamic> source, List<String> keys) {
+  for (final key in keys) {
+    if (!source.containsKey(key)) continue;
+    final raw = source[key];
+    if (raw == null) continue;
+    return _toListCount(raw);
+  }
+  final data = source['data'];
+  if (data is Map<String, dynamic>) {
+    for (final key in keys) {
+      if (!data.containsKey(key)) continue;
+      final raw = data[key];
+      if (raw == null) continue;
+      return _toListCount(raw);
+    }
+  }
+  return 0;
 }
 
 class _ScopeChip extends StatelessWidget {

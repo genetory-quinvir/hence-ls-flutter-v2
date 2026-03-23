@@ -83,12 +83,43 @@ class _CommonMapViewState extends State<CommonMapView> {
   NMarker? _fixedMarker;
   bool _didAutoPromptLocationPermission = false;
   bool _isFetchingMyLocation = false;
+  late final Widget _naverMapView;
 
   @override
   void initState() {
     super.initState();
     widget.controller?._attach(this);
     _options = _buildOptions();
+    _naverMapView = NaverMap(
+      key: const ValueKey('common_map_view_naver_map'),
+      forceGesture: widget.forceGesture ?? false,
+      options: _mapOptions(),
+      onMapReady: (controller) {
+        _controller = controller;
+        final pendingTarget = _pendingCameraTarget;
+        if (pendingTarget != null) {
+          _pendingCameraTarget = null;
+          controller.updateCamera(
+            NCameraUpdate.withParams(target: pendingTarget),
+          );
+        }
+        _configureLocationOverlay(context);
+        _syncMyLocationOverlay();
+        _syncFixedMarker();
+        widget.onMapReady?.call(controller);
+      },
+      onCameraChange: (_, __) {
+        widget.onCameraMoving?.call();
+      },
+      onCameraIdle: () async {
+        widget.onCameraIdle?.call();
+        if (widget.onCenterChanged == null) return;
+        final controller = _controller;
+        if (controller == null) return;
+        final position = await controller.getCameraPosition();
+        widget.onCenterChanged?.call(position.target);
+      },
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _ensureLocationPermission(autoPrompt: true);
     });
@@ -107,15 +138,12 @@ class _CommonMapViewState extends State<CommonMapView> {
   }
 
   NCameraPosition _initialCameraPosition() {
-    final initialPosition = (widget.initialLatitude != null &&
-            widget.initialLongitude != null)
+    final initialPosition =
+        (widget.initialLatitude != null && widget.initialLongitude != null)
         ? NLatLng(widget.initialLatitude!, widget.initialLongitude!)
         : null;
     return initialPosition == null
-        ? const NCameraPosition(
-            target: NLatLng(37.5665, 126.9780),
-            zoom: 12.5,
-          )
+        ? const NCameraPosition(target: NLatLng(37.5665, 126.9780), zoom: 12.5)
         : NCameraPosition(target: initialPosition, zoom: 12.5);
   }
 
@@ -153,39 +181,9 @@ class _CommonMapViewState extends State<CommonMapView> {
     return Stack(
       alignment: Alignment.center,
       children: [
-        NaverMap(
-          forceGesture: widget.forceGesture ?? false,
-          options: _mapOptions(),
-          onMapReady: (controller) {
-            _controller = controller;
-            final pendingTarget = _pendingCameraTarget;
-            if (pendingTarget != null) {
-              _pendingCameraTarget = null;
-              controller.updateCamera(
-                NCameraUpdate.withParams(target: pendingTarget),
-              );
-            }
-            _configureLocationOverlay(context);
-            _syncMyLocationOverlay();
-            _syncFixedMarker();
-            widget.onMapReady?.call(controller);
-          },
-          onCameraChange: (_, __) {
-            widget.onCameraMoving?.call();
-          },
-          onCameraIdle: () async {
-            widget.onCameraIdle?.call();
-            if (widget.onCenterChanged == null) return;
-            final controller = _controller;
-            if (controller == null) return;
-            final position = await controller.getCameraPosition();
-            widget.onCenterChanged?.call(position.target);
-          },
-        ),
+        _naverMapView,
         if (widget.centerMarker != null)
-          IgnorePointer(
-            child: widget.centerMarker!,
-          ),
+          IgnorePointer(child: widget.centerMarker!),
         if (widget.showMyLocationButton || widget.onCreateLiveSpace != null)
           Positioned(
             right: 16,
@@ -223,9 +221,7 @@ class _CommonMapViewState extends State<CommonMapView> {
       _pendingCameraTarget = target;
       return;
     }
-    controller.updateCamera(
-      NCameraUpdate.withParams(target: target),
-    );
+    controller.updateCamera(NCameraUpdate.withParams(target: target));
   }
 
   Widget _buildFloatingButton({
@@ -243,11 +239,7 @@ class _CommonMapViewState extends State<CommonMapView> {
           boxShadow: AppShadows.card,
         ),
         alignment: Alignment.center,
-        child: Icon(
-          icon,
-          size: 18,
-          color: Colors.black,
-        ),
+        child: Icon(icon, size: 18, color: Colors.black),
       ),
     );
   }
@@ -306,10 +298,7 @@ class _CommonMapViewState extends State<CommonMapView> {
       final camera = await controller.getCameraPosition();
       final nextZoom = (camera.zoom + delta).clamp(1.0, 20.0);
       await controller.updateCamera(
-        NCameraUpdate.withParams(
-          target: camera.target,
-          zoom: nextZoom,
-        ),
+        NCameraUpdate.withParams(target: camera.target, zoom: nextZoom),
       );
     } catch (_) {
       // Ignore transient map camera errors.
@@ -340,11 +329,7 @@ class _CommonMapViewState extends State<CommonMapView> {
     _myLocationSubIcon ??= await NOverlayImage.fromWidget(
       context: context,
       size: const Size(18, 18),
-      widget: const Icon(
-        Icons.navigation,
-        size: 18,
-        color: MyApp.primary200,
-      ),
+      widget: const Icon(Icons.navigation, size: 18, color: MyApp.primary200),
     );
     overlay.setIcon(_myLocationIcon!);
     overlay.setIconSize(const Size(18, 18));
@@ -379,20 +364,20 @@ class _CommonMapViewState extends State<CommonMapView> {
       builder: (_) {
         return Material(
           type: MaterialType.transparency,
-            child: CommonAlertView(
-              title: '위치 권한 필요',
-              subTitle: '지도 사용을 위해 위치 권한이 필요합니다.',
-              primaryButtonTitle: '확인',
-              secondaryButtonTitle: '설정으로 이동',
-              onPrimaryTap: () => Navigator.of(context).pop(true),
-              onSecondaryTap: () async {
-                Navigator.of(context).pop(false);
-                await openAppSettings();
-              },
-            ),
-          );
-        },
-      );
+          child: CommonAlertView(
+            title: '위치 권한 필요',
+            subTitle: '지도 사용을 위해 위치 권한이 필요합니다.',
+            primaryButtonTitle: '확인',
+            secondaryButtonTitle: '설정으로 이동',
+            onPrimaryTap: () => Navigator.of(context).pop(true),
+            onSecondaryTap: () async {
+              Navigator.of(context).pop(false);
+              await openAppSettings();
+            },
+          ),
+        );
+      },
+    );
     if (!mounted || confirmed != true) return false;
 
     permission = await Geolocator.requestPermission();
@@ -437,10 +422,7 @@ class _CommonMapViewState extends State<CommonMapView> {
 
       if (moveCamera) {
         await controller.updateCamera(
-          NCameraUpdate.withParams(
-            target: target,
-            zoom: 15,
-          ),
+          NCameraUpdate.withParams(target: target, zoom: 15),
         );
       }
     } catch (_) {

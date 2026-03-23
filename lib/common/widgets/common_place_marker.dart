@@ -48,8 +48,8 @@ class CommonPlaceMarker extends StatelessWidget {
             padding: const EdgeInsets.all(borderWidth),
             child: ClipPath(
               clipper: ShapeBorderClipper(
-                shape: ContinuousRectangleBorder(
-                  borderRadius: BorderRadius.circular(20),
+                shape: const ContinuousRectangleBorder(
+                  borderRadius: BorderRadius.all(Radius.circular(20)),
                 ),
               ),
               child: CommonImageView(
@@ -62,11 +62,12 @@ class CommonPlaceMarker extends StatelessWidget {
                 fit: BoxFit.cover,
                 backgroundColor: const Color(0xFFF2F2F2),
                 placeholderLogoSize: 14,
-                replayNetworkFade: true,
+                replayNetworkFade: false,
                 enableFade: true,
-                disableFadeAfterFirstLoad: false,
-                memCacheWidth: 64,
-                memCacheHeight: 64,
+                disableFadeAfterFirstLoad: true,
+                memCacheWidth: 96,
+                memCacheHeight: 96,
+                preferFadeOverMemoryCache: false,
               ),
             ),
           ),

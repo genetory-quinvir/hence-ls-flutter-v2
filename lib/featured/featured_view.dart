@@ -1,4 +1,5 @@
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:hence_ls_flutter_v2/main.dart';
@@ -50,6 +51,8 @@ class _FeaturedViewState extends State<FeaturedView> {
   bool _didLogInitialRenderPerf = false;
   DateTime? _lastFeaturedSuccessAt;
   bool _didBackgroundPreciseRefresh = false;
+  static const bool _kFeaturedPerfLogs = false;
+  static const bool _kFeaturedBannerLogs = false;
 
   @override
   void initState() {
@@ -65,7 +68,9 @@ class _FeaturedViewState extends State<FeaturedView> {
     bool preferPreciseLocation = false,
   }) async {
     _featuredRequestCount += 1;
-    debugPrint('[PERF][FEATURED] request_count=$_featuredRequestCount');
+    if (kDebugMode && _kFeaturedPerfLogs) {
+      debugPrint('[PERF][FEATURED] request_count=$_featuredRequestCount');
+    }
     double? latitude;
     double? longitude;
     try {
@@ -154,7 +159,9 @@ class _FeaturedViewState extends State<FeaturedView> {
         final frameMs = DateTime.now()
             .difference(_lastFeaturedSuccessAt!)
             .inMilliseconds;
-        debugPrint('[PERF][FEATURED] api_to_frame_ms=$frameMs source=refresh');
+        if (kDebugMode && _kFeaturedPerfLogs) {
+          debugPrint('[PERF][FEATURED] api_to_frame_ms=$frameMs source=refresh');
+        }
       });
     } catch (_) {
       // Keep current data when refresh fails.
@@ -233,6 +240,17 @@ class _FeaturedViewState extends State<FeaturedView> {
             final banners = data is Map<String, dynamic>
                 ? (data['banners'] as List<dynamic>?) ?? const []
                 : const [];
+            if (kDebugMode && _kFeaturedBannerLogs) {
+              debugPrint(
+                '[FEATURED] banners_count=${banners.length} data_keys=${data is Map<String, dynamic> ? data.keys.join(",") : "none"}',
+              );
+              if (banners.isNotEmpty && banners.first is Map<String, dynamic>) {
+                final first = banners.first as Map<String, dynamic>;
+                debugPrint(
+                  '[FEATURED] first_banner_keys=${first.keys.join(",")}',
+                );
+              }
+            }
             final themes = data is Map<String, dynamic>
                 ? (data['themes'] as List<dynamic>?) ?? const []
                 : const [];
@@ -267,9 +285,11 @@ class _FeaturedViewState extends State<FeaturedView> {
                 final frameMs = DateTime.now()
                     .difference(_lastFeaturedSuccessAt!)
                     .inMilliseconds;
-                debugPrint(
-                  '[PERF][FEATURED] api_to_frame_ms=$frameMs source=initial',
-                );
+                if (kDebugMode && _kFeaturedPerfLogs) {
+                  debugPrint(
+                    '[PERF][FEATURED] api_to_frame_ms=$frameMs source=initial',
+                  );
+                }
               });
             }
             return CommonRefreshView(
@@ -278,6 +298,7 @@ class _FeaturedViewState extends State<FeaturedView> {
               notificationPredicate: (notification) =>
                   notification.metrics.axis == Axis.vertical,
               child: ListView(
+                cacheExtent: 900,
                 padding: EdgeInsets.fromLTRB(
                   0,
                   16,
@@ -285,44 +306,56 @@ class _FeaturedViewState extends State<FeaturedView> {
                   _kTabBarHeight + bottomInset,
                 ),
                 children: [
-                  _FeaturedHeader(
-                    onSearchTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => const SearchView(),
-                        ),
-                      );
-                    },
+                  RepaintBoundary(
+                    child: _FeaturedHeader(
+                      onSearchTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => const SearchView()),
+                        );
+                      },
+                    ),
                   ),
                   const SizedBox(height: 16),
-                  _FeaturedBannerSection(items: banners),
+                  RepaintBoundary(
+                    child: _FeaturedBannerSection(items: banners),
+                  ),
                   if (categories.isNotEmpty) ...[
                     const SizedBox(height: 24),
-                    _FeaturedCategorySection(items: categories),
+                    RepaintBoundary(
+                      child: _FeaturedCategorySection(items: categories),
+                    ),
                   ],
                   const SizedBox(height: 32),
-                  _FeaturedNearestPlacesSection(
-                    places: nearbyPlaces,
-                    latitude: _lastLatitude,
-                    longitude: _lastLongitude,
+                  RepaintBoundary(
+                    child: _FeaturedNearestPlacesSection(
+                      places: nearbyPlaces,
+                      latitude: _lastLatitude,
+                      longitude: _lastLongitude,
+                    ),
                   ),
                   if (rankingUsers.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 28),
-                      child: _FeaturedRankingSection(
-                        items: rankingUsers
-                            .whereType<Map<String, dynamic>>()
-                            .toList(),
+                      child: RepaintBoundary(
+                        child: _FeaturedRankingSection(
+                          items: rankingUsers
+                              .whereType<Map<String, dynamic>>()
+                              .toList(),
+                        ),
                       ),
                     ),
-                  _FeaturedTopEngagedPlacesSection(
-                    places: topEngagedPlaces
-                        .whereType<Map<String, dynamic>>()
-                        .toList(),
+                  RepaintBoundary(
+                    child: _FeaturedTopEngagedPlacesSection(
+                      places: topEngagedPlaces
+                          .whereType<Map<String, dynamic>>()
+                          .toList(),
+                    ),
                   ),
-                  const _FeaturedSingleCardBannerSection(
-                    title: '장소를 등록하고 친구들과 공유해보세요',
-                    subtitle: '장소를 등록하고 친구들과 공유해보세요',
+                  const RepaintBoundary(
+                    child: _FeaturedSingleCardBannerSection(
+                      title: '장소를 등록하고 친구들과 공유해보세요',
+                      subtitle: '장소를 등록하고 친구들과 공유해보세요',
+                    ),
                   ),
                   const SizedBox(height: 32),
                   ...themes.map((entry) {
@@ -331,11 +364,13 @@ class _FeaturedViewState extends State<FeaturedView> {
                         : <String, dynamic>{};
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 28),
-                      child: _FeaturedThemeSection(
-                        item: item,
-                        onPlaceDeleted: _removeFeaturedPlace,
-                        latitude: _lastLatitude,
-                        longitude: _lastLongitude,
+                      child: RepaintBoundary(
+                        child: _FeaturedThemeSection(
+                          item: item,
+                          onPlaceDeleted: _removeFeaturedPlace,
+                          latitude: _lastLatitude,
+                          longitude: _lastLongitude,
+                        ),
                       ),
                     );
                   }),
@@ -372,6 +407,9 @@ class _FeaturedBannerSection extends StatelessWidget {
             physics: const BouncingScrollPhysics(),
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
             itemCount: items.length,
+            addAutomaticKeepAlives: false,
+            addRepaintBoundaries: true,
+            addSemanticIndexes: false,
             separatorBuilder: (_, _) => const SizedBox(width: 16),
             itemBuilder: (context, index) {
               final banner = items[index] is Map<String, dynamic>
@@ -524,6 +562,9 @@ class _FeaturedSingleCardBannerSection extends StatelessWidget {
                   'assets/images/img_my_place.webp',
                   fit: BoxFit.cover,
                   alignment: Alignment.centerRight,
+                  cacheWidth: 540,
+                  cacheHeight: 468,
+                  filterQuality: FilterQuality.low,
                 ),
               ),
             ),
@@ -714,14 +755,22 @@ class _FeaturedNearestPlacesSection extends StatelessWidget {
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               itemCount: places.length,
+              addAutomaticKeepAlives: false,
+              addRepaintBoundaries: true,
+              addSemanticIndexes: false,
               separatorBuilder: (_, _) => const SizedBox(width: 12),
               itemBuilder: (context, index) {
                 final place = places[index];
                 final title = (place['title'] as String?) ?? '장소';
                 final address = _placeAddress(place);
-                final commentCount =
-                    (place['commentCount'] as num?)?.toInt() ?? 0;
-                final likeCount = (place['likeCount'] as num?)?.toInt() ?? 0;
+                final commentCount = _readFeaturedCount(place, const [
+                  'commentCount',
+                ]);
+                final likeCount = _readFeaturedCount(place, const [
+                  'helpfulCount',
+                  'verificationCount',
+                  'likeCount',
+                ]);
                 final favorited =
                     (place['favorited'] as bool?) ??
                     (place['isFavorited'] as bool?) ??
@@ -797,17 +846,21 @@ class _FeaturedTopEngagedPlacesSection extends StatelessWidget {
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               itemCount: places.length,
+              addAutomaticKeepAlives: false,
+              addRepaintBoundaries: true,
+              addSemanticIndexes: false,
               separatorBuilder: (_, _) => const SizedBox(width: 12),
               itemBuilder: (context, index) {
                 final place = places[index];
                 final title = (place['title'] as String?) ?? '장소';
                 final address = _placeAddress(place);
-                final commentCount =
-                    (place['commentCount'] as num?)?.toInt() ?? 0;
-                final likeCount =
-                    (place['helpfulCount'] as num?)?.toInt() ??
-                    (place['verificationCount'] as num?)?.toInt() ??
-                    0;
+                final commentCount = _readFeaturedCount(place, const [
+                  'commentCount',
+                ]);
+                final likeCount = _readFeaturedCount(place, const [
+                  'helpfulCount',
+                  'verificationCount',
+                ]);
                 final favorited =
                     (place['favorited'] as bool?) ??
                     (place['isFavorited'] as bool?) ??
@@ -863,6 +916,9 @@ class _FeaturedCategorySection extends StatelessWidget {
             physics: const BouncingScrollPhysics(),
             padding: const EdgeInsets.symmetric(horizontal: 16),
             itemCount: items.length,
+            addAutomaticKeepAlives: false,
+            addRepaintBoundaries: true,
+            addSemanticIndexes: false,
             separatorBuilder: (_, _) => const SizedBox(width: 4),
             itemBuilder: (context, index) {
               final category = items[index];
@@ -938,9 +994,7 @@ class _FeaturedCategorySection extends StatelessWidget {
 }
 
 class _FeaturedHeader extends StatelessWidget {
-  const _FeaturedHeader({
-    required this.onSearchTap,
-  });
+  const _FeaturedHeader({required this.onSearchTap});
 
   final VoidCallback onSearchTap;
 
@@ -1021,7 +1075,7 @@ class _FeaturedHeader extends StatelessWidget {
                   ),
                   if (isSignedIn)
                     CommonInkWell(
-                      onTap: () => HomeTabController.switchTo(4),
+                      onTap: () => HomeTabController.switchTo(3),
                       borderRadius: BorderRadius.circular(999),
                       child: CommonProfileView(
                         size: 48,
@@ -1045,7 +1099,9 @@ class _FeaturedHeader extends StatelessWidget {
                         height: 40,
                         radius: 8,
                         backgroundColor: const Color(0xFFF2F2F2),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                        ),
                         textStyle: const TextStyle(
                           fontFamily: 'Pretendard',
                           fontSize: 14,
@@ -1135,89 +1191,97 @@ class _FeaturedBannerCard extends StatelessWidget {
     return CommonInkWell(
       onTap: () => _showPreparingAlert(context),
       borderRadius: BorderRadius.circular(18),
-      child: Container(
-        width: 280,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(18),
-          boxShadow: AppShadows.card,
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(18),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              CommonImageView(
-                networkUrl: imageUrl,
-                fit: BoxFit.cover,
-                replayNetworkFade: true,
-                backgroundColor: const Color(0xFF1E1E1E),
-              ),
-              Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.black.withValues(alpha: 0.58),
-                      Colors.black.withValues(alpha: 0.10),
-                      Colors.black.withValues(alpha: 0.62),
-                    ],
-                    stops: const [0.0, 0.46, 1.0],
+      child: RepaintBoundary(
+        child: Container(
+          width: 280,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: AppShadows.card,
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(18),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                CommonImageView(
+                  networkUrl: imageUrl,
+                  cacheKey: imageUrl,
+                  fit: BoxFit.cover,
+                  memCacheWidth: 720,
+                  memCacheHeight: 560,
+                  replayNetworkFade: false,
+                  enableFade: true,
+                  disableFadeAfterFirstLoad: true,
+                  preferFadeOverMemoryCache: false,
+                  backgroundColor: const Color(0xFF1E1E1E),
+                ),
+                Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.black.withValues(alpha: 0.58),
+                        Colors.black.withValues(alpha: 0.10),
+                        Colors.black.withValues(alpha: 0.62),
+                      ],
+                      stops: const [0.0, 0.46, 1.0],
+                    ),
                   ),
                 ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontFamily: 'Pretendard',
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      subtitle,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontFamily: 'Pretendard',
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        color: Color(0xFFE0E0E0),
-                      ),
-                    ),
-                    const Spacer(),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 8,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: const Text(
-                        '지금 보기',
-                        style: TextStyle(
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
                           fontFamily: 'Pretendard',
-                          fontSize: 14,
+                          fontSize: 18,
                           fontWeight: FontWeight.w700,
                           color: Colors.white,
                         ),
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontFamily: 'Pretendard',
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: Color(0xFFE0E0E0),
+                        ),
+                      ),
+                      const Spacer(),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: const Text(
+                          '지금 보기',
+                          style: TextStyle(
+                            fontFamily: 'Pretendard',
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -1360,9 +1424,14 @@ class _FeaturedThemeSection extends StatelessWidget {
                     : <String, dynamic>{};
                 final placeTitle = (place['title'] as String?) ?? '장소';
                 final placeAddress = _placeAddress(place);
-                final commentCount =
-                    (place['commentCount'] as num?)?.toInt() ?? 0;
-                final likeCount = (place['likeCount'] as num?)?.toInt() ?? 0;
+                final commentCount = _readFeaturedCount(place, const [
+                  'commentCount',
+                ]);
+                final likeCount = _readFeaturedCount(place, const [
+                  'helpfulCount',
+                  'verificationCount',
+                  'likeCount',
+                ]);
                 final favorited =
                     (place['favorited'] as bool?) ??
                     (place['isFavorited'] as bool?) ??
@@ -1429,6 +1498,9 @@ class _FeaturedEmptySection extends StatelessWidget {
                 'assets/images/img_my_place.webp',
                 fit: BoxFit.cover,
                 alignment: Alignment.centerRight,
+                cacheWidth: 480,
+                cacheHeight: 288,
+                filterQuality: FilterQuality.low,
               ),
             ),
           ),
@@ -1473,34 +1545,105 @@ class _FeaturedEmptySection extends StatelessWidget {
   }
 }
 
+final Set<String> _loggedBannerImageKeys = <String>{};
+const bool _kFeaturedBannerResolveLogs = false;
+
 String _bannerImageUrl(Map<String, dynamic> banner) {
   final onImage = banner['onImage'];
-  final offImage = banner['offImage'];
-  final thumbnail = banner['thumbnail'];
-  final image = banner['image'];
-  final onMap = onImage is Map<String, dynamic> ? onImage : null;
-  final offMap = offImage is Map<String, dynamic> ? offImage : null;
-  final thumbnailMap = thumbnail is Map<String, dynamic> ? thumbnail : null;
-  final imageMap = image is Map<String, dynamic> ? image : null;
-  final thumbnailString = thumbnail is String ? thumbnail.trim() : null;
-  final imageString = image is String ? image.trim() : null;
-  return (onMap?['cdnUrl'] as String?) ??
-      (onMap?['fileUrl'] as String?) ??
-      (onMap?['thumbnailUrl'] as String?) ??
-      (offMap?['cdnUrl'] as String?) ??
-      (offMap?['fileUrl'] as String?) ??
-      (offMap?['thumbnailUrl'] as String?) ??
-      (imageMap?['cdnUrl'] as String?) ??
-      (imageMap?['fileUrl'] as String?) ??
-      (imageMap?['thumbnailUrl'] as String?) ??
-      (thumbnailMap?['cdnUrl'] as String?) ??
-      (thumbnailMap?['fileUrl'] as String?) ??
-      (thumbnailMap?['thumbnailUrl'] as String?) ??
-      (banner['imageUrl'] as String?) ??
-      (banner['thumbnailUrl'] as String?) ??
-      ((thumbnailString?.isNotEmpty ?? false) ? thumbnailString : null) ??
-      ((imageString?.isNotEmpty ?? false) ? imageString : null) ??
-      '';
+  if (onImage is Map<String, dynamic>) {
+    final thumb = onImage['thumbnailUrl'];
+    if (thumb is String && thumb.trim().isNotEmpty) {
+      return thumb.trim();
+    }
+    final cdn = onImage['cdnUrl'];
+    if (cdn is String && cdn.trim().isNotEmpty) {
+      return cdn.trim();
+    }
+    final file = onImage['fileUrl'];
+    if (file is String && file.trim().isNotEmpty) {
+      return file.trim();
+    }
+  }
+
+  String? pick(dynamic raw) {
+    if (raw is String) {
+      final trimmed = raw.trim();
+      return trimmed.isEmpty ? null : trimmed;
+    }
+    if (raw is List) {
+      for (final entry in raw) {
+        final value = pick(entry);
+        if (value != null && value.isNotEmpty) return value;
+      }
+      return null;
+    }
+    if (raw is Map<String, dynamic>) {
+      const directKeys = [
+        'cdnUrl',
+        'cdn_url',
+        'thumbnailUrl',
+        'thumbnailURL',
+        'thumbnail_url',
+        'fileUrl',
+        'file_url',
+        'url',
+        'imageUrl',
+        'image_url',
+        'onImageUrl',
+        'onimageUrl',
+        'on_image_url',
+        'offImageUrl',
+        'offimageUrl',
+        'off_image_url',
+        'mobileImageUrl',
+        'mobile_image_url',
+        'pcImageUrl',
+        'pc_image_url',
+      ];
+      for (final key in directKeys) {
+        final value = pick(raw[key]);
+        if (value != null && value.isNotEmpty) return value;
+      }
+      const nestedKeys = [
+        'onImage',
+        'onimage',
+        'on_image',
+        'offImage',
+        'offimage',
+        'off_image',
+        'thumbnail',
+        'thumb',
+        'image',
+        'imageFile',
+        'image_file',
+        'imageId',
+        'image_id',
+        'images',
+        'data',
+      ];
+      for (final key in nestedKeys) {
+        final value = pick(raw[key]);
+        if (value != null && value.isNotEmpty) return value;
+      }
+    }
+    return null;
+  }
+
+  final resolved = pick(banner) ?? '';
+  final id = (banner['id'] ?? '').toString();
+  final title = (banner['title'] ?? '').toString();
+  final logKey = '$id|$title|$resolved';
+  if (kDebugMode && _kFeaturedBannerResolveLogs) {
+    if (_loggedBannerImageKeys.add(logKey)) {
+      debugPrint(
+        '[FEATURED][BANNER] id=$id title="$title" image_url="$resolved"',
+      );
+    }
+    if (resolved.isEmpty) {
+      debugPrint('[FEATURED][BANNER] image_url_empty id=$id title=$title');
+    }
+  }
+  return resolved;
 }
 
 String _featuredPlaceId(Map<String, dynamic> place) {
@@ -1697,4 +1840,35 @@ List<Map<String, dynamic>> _extractFeaturedNearbyPlaces(
   }
 
   return const <Map<String, dynamic>>[];
+}
+
+int _toFeaturedCount(dynamic value) {
+  if (value == null) return 0;
+  if (value is num) return value.toInt();
+  if (value is String) return int.tryParse(value.trim()) ?? 0;
+  if (value is Map) {
+    final count = _toFeaturedCount(value['count']);
+    if (count != 0) return count;
+    return _toFeaturedCount(value['value']);
+  }
+  return 0;
+}
+
+int _readFeaturedCount(Map<String, dynamic> source, List<String> keys) {
+  for (final key in keys) {
+    if (!source.containsKey(key)) continue;
+    final raw = source[key];
+    if (raw == null) continue;
+    return _toFeaturedCount(raw);
+  }
+  final data = source['data'];
+  if (data is Map<String, dynamic>) {
+    for (final key in keys) {
+      if (!data.containsKey(key)) continue;
+      final raw = data[key];
+      if (raw == null) continue;
+      return _toFeaturedCount(raw);
+    }
+  }
+  return 0;
 }

@@ -11,76 +11,53 @@ import '../common/network/api_client.dart';
 import '../common/auth/auth_store.dart';
 import '../common/styles/app_shadows.dart';
 
+class PlacebookSaveResult {
+  const PlacebookSaveResult({
+    this.imageUrl,
+  });
+
+  final String? imageUrl;
+}
+
 class PlacebookSavedView extends StatefulWidget {
   const PlacebookSavedView({
     super.key,
     this.imageBytes,
     this.imageUrl,
+    this.saveFuture,
   });
 
   final Uint8List? imageBytes;
   final String? imageUrl;
+  final Future<PlacebookSaveResult>? saveFuture;
 
   @override
   State<PlacebookSavedView> createState() => _PlacebookSavedViewState();
 }
 
 class _PlacebookSavedViewState extends State<PlacebookSavedView>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-  late final Animation<double> _titleOpacity;
-  late final Animation<Offset> _titleOffset;
-  late final Animation<double> _subOpacity;
-  late final Animation<Offset> _subOffset;
+{
   bool _isLoadingInfo = false;
+  bool _isSaving = false;
+  bool _isSaveFailed = false;
   int _createdCount = 0;
   String _nickname = '';
+  String? _resolvedImageUrl;
 
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 700),
-    );
-    _titleOpacity = CurvedAnimation(
-      parent: _controller,
-      curve: const Interval(0.0, 0.7, curve: Curves.easeOutCubic),
-    );
-    _titleOffset = Tween<Offset>(
-      begin: const Offset(0, 0.12),
-      end: Offset.zero,
-    ).animate(
-      CurvedAnimation(
-        parent: _controller,
-        curve: const Interval(0.0, 0.7, curve: Curves.easeOutCubic),
-      ),
-    );
-    _subOpacity = CurvedAnimation(
-      parent: _controller,
-      curve: const Interval(0.25, 1.0, curve: Curves.easeOutCubic),
-    );
-    _subOffset = Tween<Offset>(
-      begin: const Offset(0, 0.12),
-      end: Offset.zero,
-    ).animate(
-      CurvedAnimation(
-        parent: _controller,
-        curve: const Interval(0.25, 1.0, curve: Curves.easeOutCubic),
-      ),
-    );
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      Future.delayed(const Duration(milliseconds: 250), () {
-        if (mounted) _controller.forward();
-      });
-    });
+    _resolvedImageUrl = widget.imageUrl;
+    _isSaving = widget.saveFuture != null;
+    if (_isSaving) {
+      _waitForSave();
+      return;
+    }
     _loadMyPlacesInfo();
   }
 
   @override
   void dispose() {
-    _controller.dispose();
     super.dispose();
   }
 
@@ -92,7 +69,8 @@ class _PlacebookSavedViewState extends State<PlacebookSavedView>
       if (!mounted) return;
       final currentUser = AuthStore.instance.currentUser.value;
       setState(() {
-        _createdCount = (info['createdCount'] as num?)?.toInt() ??
+        _createdCount = (info['savedCount'] as num?)?.toInt() ??
+            (info['createdCount'] as num?)?.toInt() ??
             (info['totalCount'] as num?)?.toInt() ??
             0;
         _nickname = (currentUser?.nickname ?? '').trim();
@@ -109,8 +87,35 @@ class _PlacebookSavedViewState extends State<PlacebookSavedView>
     }
   }
 
+  Future<void> _waitForSave() async {
+    final future = widget.saveFuture;
+    if (future == null) return;
+    try {
+      final result = await future;
+      if (!mounted) return;
+      setState(() {
+        _isSaving = false;
+        _isSaveFailed = false;
+        if ((result.imageUrl ?? '').trim().isNotEmpty) {
+          _resolvedImageUrl = result.imageUrl!.trim();
+        }
+      });
+      _loadMyPlacesInfo();
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _isSaving = false;
+        _isSaveFailed = true;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final title = _isSaveFailed
+        ? '장소 저장에 실패했어요'
+        : (_isSaving ? '장소 입력중...' : '장소 입력 완료 🎉');
+    final showActions = !_isSaving;
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
@@ -118,12 +123,17 @@ class _PlacebookSavedViewState extends State<PlacebookSavedView>
         child: Column(
           children: [
             CommonNavigationView(
-              left: const Icon(
-                PhosphorIconsRegular.x,
-                size: 22,
-                color: Colors.black,
+              left: AnimatedOpacity(
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOut,
+                opacity: showActions ? 1 : 0,
+                child: const Icon(
+                  PhosphorIconsBold.x,
+                  size: 24,
+                  color: Colors.black,
+                ),
               ),
-              onLeftTap: () => Navigator.of(context).maybePop(),
+              onLeftTap: showActions ? () => Navigator.of(context).maybePop() : null,
               backgroundColor: Colors.white,
             ),
             Expanded(
@@ -150,7 +160,7 @@ class _PlacebookSavedViewState extends State<PlacebookSavedView>
                               child: _SavedPlaceMarker(
                                 size: 120,
                                 imageBytes: widget.imageBytes,
-                                imageUrl: widget.imageUrl,
+                                imageUrl: _resolvedImageUrl,
                               ),
                             ),
                           ],
@@ -159,43 +169,61 @@ class _PlacebookSavedViewState extends State<PlacebookSavedView>
                       const SizedBox(height: 16),
                       Column(
                         children: [
-                          FadeTransition(
-                            opacity: _titleOpacity,
-                            child: SlideTransition(
-                              position: _titleOffset,
-                              child: const Text(
-                                '장소 저장 완료 🎉',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  fontFamily: 'Pretendard',
-                                  fontSize: 24,
-                                  fontWeight: FontWeight.w700,
-                                  color: Colors.black,
-                                ),
+                          AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 220),
+                            switchInCurve: Curves.easeOut,
+                            switchOutCurve: Curves.easeIn,
+                            transitionBuilder: (child, animation) =>
+                                FadeTransition(opacity: animation, child: child),
+                            child: Text(
+                              title,
+                              key: ValueKey<String>('title_$title'),
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                fontFamily: 'Pretendard',
+                                fontSize: 24,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.black,
                               ),
                             ),
                           ),
                           const SizedBox(height: 8),
-                          FadeTransition(
-                            opacity: _subOpacity,
-                            child: SlideTransition(
-                              position: _subOffset,
-                              child: RichText(
-                                textAlign: TextAlign.center,
-                                text: TextSpan(
-                                  style: const TextStyle(
-                                    height: 1.5,
-                                    fontFamily: 'Pretendard',
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w500,
-                                    color: Color(0xFF616161),
-                                  ),
-                                  children: [
+                          AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 220),
+                            switchInCurve: Curves.easeOut,
+                            switchOutCurve: Curves.easeIn,
+                            transitionBuilder: (child, animation) =>
+                                FadeTransition(opacity: animation, child: child),
+                            child: RichText(
+                              key: ValueKey<String>(
+                                _isSaveFailed
+                                    ? 'subtitle_failed'
+                                    : (_isSaving
+                                        ? 'subtitle_saving'
+                                        : 'subtitle_completed'),
+                              ),
+                              textAlign: TextAlign.center,
+                              text: TextSpan(
+                                style: const TextStyle(
+                                  height: 1.5,
+                                  fontFamily: 'Pretendard',
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w500,
+                                  color: Color(0xFF616161),
+                                ),
+                                children: [
+                                  if (_isSaveFailed)
+                                    const TextSpan(
+                                      text: '저장에 실패했어요.\n잠시 후 다시 시도해주세요.',
+                                    )
+                                  else if (_isSaving)
+                                    const TextSpan(
+                                      text: '장소 정보를 저장하고 있어요.\n잠시만 기다려주세요.',
+                                    )
+                                  else ...[
                                     const TextSpan(text: '벌써, '),
                                     TextSpan(
-                                      text: _nickname.isEmpty
-                                          ? '회원'
-                                          : _nickname,
+                                      text: _nickname.isEmpty ? '회원' : _nickname,
                                       style: const TextStyle(
                                         fontWeight: FontWeight.w700,
                                       ),
@@ -209,7 +237,7 @@ class _PlacebookSavedViewState extends State<PlacebookSavedView>
                                     ),
                                     const TextSpan(text: '개가 되었어요!'),
                                   ],
-                                ),
+                                ],
                               ),
                             ),
                           ),
@@ -224,11 +252,21 @@ class _PlacebookSavedViewState extends State<PlacebookSavedView>
               top: false,
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: CommonRoundedButton(
-                    title: '확인',
-                    onTap: () => Navigator.of(context).maybePop(),
+                child: AbsorbPointer(
+                  absorbing: !showActions,
+                  child: AnimatedOpacity(
+                    duration: const Duration(milliseconds: 220),
+                    curve: Curves.easeOut,
+                    opacity: showActions ? 1 : 0,
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: CommonRoundedButton(
+                        title: '확인',
+                        onTap: showActions
+                            ? () => Navigator.of(context).maybePop()
+                            : null,
+                      ),
+                    ),
                   ),
                 ),
               ),

@@ -54,7 +54,7 @@ class _NotificationBodyState extends State<_NotificationBody> {
     super.initState();
     _tabListener = () {
       if (!mounted) return;
-      if (HomeTabController.currentIndex.value == 3) {
+      if (HomeTabController.currentIndex.value == 4) {
         HomeTabController.setUnreadNotifications(false);
         if (!_didInitialLoad) {
           _loadInitial();
@@ -64,12 +64,10 @@ class _NotificationBodyState extends State<_NotificationBody> {
       }
     };
     HomeTabController.currentIndex.addListener(_tabListener);
-    if (HomeTabController.currentIndex.value == 3) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        _loadInitial();
-      });
-    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _loadInitial();
+    });
   }
 
   @override
@@ -438,6 +436,12 @@ class _NotificationBodyState extends State<_NotificationBody> {
               bottom: false,
               child: CommonNavigationView(
                 title: '알림',
+                left: const Icon(
+                  PhosphorIconsBold.caretLeft,
+                  size: 24,
+                  color: Colors.black,
+                ),
+                onLeftTap: () => Navigator.of(context).maybePop(),
                 right: _items.isEmpty
                     ? const SizedBox(width: 72, height: 44)
                     : const SizedBox(
@@ -456,12 +460,6 @@ class _NotificationBodyState extends State<_NotificationBody> {
                         ),
                       ),
                 onRightTap: _items.isEmpty ? null : _markAllRead,
-                // left: const Icon(
-                //   PhosphorIconsRegular.caretLeft,
-                //   size: 24,
-                //   color: Colors.black,
-                // ),
-                // onLeftTap: () => Navigator.of(context).maybePop(),
               ),
             ),
             Expanded(

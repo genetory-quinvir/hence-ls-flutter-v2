@@ -10,6 +10,7 @@ import '../common/auth/auth_store.dart';
 import '../sign/sign_view.dart';
 import '../notification/notification_view.dart';
 import '../featured/featured_view.dart';
+import '../placebook_create/placebook_create_view.dart';
 import '../placebook/placebook_view.dart';
 import '../common/network/api_client.dart';
 
@@ -66,8 +67,8 @@ class _HomeViewState extends State<HomeView> {
             FeaturedView(),
             MapView(),
             _PlacebookWrapper(),
-            SafeArea(top: true, bottom: true, child: NotificationView()),
             SafeArea(bottom: true, child: ProfileView()),
+            SafeArea(top: true, bottom: true, child: NotificationView()),
           ],
         ),
         bottomNavigationBar: Container(
@@ -77,21 +78,36 @@ class _HomeViewState extends State<HomeView> {
             child: CommonTabView(
               currentIndex: _currentIndex,
               onTap: (index) {
-                if (index == 4 && _currentIndex == 4) {
+                if (index == 3 && _currentIndex == 3) {
                   HomeTabController.requestProfileReload();
                 }
-                if (index == 3 || index == 2) {
-                  if (!AuthStore.instance.isSignedIn.value) {
-                    showCupertinoModalPopup(
-                      context: context,
-                      builder: (context) {
-                        return const SizedBox.expand(child: SignView());
-                      },
-                    );
-                    return;
-                  }
+                if (index == 2 && !AuthStore.instance.isSignedIn.value) {
+                  showCupertinoModalPopup(
+                    context: context,
+                    builder: (context) {
+                      return const SizedBox.expand(child: SignView());
+                    },
+                  );
+                  return;
                 }
                 HomeTabController.switchTo(index);
+              },
+              onCenterTap: () {
+                if (!AuthStore.instance.isSignedIn.value) {
+                  showCupertinoModalPopup(
+                    context: context,
+                    builder: (context) {
+                      return const SizedBox.expand(child: SignView());
+                    },
+                  );
+                  return;
+                }
+                showCupertinoModalPopup(
+                  context: context,
+                  builder: (context) {
+                    return const SizedBox.expand(child: PlacebookCreateView());
+                  },
+                );
               },
               backgroundColor: Colors.white,
               activeColor: Colors.black,

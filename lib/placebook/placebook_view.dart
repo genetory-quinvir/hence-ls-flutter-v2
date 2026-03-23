@@ -166,8 +166,8 @@ class _PlacebookViewState extends State<PlacebookView>
                             summary,
                             const SizedBox(height: 24),
                             _SectionHeader(
-                              title: '이어서 장소 추가하기',
-                              subtitle: '아직 채워지지 않은 테마',
+                              title: '지금 추가하면 좋은 테마',
+                              subtitle: '아직 장소가 적은 테마를 보여드려요',
                               showMore: false,
                             ),
                             const SizedBox(height: 16),
@@ -534,13 +534,19 @@ class _PlacebookViewState extends State<PlacebookView>
   List<_ContinueThemeItem> _resolveContinueThemes() {
     if (_missions.isNotEmpty) {
       return _missions.take(3).map((mission) {
-        final title = (mission['title'] ?? '').toString();
-        final subtitle = (mission['description'] ?? '').toString();
         final themeId = (mission['themeId'] ?? '').toString();
         final themeEntry = _findThemeEntry(themeId);
         final theme = themeEntry == null ? null : _extractTheme(themeEntry);
+        final themeTitle = theme == null
+            ? ''
+            : (theme['title'] ?? '').toString().trim();
+        final missionTitle = (mission['title'] ?? '').toString().trim();
+        final subtitle = (mission['description'] ?? '').toString();
         return _ContinueThemeItem(
-          title: title.isEmpty ? '테마를 채워보세요' : title,
+          title: _continueThemeItemTitle(
+            themeTitle: themeTitle,
+            fallback: missionTitle,
+          ),
           subtitle: subtitle.isEmpty ? '첫 장소를 저장해보세요' : subtitle,
           imageUrl: theme == null ? '' : _themeImageUrl(theme),
           themeId: themeId,
@@ -554,12 +560,15 @@ class _PlacebookViewState extends State<PlacebookView>
       final count = _savedCount(entry);
       if (count > 0) continue;
       final theme = _extractTheme(entry);
-      final title = (theme['title'] ?? '').toString();
+      final title = (theme['title'] ?? '').toString().trim();
       final desc = (theme['description'] ?? '').toString();
       final imageUrl = _themeImageUrl(theme);
       items.add(
         _ContinueThemeItem(
-          title: title.isEmpty ? '테마를 시작해보세요' : title,
+          title: _continueThemeItemTitle(
+            themeTitle: title,
+            fallback: '테마',
+          ),
           subtitle: desc.isEmpty ? '첫 장소를 저장해보세요' : desc,
           imageUrl: imageUrl,
           themeId: (theme['id'] ?? '').toString(),
@@ -569,12 +578,15 @@ class _PlacebookViewState extends State<PlacebookView>
     if (items.isEmpty) {
       for (final entry in shuffled.take(3)) {
         final theme = _extractTheme(entry);
-        final title = (theme['title'] ?? '').toString();
+        final title = (theme['title'] ?? '').toString().trim();
         final desc = (theme['description'] ?? '').toString();
         final imageUrl = _themeImageUrl(theme);
         items.add(
           _ContinueThemeItem(
-            title: title.isEmpty ? '테마를 채워보세요' : title,
+            title: _continueThemeItemTitle(
+              themeTitle: title,
+              fallback: '테마',
+            ),
             subtitle: desc.isEmpty ? '다음 장소를 추가해보세요' : desc,
             imageUrl: imageUrl,
             themeId: (theme['id'] ?? '').toString(),
@@ -643,14 +655,27 @@ class _PlacebookViewState extends State<PlacebookView>
 
   _ContinueThemeItem _toContinueThemeItem(Map<String, dynamic> entry) {
     final theme = _extractTheme(entry);
-    final title = (theme['title'] ?? '').toString();
+    final title = (theme['title'] ?? '').toString().trim();
     final desc = (theme['description'] ?? '').toString();
     return _ContinueThemeItem(
-      title: title.isEmpty ? '테마를 채워보세요' : title,
+      title: _continueThemeItemTitle(
+        themeTitle: title,
+        fallback: '테마',
+      ),
       subtitle: desc.isEmpty ? '첫 장소를 저장해보세요' : desc,
       imageUrl: _themeImageUrl(theme),
       themeId: (theme['id'] ?? '').toString(),
     );
+  }
+
+  String _continueThemeItemTitle({
+    required String themeTitle,
+    String fallback = '테마',
+  }) {
+    final normalized = themeTitle.trim();
+    if (normalized.isEmpty) return '$fallback 채우기';
+    if (normalized.endsWith('채우기')) return normalized;
+    return '$normalized 채우기';
   }
 
   void _openCreateModal({

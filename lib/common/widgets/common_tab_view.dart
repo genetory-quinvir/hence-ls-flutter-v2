@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:hence_ls_flutter_v2/main.dart';
+import 'package:figma_squircle/figma_squircle.dart';
 
-import '../state/home_tab_controller.dart';
 import 'common_inkwell.dart';
 
 class CommonTabView extends StatelessWidget {
@@ -9,6 +10,7 @@ class CommonTabView extends StatelessWidget {
     super.key,
     required this.currentIndex,
     required this.onTap,
+    required this.onCenterTap,
     this.height = 50,
     this.iconSize = 24,
     this.activeColor = Colors.black,
@@ -18,6 +20,7 @@ class CommonTabView extends StatelessWidget {
 
   final int currentIndex;
   final ValueChanged<int> onTap;
+  final VoidCallback onCenterTap;
   final double height;
   final double iconSize;
   final Color activeColor;
@@ -43,65 +46,146 @@ class CommonTabView extends StatelessWidget {
         activeIcon: PhosphorIconsFill.book,
       ),
       _TabItem(
-        label: '알림',
-        icon: PhosphorIconsRegular.bell,
-        activeIcon: PhosphorIconsFill.bell,
-      ),
-      _TabItem(
         label: '프로필',
         icon: PhosphorIconsRegular.user,
         activeIcon: PhosphorIconsFill.user,
       ),
     ];
 
-    return ValueListenableBuilder<bool>(
-      valueListenable: HomeTabController.hasUnreadNotifications,
-      builder: (context, hasUnread, _) {
-        return Container(
-          height: height,
-          color: backgroundColor,
-          child: Row(
-            children: List.generate(items.length, (index) {
-              final item = items[index];
-              final isActive = index == currentIndex;
-              final color = isActive ? activeColor : inactiveColor;
-              final showUnreadDot = index == 3 && hasUnread;
-
-              return Expanded(
-                child: CommonInkWell(
-                  onTap: () => onTap(index),
-                  child: Center(
-                    child: Stack(
-                      clipBehavior: Clip.none,
-                      children: [
-                        Icon(
-                          isActive ? item.activeIcon : item.icon,
-                          size: iconSize,
-                          color: color,
-                          semanticLabel: item.label,
-                        ),
-                        if (showUnreadDot)
-                          Positioned(
-                            right: -2,
-                            top: 2,
-                            child: Container(
-                              width: 4,
-                              height: 4,
-                              decoration: const BoxDecoration(
-                                color: Color(0xFFFF3B30),
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
+    return Container(
+      height: height + 10,
+      color: backgroundColor,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: _TabIconButton(
+                  item: items[0],
+                  isActive: currentIndex == 0,
+                  iconSize: iconSize,
+                  activeColor: activeColor,
+                  inactiveColor: inactiveColor,
+                  showUnreadDot: false,
+                  onTap: () => onTap(0),
+                ),
+              ),
+              Expanded(
+                child: _TabIconButton(
+                  item: items[1],
+                  isActive: currentIndex == 1,
+                  iconSize: iconSize,
+                  activeColor: activeColor,
+                  inactiveColor: inactiveColor,
+                  showUnreadDot: false,
+                  onTap: () => onTap(1),
+                ),
+              ),
+              const SizedBox(width: 72),
+              Expanded(
+                child: _TabIconButton(
+                  item: items[2],
+                  isActive: currentIndex == 2,
+                  iconSize: iconSize,
+                  activeColor: activeColor,
+                  inactiveColor: inactiveColor,
+                  showUnreadDot: false,
+                  onTap: () => onTap(2),
+                ),
+              ),
+              Expanded(
+                child: _TabIconButton(
+                  item: items[3],
+                  isActive: currentIndex == 3,
+                  iconSize: iconSize,
+                  activeColor: activeColor,
+                  inactiveColor: inactiveColor,
+                  showUnreadDot: false,
+                  onTap: () => onTap(3),
+                ),
+              ),
+            ],
+          ),
+          CommonInkWell(
+            onTap: onCenterTap,
+            borderRadius: BorderRadius.circular(20),
+            child: Container(
+              width: 36,
+              height: 36,
+              decoration: ShapeDecoration(
+                color: Colors.black,
+                shape: SmoothRectangleBorder(
+                  borderRadius: SmoothBorderRadius(
+                    cornerRadius: 12,
+                    cornerSmoothing: 2,
                   ),
                 ),
-              );
-            }),
+              ),
+              alignment: Alignment.center,
+              child: const Icon(
+                PhosphorIconsBold.plus,
+                size: 18,
+                color: MyApp.primary200,
+              ),
+            ),
           ),
-        );
-      },
+        ],
+      ),
+    );
+  }
+}
+
+class _TabIconButton extends StatelessWidget {
+  const _TabIconButton({
+    required this.item,
+    required this.isActive,
+    required this.iconSize,
+    required this.activeColor,
+    required this.inactiveColor,
+    required this.showUnreadDot,
+    required this.onTap,
+  });
+
+  final _TabItem item;
+  final bool isActive;
+  final double iconSize;
+  final Color activeColor;
+  final Color inactiveColor;
+  final bool showUnreadDot;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = isActive ? activeColor : inactiveColor;
+    return CommonInkWell(
+      onTap: onTap,
+      child: Center(
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Icon(
+              isActive ? item.activeIcon : item.icon,
+              size: iconSize,
+              color: color,
+              semanticLabel: item.label,
+            ),
+            if (showUnreadDot)
+              Positioned(
+                right: -2,
+                top: 2,
+                child: Container(
+                  width: 4,
+                  height: 4,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFFF3B30),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
     );
   }
 }

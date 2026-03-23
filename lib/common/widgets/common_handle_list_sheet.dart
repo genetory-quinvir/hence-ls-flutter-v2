@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
-import 'common_inkwell.dart';
-
 class CommonHandleListSheet extends StatelessWidget {
   const CommonHandleListSheet({
     super.key,
@@ -140,12 +138,17 @@ class CommonHandleListOverlay extends StatefulWidget {
     this.trailing,
     this.count,
     this.items = const [],
+    this.itemBuilder,
+    this.itemCount,
+    this.itemExtent,
     this.padding = const EdgeInsets.fromLTRB(20, 12, 20, 24),
     this.peekHeight = 50,
     this.initialChildSize = 0.35,
-    this.maxChildSize = 0.93,
+    this.maxChildSize = 0.8,
     this.useBottomSafeArea = true,
     this.cacheExtent,
+    this.onEndReached,
+    this.endReachedThreshold = 160,
     this.onSizeChanged,
     this.onHeightChanged,
   });
@@ -154,12 +157,17 @@ class CommonHandleListOverlay extends StatefulWidget {
   final Widget? trailing;
   final int? count;
   final List<Widget> items;
+  final IndexedWidgetBuilder? itemBuilder;
+  final int? itemCount;
+  final double? itemExtent;
   final EdgeInsets padding;
   final double peekHeight;
   final double initialChildSize;
   final double maxChildSize;
   final bool useBottomSafeArea;
   final double? cacheExtent;
+  final VoidCallback? onEndReached;
+  final double endReachedThreshold;
   final ValueChanged<double>? onSizeChanged;
   final ValueChanged<double>? onHeightChanged;
 
@@ -231,6 +239,7 @@ class _CommonHandleListOverlayState extends State<CommonHandleListOverlay> {
   double _maxChildSize = 1.0;
   double _sheetMaxHeight = 0;
   double? _lastSnapTarget;
+  bool _endReachedTriggered = false;
 
   void _handleSheetSizeChanged() {
     if (!_controller.isAttached) return;
@@ -363,8 +372,25 @@ class _CommonHandleListOverlayState extends State<CommonHandleListOverlay> {
 
               const headerHeight = 72.0;
               Widget buildListView() {
+                final hasLazyBuilder =
+                    widget.itemBuilder != null && widget.itemCount != null;
                 return NotificationListener<ScrollNotification>(
                   onNotification: (notification) {
+                    if (widget.onEndReached != null &&
+                        notification.metrics.axis == Axis.vertical) {
+                      final metrics = notification.metrics;
+                      final shouldTrigger =
+                          metrics.maxScrollExtent > 0 &&
+                          metrics.pixels >=
+                              (metrics.maxScrollExtent -
+                                  widget.endReachedThreshold);
+                      if (shouldTrigger && !_endReachedTriggered) {
+                        _endReachedTriggered = true;
+                        widget.onEndReached!.call();
+                      } else if (!shouldTrigger) {
+                        _endReachedTriggered = false;
+                      }
+                    }
                     if (notification is UserScrollNotification &&
                         notification.direction != ScrollDirection.idle) {
                       if (notification.direction == ScrollDirection.forward) {
@@ -380,17 +406,42 @@ class _CommonHandleListOverlayState extends State<CommonHandleListOverlay> {
                     }
                     return false;
                   },
-                  child: ListView.separated(
-                    controller: listController,
-                    padding: listPadding,
-                    primary: false,
-                    physics: const BouncingScrollPhysics(),
-                    cacheExtent: widget.cacheExtent,
-                    itemBuilder: (context, index) => widget.items[index],
-                    separatorBuilder: (context, index) =>
-                        const SizedBox(height: 2),
-                    itemCount: widget.items.length,
-                  ),
+                  child: widget.itemExtent != null
+                      ? ListView.builder(
+                          controller: listController,
+                          padding: listPadding,
+                          primary: false,
+                          physics: const BouncingScrollPhysics(),
+                          cacheExtent: widget.cacheExtent,
+                          itemExtent: widget.itemExtent,
+                          addAutomaticKeepAlives: false,
+                          addRepaintBoundaries: true,
+                          addSemanticIndexes: false,
+                          itemBuilder: hasLazyBuilder
+                              ? widget.itemBuilder!
+                              : (context, index) => widget.items[index],
+                          itemCount: hasLazyBuilder
+                              ? widget.itemCount!
+                              : widget.items.length,
+                        )
+                      : ListView.separated(
+                          controller: listController,
+                          padding: listPadding,
+                          primary: false,
+                          physics: const BouncingScrollPhysics(),
+                          cacheExtent: widget.cacheExtent,
+                          addAutomaticKeepAlives: false,
+                          addRepaintBoundaries: true,
+                          addSemanticIndexes: false,
+                          itemBuilder: hasLazyBuilder
+                              ? widget.itemBuilder!
+                              : (context, index) => widget.items[index],
+                          separatorBuilder: (context, index) =>
+                              const SizedBox(height: 2),
+                          itemCount: hasLazyBuilder
+                              ? widget.itemCount!
+                              : widget.items.length,
+                        ),
                 );
               }
               return Container(

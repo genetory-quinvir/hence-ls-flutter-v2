@@ -568,8 +568,6 @@ class ApiClient {
     Future<http.Response> send() async {
       final request = http.MultipartRequest('POST', uri);
       request.headers.addAll(_headers());
-      request.fields['entityId'] = '';
-      request.fields['entityType'] = '';
       request.files.add(
         await http.MultipartFile.fromPath(
           'files',
@@ -764,18 +762,38 @@ class ApiClient {
   static List<String> _extractFileIds(dynamic json) {
     if (json is! Map<String, dynamic>) return [];
     final ids = <String>[];
+    void addId(dynamic value) {
+      if (value is String && value.isNotEmpty) {
+        ids.add(value);
+      }
+    }
+
     void addList(dynamic list) {
       if (list is List) {
         for (final item in list) {
-          if (item is String && item.isNotEmpty) ids.add(item);
+          if (item is String && item.isNotEmpty) {
+            ids.add(item);
+            continue;
+          }
+          if (item is Map<String, dynamic>) {
+            addId(item['fileId']);
+            addId(item['id']);
+            addId(item['fileID']);
+            addId(item['file_id']);
+          }
         }
       }
     }
 
     addList(json['fileIds']);
+    addList(json['uploadedFiles']);
+    addList(json['files']);
     final data = json['data'];
     if (data is Map<String, dynamic>) {
       addList(data['fileIds']);
+      addList(data['files']);
+      addId(data['fileId']);
+      addId(data['id']);
       final uploadedFiles = data['uploadedFiles'];
       if (uploadedFiles is List) {
         for (final entry in uploadedFiles) {
@@ -791,6 +809,8 @@ class ApiClient {
           }
         }
       }
+    } else {
+      addList(data);
     }
     return ids;
   }
@@ -1712,7 +1732,7 @@ class ApiClient {
   }
 
   static Future<Map<String, dynamic>> fetchMyPlacebookMyPlacesInfo() async {
-    final uri = Uri.parse('$baseUrl/api/v1/placebook/my-places/info');
+    final uri = Uri.parse('$baseUrl/api/v1/placebook/my/stats');
     _logRequest('GET', uri);
     final response = await _sendWithAuthRetry(
       () => http.get(uri, headers: _headers()),
